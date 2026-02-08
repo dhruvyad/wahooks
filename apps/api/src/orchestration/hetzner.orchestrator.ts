@@ -21,9 +21,9 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
     this.networkId =
       this.configService.getOrThrow<string>('HETZNER_NETWORK_ID');
     this.serverType =
-      this.configService.get<string>('HETZNER_SERVER_TYPE') ?? 'cx22';
+      this.configService.get<string>('HETZNER_SERVER_TYPE') ?? 'cpx21';
     this.location =
-      this.configService.get<string>('HETZNER_LOCATION') ?? 'fsn1';
+      this.configService.get<string>('HETZNER_LOCATION') ?? 'nbg1';
     this.databaseUrl =
       this.configService.getOrThrow<string>('DATABASE_URL');
   }
