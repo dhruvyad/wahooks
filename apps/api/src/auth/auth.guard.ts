@@ -6,8 +6,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import jwt = require('jsonwebtoken');
-import jwksRsa = require('jwks-rsa');
+import jwt from 'jsonwebtoken';
+import jwksRsa from 'jwks-rsa';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
