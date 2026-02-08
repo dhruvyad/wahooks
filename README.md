@@ -170,7 +170,7 @@ All API routes are prefixed with `/api`. Auth-protected routes require a `Bearer
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | Supabase Postgres connection string |
-| `SUPABASE_JWT_SECRET` | Supabase JWT secret for token verification |
+| `SUPABASE_URL` | Supabase project URL (JWTs verified via JWKS) |
 | `REDIS_URL` | Redis connection string for BullMQ |
 | `HETZNER_API_TOKEN` | Hetzner Cloud API token for VM provisioning |
 | `HETZNER_NETWORK_ID` | Hetzner private network ID |
@@ -186,7 +186,7 @@ All API routes are prefixed with `/api`. Auth-protected routes require a `Bearer
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous/public key |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key (`sb_publishable_...`) |
 | `NEXT_PUBLIC_API_URL` | Public URL of the API server |
 
 See the `.env.example` files in each app for full reference.
