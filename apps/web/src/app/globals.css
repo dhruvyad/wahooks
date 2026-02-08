@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+@theme {
+  /* Backgrounds */
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #111111;
+  --color-bg-tertiary: #1a1a1a;
+  --color-bg-elevated: #222222;
+  --color-bg-hover: #2a2a2a;
+
+  /* WhatsApp Green Accent */
+  --color-wa-green: #25D366;
+  --color-wa-green-dark: #1da851;
+  --color-wa-green-light: #34e076;
+  --color-wa-green-muted: rgba(37, 211, 102, 0.15);
+
+  /* Text */
+  --color-text-primary: #f0f0f0;
+  --color-text-secondary: #a0a0a0;
+  --color-text-tertiary: #6b6b6b;
+  --color-text-inverse: #0a0a0a;
+
+  /* Borders */
+  --color-border-primary: #2a2a2a;
+  --color-border-secondary: #333333;
+  --color-border-accent: rgba(37, 211, 102, 0.3);
+
+  /* Status Colors */
+  --color-status-success-bg: rgba(34, 197, 94, 0.15);
+  --color-status-success-text: #4ade80;
+  --color-status-success-border: rgba(34, 197, 94, 0.3);
+
+  --color-status-warning-bg: rgba(234, 179, 8, 0.15);
+  --color-status-warning-text: #facc15;
+  --color-status-warning-border: rgba(234, 179, 8, 0.3);
+
+  --color-status-error-bg: rgba(239, 68, 68, 0.15);
+  --color-status-error-text: #f87171;
+  --color-status-error-border: rgba(239, 68, 68, 0.3);
+
+  --color-status-info-bg: rgba(59, 130, 246, 0.15);
+  --color-status-info-text: #60a5fa;
+  --color-status-info-border: rgba(59, 130, 246, 0.3);
+
+  --color-status-neutral-bg: rgba(156, 163, 175, 0.15);
+  --color-status-neutral-text: #9ca3af;
+  --color-status-neutral-border: rgba(156, 163, 175, 0.3);
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}

@@ -16,10 +16,10 @@ interface BillingStatus {
 
 function SubscriptionBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    active: "bg-green-100 text-green-800",
-    past_due: "bg-yellow-100 text-yellow-800",
-    canceled: "bg-red-100 text-red-800",
-    incomplete: "bg-gray-100 text-gray-800",
+    active: "bg-status-success-bg text-status-success-text",
+    past_due: "bg-status-warning-bg text-status-warning-text",
+    canceled: "bg-status-error-bg text-status-error-text",
+    incomplete: "bg-status-neutral-bg text-status-neutral-text",
   };
 
   const labels: Record<string, string> = {
@@ -29,7 +29,7 @@ function SubscriptionBadge({ status }: { status: string }) {
     incomplete: "Incomplete",
   };
 
-  const style = styles[status] || "bg-gray-100 text-gray-800";
+  const style = styles[status] || "bg-status-neutral-bg text-status-neutral-text";
   const label = labels[status] || status;
 
   return (
@@ -88,29 +88,28 @@ export default function BillingPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Billing</h1>
+      <h1 className="text-2xl font-bold text-text-primary">Billing</h1>
 
-      {/* Stripe redirect banners */}
       {success && (
-        <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+        <div className="mt-4 rounded-md border border-status-success-border bg-status-success-bg p-4 text-sm text-status-success-text">
           Payment method added successfully. Your billing is now set up.
         </div>
       )}
 
       {canceled && (
-        <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+        <div className="mt-4 rounded-md border border-status-info-border bg-status-info-bg p-4 text-sm text-status-info-text">
           Checkout was canceled. You can set up billing whenever you are ready.
         </div>
       )}
 
       {loading && (
         <div className="mt-12 text-center">
-          <p className="text-gray-500">Loading billing information...</p>
+          <p className="text-text-secondary">Loading billing information...</p>
         </div>
       )}
 
       {error && (
-        <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mt-6 rounded-md border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
           {error}
         </div>
       )}
@@ -118,20 +117,20 @@ export default function BillingPage() {
       {!loading && !error && billing && (
         <div className="mt-6 space-y-6">
           {/* Subscription status card */}
-          <div className="rounded-md border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold">Subscription</h2>
+          <div className="rounded-md border border-border-primary bg-bg-secondary p-6">
+            <h2 className="text-lg font-semibold text-text-primary">Subscription</h2>
 
             {!billing.subscriptionStatus || billing.subscriptionStatus === "incomplete" ? (
               <div className="mt-3">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-text-secondary">
                   Set up billing to start using WAHooks. You will be charged based on
-                  usage: <span className="font-medium">$0.25 per connection per month</span>,
+                  usage: <span className="font-medium text-text-primary">$0.25 per connection per month</span>,
                   prorated to the hour.
                 </p>
                 <button
                   onClick={handleSetupPayment}
                   disabled={redirecting}
-                  className="mt-4 rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  className="mt-4 rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
                 >
                   {redirecting ? "Redirecting..." : "Set Up Payment"}
                 </button>
@@ -139,13 +138,13 @@ export default function BillingPage() {
             ) : billing.subscriptionStatus === "active" ? (
               <div className="mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Status:</span>
+                  <span className="text-sm text-text-secondary">Status:</span>
                   <SubscriptionBadge status="active" />
                 </div>
                 <button
                   onClick={handleManageBilling}
                   disabled={redirecting}
-                  className="mt-4 rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  className="mt-4 rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
                 >
                   {redirecting ? "Redirecting..." : "Manage Billing"}
                 </button>
@@ -153,17 +152,17 @@ export default function BillingPage() {
             ) : billing.subscriptionStatus === "past_due" ? (
               <div className="mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Status:</span>
+                  <span className="text-sm text-text-secondary">Status:</span>
                   <SubscriptionBadge status="past_due" />
                 </div>
-                <p className="mt-2 text-sm text-yellow-700">
+                <p className="mt-2 text-sm text-status-warning-text">
                   Your payment is past due. Please update your payment method to avoid
                   service interruption.
                 </p>
                 <button
                   onClick={handleManageBilling}
                   disabled={redirecting}
-                  className="mt-4 rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  className="mt-4 rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
                 >
                   {redirecting ? "Redirecting..." : "Update Payment"}
                 </button>
@@ -171,13 +170,13 @@ export default function BillingPage() {
             ) : (
               <div className="mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Status:</span>
+                  <span className="text-sm text-text-secondary">Status:</span>
                   <SubscriptionBadge status={billing.subscriptionStatus} />
                 </div>
                 <button
                   onClick={handleManageBilling}
                   disabled={redirecting}
-                  className="mt-4 rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  className="mt-4 rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
                 >
                   {redirecting ? "Redirecting..." : "Manage Billing"}
                 </button>
@@ -186,37 +185,37 @@ export default function BillingPage() {
           </div>
 
           {/* Usage summary card */}
-          <div className="rounded-md border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold">Current Month Usage</h2>
+          <div className="rounded-md border border-border-primary bg-bg-secondary p-6">
+            <h2 className="text-lg font-semibold text-text-primary">Current Month Usage</h2>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <p className="text-sm text-gray-500">Connection-Hours</p>
-                <p className="mt-1 text-xl font-semibold">
+                <p className="text-sm text-text-secondary">Connection-Hours</p>
+                <p className="mt-1 text-xl font-semibold text-text-primary">
                   {billing.usage.totalHours.toFixed(1)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Active Connections</p>
-                <p className="mt-1 text-xl font-semibold">
+                <p className="text-sm text-text-secondary">Active Connections</p>
+                <p className="mt-1 text-xl font-semibold text-text-primary">
                   {billing.usage.activeConnections}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Estimated Cost</p>
-                <p className="mt-1 text-xl font-semibold">
+                <p className="text-sm text-text-secondary">Estimated Cost</p>
+                <p className="mt-1 text-xl font-semibold text-wa-green">
                   ${billing.usage.estimatedCost.toFixed(2)}
                 </p>
               </div>
             </div>
-            <p className="mt-4 text-xs text-gray-400">
+            <p className="mt-4 text-xs text-text-tertiary">
               $0.25 per connection per month, billed hourly
             </p>
           </div>
 
           {/* Pricing explanation */}
-          <div className="rounded-md border border-gray-200 bg-gray-50 p-6">
-            <h2 className="text-lg font-semibold">How Pricing Works</h2>
-            <p className="mt-2 text-sm text-gray-600">
+          <div className="rounded-md border border-border-primary bg-bg-tertiary p-6">
+            <h2 className="text-lg font-semibold text-text-primary">How Pricing Works</h2>
+            <p className="mt-2 text-sm text-text-secondary">
               You are billed based on usage. Each active WhatsApp connection costs
               $0.25/month, prorated to the hour. You only pay for the time your
               connections are active.

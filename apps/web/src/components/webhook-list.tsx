@@ -169,11 +169,11 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
   return (
     <div className="mt-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Webhooks</h2>
+        <h2 className="text-lg font-semibold text-text-primary">Webhooks</h2>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            className="rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark transition-colors"
           >
             Add Webhook
           </button>
@@ -181,22 +181,22 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
       </div>
 
       {error && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mt-3 rounded-md border border-status-error-border bg-status-error-bg p-3 text-sm text-status-error-text">
           {error}
         </div>
       )}
 
       {/* Add Webhook Form */}
       {showForm && (
-        <div className="mt-4 rounded-md border border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-800">
+        <div className="mt-4 rounded-md border border-border-secondary bg-bg-secondary p-4">
+          <h3 className="text-sm font-semibold text-text-primary">
             New Webhook
           </h3>
 
           <div className="mt-3">
             <label
               htmlFor="webhook-url"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-text-secondary"
             >
               URL
             </label>
@@ -206,12 +206,12 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
               value={formUrl}
               onChange={(e) => setFormUrl(e.target.value)}
               placeholder="https://example.com/webhook"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+              className="mt-1 block w-full rounded-md border border-border-secondary bg-bg-elevated px-3 py-2 text-sm text-text-primary shadow-sm placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
             />
           </div>
 
           <div className="mt-3">
-            <span className="block text-sm font-medium text-gray-700">
+            <span className="block text-sm font-medium text-text-secondary">
               Events
             </span>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -220,8 +220,8 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                   key={event}
                   className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                     formEvents.includes(event)
-                      ? "border-black bg-black text-white"
-                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      ? "border-wa-green bg-wa-green text-text-inverse"
+                      : "border-border-secondary bg-bg-elevated text-text-secondary hover:bg-bg-hover"
                   }`}
                 >
                   <input
@@ -237,14 +237,14 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
           </div>
 
           {formError && (
-            <p className="mt-3 text-sm text-red-600">{formError}</p>
+            <p className="mt-3 text-sm text-status-error-text">{formError}</p>
           )}
 
           <div className="mt-4 flex gap-2">
             <button
               onClick={handleCreate}
               disabled={formSubmitting}
-              className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+              className="rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
             >
               {formSubmitting ? "Saving..." : "Save"}
             </button>
@@ -255,7 +255,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                 setFormEvents([]);
                 setFormError(null);
               }}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-md border border-border-secondary px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
             >
               Cancel
             </button>
@@ -265,12 +265,12 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
 
       {/* Loading state */}
       {loading && (
-        <p className="mt-4 text-sm text-gray-400">Loading webhooks...</p>
+        <p className="mt-4 text-sm text-text-tertiary">Loading webhooks...</p>
       )}
 
       {/* Empty state */}
       {!loading && !error && webhooks.length === 0 && !showForm && (
-        <p className="mt-4 text-sm text-gray-500">
+        <p className="mt-4 text-sm text-text-secondary">
           No webhooks configured. Add a webhook to start receiving events.
         </p>
       )}
@@ -281,55 +281,50 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
           {webhooks.map((webhook) => (
             <div
               key={webhook.id}
-              className="rounded-md border border-gray-200 p-4"
+              className="rounded-md border border-border-primary bg-bg-secondary p-4"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  {/* URL - clickable to expand logs */}
                   <button
                     onClick={() => toggleExpand(webhook.id)}
-                    className="text-left text-sm font-medium text-black hover:underline break-all"
+                    className="text-left text-sm font-medium text-wa-green hover:underline break-all"
                   >
                     {webhook.url}
                   </button>
 
-                  {/* Event tags */}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {webhook.events.map((event) => (
                       <span
                         key={event}
-                        className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                        className="inline-flex items-center rounded-full bg-bg-elevated px-2 py-0.5 text-xs font-medium text-text-secondary"
                       >
                         {event}
                       </span>
                     ))}
                   </div>
 
-                  {/* Signing secret */}
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Secret:</span>
-                    <code className="text-xs text-gray-600">
+                    <span className="text-xs text-text-tertiary">Secret:</span>
+                    <code className="text-xs text-text-secondary">
                       {revealedSecrets.has(webhook.id)
                         ? webhook.signingSecret
                         : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
                     </code>
                     <button
                       onClick={() => toggleSecretReveal(webhook.id)}
-                      className="text-xs text-gray-500 hover:text-black underline"
+                      className="text-xs text-text-tertiary hover:text-wa-green underline"
                     >
                       {revealedSecrets.has(webhook.id) ? "Hide" : "Reveal"}
                     </button>
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {/* Active toggle */}
                   <button
                     onClick={() => handleToggleActive(webhook)}
                     disabled={togglingIds.has(webhook.id)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 disabled:opacity-50 ${
-                      webhook.active ? "bg-black" : "bg-gray-300"
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-wa-green focus:ring-offset-2 focus:ring-offset-bg-primary disabled:opacity-50 ${
+                      webhook.active ? "bg-wa-green" : "bg-bg-hover"
                     }`}
                     title={webhook.active ? "Active" : "Inactive"}
                   >
@@ -340,28 +335,25 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                     />
                   </button>
 
-                  {/* Delete button */}
                   <button
                     onClick={() => handleDelete(webhook.id)}
                     disabled={deletingIds.has(webhook.id)}
-                    className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    className="rounded-md border border-status-error-border px-3 py-1.5 text-xs font-medium text-status-error-text hover:bg-status-error-bg disabled:opacity-50 transition-colors"
                   >
                     {deletingIds.has(webhook.id) ? "..." : "Delete"}
                   </button>
                 </div>
               </div>
 
-              {/* Event Log (expanded) */}
               <EventLog
                 webhookId={webhook.id}
                 expanded={expandedWebhook === webhook.id}
               />
 
-              {/* Expand hint */}
               {expandedWebhook !== webhook.id && (
                 <button
                   onClick={() => toggleExpand(webhook.id)}
-                  className="mt-2 text-xs text-gray-400 hover:text-gray-600"
+                  className="mt-2 text-xs text-text-tertiary hover:text-text-secondary"
                 >
                   Click to view event log
                 </button>

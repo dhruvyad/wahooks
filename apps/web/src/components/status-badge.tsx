@@ -1,15 +1,15 @@
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  working: { label: "Connected", className: "bg-green-100 text-green-700" },
-  scan_qr: { label: "Scan QR", className: "bg-yellow-100 text-yellow-700" },
-  pending: { label: "Pending", className: "bg-gray-100 text-gray-600" },
-  failed: { label: "Failed", className: "bg-red-100 text-red-700" },
-  stopped: { label: "Stopped", className: "bg-gray-100 text-gray-600" },
+  working: { label: "Connected", className: "bg-status-success-bg text-status-success-text" },
+  scan_qr: { label: "Scan QR", className: "bg-status-warning-bg text-status-warning-text" },
+  pending: { label: "Pending", className: "bg-status-neutral-bg text-status-neutral-text" },
+  failed: { label: "Failed", className: "bg-status-error-bg text-status-error-text" },
+  stopped: { label: "Stopped", className: "bg-status-neutral-bg text-status-neutral-text" },
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const config = STATUS_CONFIG[status] || {
     label: status,
-    className: "bg-gray-100 text-gray-600",
+    className: "bg-status-neutral-bg text-status-neutral-text",
   };
 
   return (

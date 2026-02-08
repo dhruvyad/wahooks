@@ -33,10 +33,10 @@ export default function ConnectionsPage() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Connections</h1>
+        <h1 className="text-2xl font-bold text-text-primary">Connections</h1>
         <Link
           href="/connections/new"
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          className="rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark transition-colors"
         >
           New Connection
         </Link>
@@ -44,24 +44,24 @@ export default function ConnectionsPage() {
 
       {loading && (
         <div className="mt-12 text-center">
-          <p className="text-gray-500">Loading connections...</p>
+          <p className="text-text-secondary">Loading connections...</p>
         </div>
       )}
 
       {error && (
-        <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mt-6 rounded-md border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
           Failed to load connections: {error}
         </div>
       )}
 
       {!loading && !error && connections.length === 0 && (
         <div className="mt-12 text-center">
-          <p className="text-gray-500">
+          <p className="text-text-secondary">
             No connections yet. Create your first WhatsApp connection.
           </p>
           <Link
             href="/connections/new"
-            className="mt-4 inline-block text-sm font-medium text-black underline hover:no-underline"
+            className="mt-4 inline-block text-sm font-medium text-wa-green underline hover:no-underline"
           >
             Create a connection
           </Link>
@@ -74,15 +74,15 @@ export default function ConnectionsPage() {
             <Link
               key={conn.id}
               href={`/connections/${conn.id}`}
-              className="flex items-center justify-between rounded-md border border-gray-200 px-4 py-3 hover:bg-gray-50"
+              className="flex items-center justify-between rounded-md border border-border-primary px-4 py-3 hover:bg-bg-hover transition-colors"
             >
               <div className="flex items-center gap-3">
-                <span className="font-medium">
+                <span className="font-medium text-text-primary">
                   {conn.name || "Unnamed Connection"}
                 </span>
                 <StatusBadge status={conn.status} />
               </div>
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-text-secondary">
                 {conn.me?.id
                   ? conn.me.id.replace("@c.us", "")
                   : "No phone linked"}
