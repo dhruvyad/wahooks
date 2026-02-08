@@ -5,7 +5,12 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "db:migrate": "pnpm --filter @wahooks/db db:migrate:run",
+    "db:generate": "pnpm --filter @wahooks/db db:generate",
+    "db:push": "pnpm --filter @wahooks/db db:push",
+    "db:studio": "pnpm --filter @wahooks/db db:studio",
+    "test": "pnpm --filter @wahooks/api test"
   },
   "devDependencies": {
     "turbo": "^2.4.4",
