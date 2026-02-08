@@ -10,6 +10,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.0",
@@ -17,6 +18,9 @@
     "@nestjs/schedule": "^6.1.1",
     "@wahooks/db": "workspace:*",
     "@wahooks/shared-types": "workspace:*",
+    "bullmq": "^5.67.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.3",
     "drizzle-orm": "^0.38.4",
     "postgres": "^3.4.5",
     "reflect-metadata": "^0.2.2",

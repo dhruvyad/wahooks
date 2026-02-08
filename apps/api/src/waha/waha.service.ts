@@ -75,6 +75,7 @@ export class WahaService {
     workerUrl: string,
     apiKey: string,
     sessionName: string,
+    webhookUrl?: string,
   ): Promise<WahaSessionResponse> {
     const url = this.buildUrl(workerUrl, '/api/sessions');
     const headers = this.buildHeaders(apiKey);
@@ -84,7 +85,16 @@ export class WahaService {
     return this.request<WahaSessionResponse>('POST', url, headers, {
       name: sessionName,
       config: {
-        webhooks: [],
+        webhooks: webhookUrl
+          ? [
+              {
+                url: webhookUrl,
+                events: [
+                  { name: '*' }, // Subscribe to all events
+                ],
+              },
+            ]
+          : [],
       },
     });
   }

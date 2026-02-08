@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
+import { WebhookList } from "@/components/webhook-list";
 
 interface Connection {
   id: string;
@@ -280,6 +281,9 @@ export default function ConnectionDetailPage() {
           </button>
         </div>
       )}
+
+      {/* Webhooks section */}
+      <WebhookList connectionId={id} />
     </div>
   );
 }

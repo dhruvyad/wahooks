@@ -10,6 +10,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { wahaSessions } from '@wahooks/db';
@@ -28,6 +29,7 @@ export class ConnectionsController {
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     private readonly workersService: WorkersService,
     private readonly wahaService: WahaService,
+    private readonly configService: ConfigService,
   ) {}
 
   @Get()
@@ -57,10 +59,16 @@ export class ConnectionsController {
     try {
       const worker = await this.workersService.findOrProvisionWorker();
       await this.workersService.assignSession(worker.id, created.id);
+      const apiUrl = this.configService.get<string>(
+        'API_URL',
+        'http://localhost:3001',
+      );
+      const webhookUrl = `${apiUrl}/api/events/waha`;
       await this.wahaService.createSession(
         worker.internalIp,
         worker.apiKey,
         sessionName,
+        webhookUrl,
       );
       await this.wahaService.startSession(
         worker.internalIp,

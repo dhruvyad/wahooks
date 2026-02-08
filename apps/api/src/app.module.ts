@@ -8,6 +8,8 @@ import { WahaModule } from "./waha/waha.module";
 import { WorkersModule } from "./workers/workers.module";
 import { ConnectionsModule } from "./connections/connections.module";
 import { HealthModule } from "./health/health.module";
+import { WebhooksModule } from "./webhooks/webhooks.module";
+import { EventsModule } from "./events/events.module";
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { HealthModule } from "./health/health.module";
     WorkersModule,
     ConnectionsModule,
     HealthModule,
+    WebhooksModule,
+    EventsModule,
   ],
   controllers: [AppController],
 })
