@@ -6,8 +6,14 @@ import {
   ProvisionResult,
 } from './orchestrator.interface';
 
-// Use the global fetch Response type (avoids conflict with Express Response)
-type FetchResponse = Awaited<ReturnType<typeof globalThis.fetch>>;
+// Explicit fetch response interface (avoids conflict with Express Response)
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
 
 @Injectable()
 export class HetznerOrchestrator implements ContainerOrchestrator {

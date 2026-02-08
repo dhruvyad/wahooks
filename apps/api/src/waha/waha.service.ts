@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WahaSessionResponse, WahaQrCodeResponse } from './waha.types';
 
-type FetchResponse = Awaited<ReturnType<typeof globalThis.fetch>>;
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+}
 
 @Injectable()
 export class WahaService {

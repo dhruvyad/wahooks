@@ -6,7 +6,11 @@ import { eq } from 'drizzle-orm';
 import { webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 
-type FetchResponse = Awaited<ReturnType<typeof globalThis.fetch>>;
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+}
 
 interface WebhookJob {
   webhookConfigId: string;
