@@ -1,8 +1,20 @@
 import { Controller, Post, Req, Res, Logger, Inject } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { Request, Response } from 'express';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { StripeService } from './stripe.service';
+
+// Minimal types for Express req/res — avoids importing @types/express
+// which adds a global Response type that conflicts with fetch's Response
+interface RawRequest {
+  headers: Record<string, string | string[] | undefined>;
+  rawBody?: Buffer;
+}
+
+interface ExpressResponse {
+  status(code: number): ExpressResponse;
+  send(body: string): ExpressResponse;
+  json(body: unknown): ExpressResponse;
+}
 
 @SkipThrottle()
 @Controller('stripe')
@@ -10,12 +22,12 @@ export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);
 
   constructor(
-    @Inject(DRIZZLE_TOKEN) private readonly db: any,
+    @Inject(DRIZZLE_TOKEN) private readonly db: unknown,
     private readonly stripeService: StripeService,
   ) {}
 
   @Post('webhook')
-  async handleWebhook(@Req() req: Request, @Res() res: Response) {
+  async handleWebhook(@Req() req: RawRequest, @Res() res: ExpressResponse) {
     const signature = req.headers['stripe-signature'] as string;
 
     if (!signature) {
@@ -26,7 +38,7 @@ export class StripeWebhookController {
     let event;
     try {
       event = this.stripeService.constructWebhookEvent(
-        (req as any).rawBody, // raw body provided by NestJS rawBody option
+        req.rawBody!,
         signature,
       );
     } catch (err) {
@@ -36,43 +48,41 @@ export class StripeWebhookController {
 
     switch (event.type) {
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as any;
+        const subscription = event.data.object;
         this.logger.log(
-          `Subscription ${subscription.id} updated: ${subscription.status}`,
+          `Subscription ${subscription.id} updated: ${'status' in subscription ? subscription.status : 'unknown'}`,
         );
 
-        // If subscription becomes past_due or unpaid, could suspend connections
         if (
-          subscription.status === 'past_due' ||
-          subscription.status === 'unpaid'
+          'status' in subscription &&
+          (subscription.status === 'past_due' ||
+            subscription.status === 'unpaid')
         ) {
           this.logger.warn(
             `Subscription ${subscription.id} is ${subscription.status}`,
           );
-          // TODO: Send notification to user, consider suspending after grace period
         }
         break;
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as any;
+        const subscription = event.data.object;
         this.logger.log(`Subscription ${subscription.id} deleted`);
-        // Could stop all sessions for this customer
         break;
       }
 
       case 'invoice.payment_failed': {
-        const invoice = event.data.object as any;
+        const invoice = event.data.object;
         this.logger.warn(
-          `Payment failed for invoice ${invoice.id}, customer ${invoice.customer}`,
+          `Payment failed for invoice ${invoice.id}, customer ${'customer' in invoice ? invoice.customer : 'unknown'}`,
         );
         break;
       }
 
       case 'invoice.paid': {
-        const invoice = event.data.object as any;
+        const invoice = event.data.object;
         this.logger.log(
-          `Invoice ${invoice.id} paid for customer ${invoice.customer}`,
+          `Invoice ${invoice.id} paid for customer ${'customer' in invoice ? invoice.customer : 'unknown'}`,
         );
         break;
       }
