@@ -8,6 +8,7 @@ const config: Config = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  forceExit: true,
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

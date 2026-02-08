@@ -1,8 +1,10 @@
 import { Controller, Post, Req, Res, Logger, Inject } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { StripeService } from './stripe.service';
 
+@SkipThrottle()
 @Controller('stripe')
 export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);

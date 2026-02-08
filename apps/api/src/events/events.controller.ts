@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Inject, Logger } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, and } from 'drizzle-orm';
@@ -12,6 +13,7 @@ interface WahaEvent {
   [key: string]: unknown;
 }
 
+@SkipThrottle()
 @Controller('events')
 export class EventsController {
   private readonly logger = new Logger(EventsController.name);
