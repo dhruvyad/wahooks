@@ -17,3 +17,15 @@ export interface WahaQrCodeResponse {
   value: string;
   mimetype: string;
 }
+
+export interface WahaChatResponse {
+  id: string;
+  name?: string;
+  timestamp: number;
+  lastMessage?: { body: string; timestamp: number; fromMe: boolean };
+}
+
+export interface WahaMeResponse {
+  id: string;
+  pushName: string;
+}

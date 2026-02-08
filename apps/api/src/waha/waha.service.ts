@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { WahaSessionResponse, WahaQrCodeResponse } from './waha.types';
+import {
+  WahaSessionResponse,
+  WahaQrCodeResponse,
+  WahaChatResponse,
+  WahaMeResponse,
+} from './waha.types';
 
 @Injectable()
 export class WahaService {
@@ -240,6 +245,34 @@ export class WahaService {
     );
 
     await this.request<void>('POST', url, headers);
+  }
+
+  async getChats(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+  ): Promise<WahaChatResponse[]> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/chats?limit=20&sortBy=messageTimestamp&sortOrder=desc`,
+    );
+    const headers = this.buildHeaders(apiKey);
+
+    return this.request<WahaChatResponse[]>('GET', url, headers);
+  }
+
+  async getMe(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+  ): Promise<WahaMeResponse> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/sessions/${encodeURIComponent(sessionName)}/me`,
+    );
+    const headers = this.buildHeaders(apiKey);
+
+    return this.request<WahaMeResponse>('GET', url, headers);
   }
 
   async logoutSession(

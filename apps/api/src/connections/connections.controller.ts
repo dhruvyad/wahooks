@@ -199,6 +199,84 @@ export class ConnectionsController {
     return updated;
   }
 
+  @Get(':id/chats')
+  async getChats(
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+
+    if (connection.userId !== user.sub) {
+      throw new ForbiddenException('You do not own this connection');
+    }
+
+    const worker = await this.workersService.getWorkerForSession(id);
+
+    if (!worker) {
+      return [];
+    }
+
+    const wahaName = this.wahaService.resolveSessionName(
+      connection.sessionName,
+    );
+
+    try {
+      return await this.wahaService.getChats(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  @Get(':id/me')
+  async getMe(
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+
+    if (connection.userId !== user.sub) {
+      throw new ForbiddenException('You do not own this connection');
+    }
+
+    const worker = await this.workersService.getWorkerForSession(id);
+
+    if (!worker) {
+      return null;
+    }
+
+    const wahaName = this.wahaService.resolveSessionName(
+      connection.sessionName,
+    );
+
+    try {
+      return await this.wahaService.getMe(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+      );
+    } catch {
+      return null;
+    }
+  }
+
   @Get(':id')
   async getConnection(
     @Param('id') id: string,

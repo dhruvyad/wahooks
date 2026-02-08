@@ -19,6 +19,18 @@ interface QrData {
   mimetype: string;
 }
 
+interface ChatItem {
+  id: string;
+  name?: string;
+  timestamp: number;
+  lastMessage?: { body: string; timestamp: number; fromMe: boolean };
+}
+
+interface WaProfile {
+  id: string;
+  pushName: string;
+}
+
 export default function ConnectionDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -32,7 +44,9 @@ export default function ConnectionDetailPage() {
   const [qrError, setQrError] = useState<string | null>(null);
 
   const [restarting, setRestarting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [profile, setProfile] = useState<WaProfile | null>(null);
 
   const connectionRef = useRef<Connection | null>(null);
   connectionRef.current = connection;
@@ -52,6 +66,14 @@ export default function ConnectionDetailPage() {
   const fetchQr = useCallback(async () => {
     try {
       const data = await apiFetch(`/api/connections/${id}/qr`);
+      if (data.connected) {
+        setConnection((prev) =>
+          prev ? { ...prev, status: "working" } : prev
+        );
+        setQr(null);
+        setQrError(null);
+        return;
+      }
       setQr(data);
       setQrError(null);
     } catch (err) {
@@ -74,7 +96,7 @@ export default function ConnectionDetailPage() {
       ) {
         fetchConnection();
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [fetchConnection]);
@@ -87,7 +109,7 @@ export default function ConnectionDetailPage() {
 
       const interval = setInterval(() => {
         fetchQr();
-      }, 5000);
+      }, 3000);
 
       return () => clearInterval(interval);
     } else {
@@ -96,8 +118,28 @@ export default function ConnectionDetailPage() {
     }
   }, [connection?.status, fetchQr, connection]);
 
+  useEffect(() => {
+    if (connection?.status !== "working") return;
+
+    async function fetchConnectedData() {
+      const [meData, chatsData] = await Promise.all([
+        apiFetch(`/api/connections/${id}/me`).catch(() => null),
+        apiFetch(`/api/connections/${id}/chats`).catch(() => []),
+      ]);
+      if (meData) setProfile(meData);
+      setChats(chatsData ?? []);
+    }
+
+    fetchConnectedData();
+  }, [connection?.status, id]);
+
   async function handleRestart() {
     setRestarting(true);
+    setConnection((prev) =>
+      prev ? { ...prev, status: "scan_qr" } : prev
+    );
+    setChats([]);
+    setProfile(null);
     try {
       await apiFetch(`/api/connections/${id}/restart`, { method: "POST" });
       await fetchConnection();
@@ -110,22 +152,16 @@ export default function ConnectionDetailPage() {
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     const confirmed = window.confirm(
       "Are you sure you want to delete this connection? This action cannot be undone."
     );
     if (!confirmed) return;
 
-    setDeleting(true);
-    try {
-      await apiFetch(`/api/connections/${id}`, { method: "DELETE" });
-      router.push("/connections");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to delete connection"
-      );
-      setDeleting(false);
-    }
+    router.push("/connections");
+    apiFetch(`/api/connections/${id}`, { method: "DELETE" }).catch(() => {
+      // Fire-and-forget: user already navigated away
+    });
   }
 
   if (loading) {
@@ -175,10 +211,9 @@ export default function ConnectionDetailPage() {
         </h1>
         <button
           onClick={handleDelete}
-          disabled={deleting}
-          className="rounded-md border border-status-error-border px-4 py-2 text-sm font-medium text-status-error-text hover:bg-status-error-bg disabled:opacity-50 transition-colors"
+          className="rounded-md border border-status-error-border px-4 py-2 text-sm font-medium text-status-error-text hover:bg-status-error-bg transition-colors"
         >
-          {deleting ? "Deleting..." : "Delete"}
+          Delete
         </button>
       </div>
 
@@ -239,21 +274,67 @@ export default function ConnectionDetailPage() {
 
       {/* Connected section */}
       {connection?.status === "working" && (
-        <div className="mt-8 rounded-md border border-status-success-border bg-status-success-bg p-6">
-          <h2 className="text-lg font-semibold text-status-success-text">Connected</h2>
-          {connection.me?.id && (
-            <p className="mt-1 text-sm text-status-success-text">
-              Phone: {connection.me.id.replace("@c.us", "")}
-              {connection.me.pushName && ` (${connection.me.pushName})`}
-            </p>
+        <div className="mt-8 space-y-4">
+          <div className="rounded-md border border-status-success-border bg-status-success-bg p-6">
+            <h2 className="text-lg font-semibold text-status-success-text">Connected</h2>
+            {profile && (
+              <p className="mt-1 text-sm text-status-success-text">
+                Phone: {profile.id.replace("@c.us", "")}
+                {profile.pushName && ` (${profile.pushName})`}
+              </p>
+            )}
+            {!profile && connection.me?.id && (
+              <p className="mt-1 text-sm text-status-success-text">
+                Phone: {connection.me.id.replace("@c.us", "")}
+                {connection.me.pushName && ` (${connection.me.pushName})`}
+              </p>
+            )}
+            <button
+              onClick={handleRestart}
+              disabled={restarting}
+              className="mt-4 rounded-md border border-status-success-border bg-bg-primary px-4 py-2 text-sm font-medium text-status-success-text hover:bg-bg-hover disabled:opacity-50 transition-colors"
+            >
+              {restarting ? "Restarting..." : "Restart"}
+            </button>
+          </div>
+
+          {/* Recent chats */}
+          {chats.length > 0 && (
+            <div className="rounded-md border border-border-secondary p-6">
+              <h2 className="text-lg font-semibold text-text-primary">Recent Chats</h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Your WhatsApp connection is active. Here are your recent conversations.
+              </p>
+              <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+                {chats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className="flex items-center justify-between rounded-md border border-border-primary bg-bg-secondary p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-text-primary">
+                        {chat.name || chat.id.replace("@c.us", "").replace("@g.us", "")}
+                      </p>
+                      {chat.lastMessage && (
+                        <p className="mt-0.5 truncate text-xs text-text-tertiary">
+                          {chat.lastMessage.fromMe ? "You: " : ""}
+                          {chat.lastMessage.body}
+                        </p>
+                      )}
+                    </div>
+                    {chat.lastMessage && (
+                      <span className="ml-3 shrink-0 text-xs text-text-tertiary">
+                        {new Date(chat.lastMessage.timestamp * 1000).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-          <button
-            onClick={handleRestart}
-            disabled={restarting}
-            className="mt-4 rounded-md border border-status-success-border bg-bg-primary px-4 py-2 text-sm font-medium text-status-success-text hover:bg-bg-hover disabled:opacity-50 transition-colors"
-          >
-            {restarting ? "Restarting..." : "Restart"}
-          </button>
         </div>
       )}
 
