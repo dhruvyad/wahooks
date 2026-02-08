@@ -80,3 +80,33 @@ export interface WebhookEventLog {
   deliveredAt: string | null;
   createdAt: string;
 }
+
+// Billing constants
+export const BILLING = {
+  PRICE_PER_CONNECTION_MONTH: 0.25,
+  HOURS_PER_MONTH: 720, // 30 * 24
+  PRICE_PER_CONNECTION_HOUR: 0.25 / 720, // ~$0.000347
+} as const;
+
+// Usage record for billing
+export interface UsageRecord {
+  id: string;
+  sessionId: string;
+  periodStart: string; // ISO timestamp, hourly bucket
+  periodEnd: string;
+  connectionHours: number;
+  reportedToStripe: boolean;
+  createdAt: string;
+}
+
+// Create connection request
+export interface CreateConnectionRequest {
+  name?: string;
+}
+
+// Create webhook config request
+export interface CreateWebhookConfigRequest {
+  sessionId: string;
+  url: string;
+  events: WahaEventType[];
+}
