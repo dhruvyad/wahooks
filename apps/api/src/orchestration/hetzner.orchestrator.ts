@@ -6,6 +6,9 @@ import {
   ProvisionResult,
 } from './orchestrator.interface';
 
+// Use the global fetch Response type (avoids conflict with Express Response)
+type FetchResponse = Awaited<ReturnType<typeof globalThis.fetch>>;
+
 @Injectable()
 export class HetznerOrchestrator implements ContainerOrchestrator {
   private readonly logger = new Logger(HetznerOrchestrator.name);
@@ -34,7 +37,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
 
     const userData = this.buildCloudInit(workerName, apiKey);
 
-    const response = await fetch(`${this.apiBase}/servers`, {
+    const response: FetchResponse = await fetch(`${this.apiBase}/servers`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -84,7 +87,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
   }
 
   async destroyWorker(hetznerServerId: string): Promise<void> {
-    const response = await fetch(
+    const response: FetchResponse = await fetch(
       `${this.apiBase}/servers/${hetznerServerId}`,
       {
         method: 'DELETE',
@@ -111,7 +114,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
   async getWorkerStatus(
     hetznerServerId: string,
   ): Promise<'running' | 'stopped' | 'unknown'> {
-    const response = await fetch(
+    const response: FetchResponse = await fetch(
       `${this.apiBase}/servers/${hetznerServerId}`,
       {
         method: 'GET',

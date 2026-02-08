@@ -6,6 +6,8 @@ import { eq } from 'drizzle-orm';
 import { webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 
+type FetchResponse = Awaited<ReturnType<typeof globalThis.fetch>>;
+
 interface WebhookJob {
   webhookConfigId: string;
   url: string;
@@ -40,7 +42,7 @@ export class WebhookDeliveryProcessor extends WorkerHost {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15_000);
 
-      const response = await fetch(url, {
+      const response: FetchResponse = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
