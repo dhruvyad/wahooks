@@ -1,12 +1,7 @@
 name: Deploy API
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/api/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
+  workflow_dispatch: # Manual trigger only until secrets are configured
 
 concurrency:
   group: deploy-api
