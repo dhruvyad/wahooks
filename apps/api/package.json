@@ -14,6 +14,7 @@
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/schedule": "^6.1.1",
     "@wahooks/db": "workspace:*",
     "@wahooks/shared-types": "workspace:*",
     "drizzle-orm": "^0.38.4",

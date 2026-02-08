@@ -1,17 +1,31 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 
 export default function NewConnectionPage() {
+  const router = useRouter();
   const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // TODO: Call API to create connection
-    // const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-    // await fetch(`${API_URL}/connections`, { method: "POST", body: ... });
-    alert(`Connection creation is not yet implemented. Name: ${name || "(unnamed)"}`);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const connection = await apiFetch("/api/connections", {
+        method: "POST",
+        body: JSON.stringify({ name: name || undefined }),
+      });
+      router.push(`/connections/${connection.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create connection");
+      setLoading(false);
+    }
   }
 
   return (
@@ -28,6 +42,12 @@ export default function NewConnectionPage() {
         Create a new WhatsApp connection.
       </p>
 
+      {error && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="mt-8 max-w-md space-y-6">
         <div>
           <label
@@ -42,15 +62,17 @@ export default function NewConnectionPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. My Business WhatsApp"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+            disabled={loading}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
           />
         </div>
 
         <button
           type="submit"
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          disabled={loading}
+          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
         >
-          Create Connection
+          {loading ? "Creating..." : "Create Connection"}
         </button>
       </form>
     </div>
