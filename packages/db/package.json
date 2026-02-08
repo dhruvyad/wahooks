@@ -1,0 +1,27 @@
+{
+  "name": "@wahooks/db",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "lint": "eslint src/",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.38.4",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@wahooks/config": "workspace:*",
+    "@eslint/js": "^9.18.0",
+    "drizzle-kit": "^0.30.4",
+    "eslint": "^9.18.0",
+    "typescript-eslint": "^8.21.0"
+  }
+}

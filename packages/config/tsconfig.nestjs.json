@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/07/schema",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "./dist",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true
+  }
+}

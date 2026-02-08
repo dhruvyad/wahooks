@@ -1,0 +1,29 @@
+{
+  "name": "@wahooks/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@wahooks/db": "workspace:*",
+    "@wahooks/shared-types": "workspace:*",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@wahooks/config": "workspace:*",
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.12.0",
+    "eslint": "^9.18.0",
+    "typescript-eslint": "^8.21.0"
+  }
+}
