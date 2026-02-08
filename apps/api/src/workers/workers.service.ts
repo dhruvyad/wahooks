@@ -242,14 +242,14 @@ export class WorkersService {
       return;
     }
 
-    // Scale up: if any worker exceeds 80% utilization
-    const needsScaleUp = activeWorkers.some(
-      (w: any) => w.currentSessions / w.maxSessions > 0.8,
+    // Scale up: only if NO worker has available capacity
+    const hasAvailableCapacity = activeWorkers.some(
+      (w: any) => w.currentSessions < w.maxSessions,
     );
 
-    if (needsScaleUp) {
+    if (!hasAvailableCapacity) {
       this.logger.log(
-        'Worker utilization > 80% detected, provisioning new worker for headroom',
+        'All workers at capacity, provisioning new worker for headroom',
       );
       await this.findOrProvisionWorker();
       return;
