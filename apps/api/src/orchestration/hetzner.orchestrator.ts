@@ -21,7 +21,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
     this.networkId =
       this.configService.getOrThrow<string>('HETZNER_NETWORK_ID');
     this.serverType =
-      this.configService.get<string>('HETZNER_SERVER_TYPE') ?? 'cpx21';
+      this.configService.get<string>('HETZNER_SERVER_TYPE') ?? 'cx23';
     this.location =
       this.configService.get<string>('HETZNER_LOCATION') ?? 'nbg1';
     this.databaseUrl =
@@ -142,13 +142,11 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
 
   private buildCloudInit(workerName: string, apiKey: string): string {
     return `#cloud-config
-packages:
-  - docker.io
 runcmd:
   - systemctl enable docker
   - systemctl start docker
-  - docker pull devlikeapro/waha-plus:latest
-  - docker run -d --name waha --restart=always -p 3000:3000 -e WHATSAPP_DEFAULT_ENGINE=NOWEB -e WAHA_WORKER_ID=${workerName} -e WHATSAPP_API_KEY=${apiKey} -e WHATSAPP_SESSIONS_POSTGRESQL_URL=${this.databaseUrl} devlikeapro/waha-plus:latest
+  - docker pull devlikeapro/waha:latest
+  - docker run -d --name waha --restart=always -p 3000:3000 -e WHATSAPP_DEFAULT_ENGINE=NOWEB -e WAHA_WORKER_ID=${workerName} -e WHATSAPP_API_KEY=${apiKey} devlikeapro/waha:latest
 `;
   }
 }

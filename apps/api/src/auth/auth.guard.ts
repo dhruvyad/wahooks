@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -8,13 +9,19 @@ import {
 import { ConfigService } from '@nestjs/config';
 import jwt from 'jsonwebtoken';
 import jwksRsa from 'jwks-rsa';
+import { users } from '@wahooks/db';
+import { sql } from 'drizzle-orm';
+import { DRIZZLE_TOKEN } from '../database/database.module';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   private readonly jwksClient: jwksRsa.JwksClient;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @Inject(DRIZZLE_TOKEN) private readonly db: any,
+  ) {
     const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
     const jwksUri = `${supabaseUrl}/auth/v1/.well-known/jwks.json`;
 
@@ -39,6 +46,25 @@ export class AuthGuard implements CanActivate {
 
     const token = authHeader.slice(7);
     const payload = await this.verifyJwt(token);
+
+    // Upsert user into the users table so FK constraints are satisfied
+    const userId = payload.sub as string;
+    const email = payload.email as string;
+    if (userId && email) {
+      try {
+        await this.db
+          .insert(users)
+          .values({ id: userId, email })
+          .onConflictDoUpdate({
+            target: users.id,
+            set: { email, updatedAt: sql`now()` },
+          });
+      } catch (error) {
+        this.logger.error(
+          `Failed to upsert user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
 
     request.user = payload;
     return true;

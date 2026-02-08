@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { eq, lt, and, sql } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -10,12 +11,18 @@ import {
 @Injectable()
 export class WorkersService {
   private readonly logger = new Logger(WorkersService.name);
+  private readonly maxSessionsPerWorker: number;
 
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @Inject(ORCHESTRATOR_TOKEN)
     private readonly orchestrator: ContainerOrchestrator,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.maxSessionsPerWorker = Number(
+      this.configService.get('WAHA_MAX_SESSIONS', '1'),
+    );
+  }
 
   /**
    * Find a worker with available capacity, or provision a new one.
@@ -61,6 +68,7 @@ export class WorkersService {
         internalIp: result.internalIp,
         apiKeyEnc: result.apiKey, // encryption handled later
         status: 'active',
+        maxSessions: this.maxSessionsPerWorker,
       })
       .returning();
 

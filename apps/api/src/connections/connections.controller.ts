@@ -9,10 +9,11 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 import { wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
@@ -44,7 +45,10 @@ export class ConnectionsController {
 
   @Post()
   async createConnection(@CurrentUser() user: { sub: string }) {
-    const sessionName = `u_${user.sub}_s_${randomUUID()}`;
+    // WAHA limits session names to 54 chars; use short hex IDs
+    const shortUserId = user.sub.replace(/-/g, '').slice(0, 12);
+    const shortSessionId = randomBytes(6).toString('hex');
+    const sessionName = `u_${shortUserId}_s_${shortSessionId}`;
 
     const [created] = await this.db
       .insert(wahaSessions)
@@ -64,16 +68,17 @@ export class ConnectionsController {
         'http://localhost:3001',
       );
       const webhookUrl = `${apiUrl}/api/events/waha`;
+      const wahaName = this.wahaService.resolveSessionName(sessionName);
       await this.wahaService.createSession(
         worker.internalIp,
         worker.apiKey,
-        sessionName,
+        wahaName,
         webhookUrl,
       );
       await this.wahaService.startSession(
         worker.internalIp,
         worker.apiKey,
-        sessionName,
+        wahaName,
       );
 
       const [updated] = await this.db
@@ -84,8 +89,8 @@ export class ConnectionsController {
 
       return updated;
     } catch (error) {
-      this.logger.error(
-        `Failed to provision WAHA session for connection ${created.id}: ${error instanceof Error ? error.message : String(error)}`,
+      this.logger.warn(
+        `WAHA session deferred for connection ${created.id} (worker may still be booting). Health check will auto-create. Error: ${error instanceof Error ? error.message : String(error)}`,
       );
       return created;
     }
@@ -112,16 +117,44 @@ export class ConnectionsController {
     const worker = await this.workersService.getWorkerForSession(id);
 
     if (!worker) {
-      throw new NotFoundException('No worker assigned to this connection');
+      throw new ServiceUnavailableException(
+        'Worker is being provisioned, please wait',
+      );
     }
 
-    const qr = await this.wahaService.getQrCode(
-      worker.internalIp,
-      worker.apiKeyEnc,
+    const wahaName = this.wahaService.resolveSessionName(
       connection.sessionName,
     );
 
-    return qr;
+    try {
+      const qr = await this.wahaService.getQrCode(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+      );
+      return qr;
+    } catch {
+      // QR fetch failed — check if the session has moved past SCAN_QR_CODE
+      try {
+        const session = await this.wahaService.getSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+        );
+        if (session.status === 'WORKING') {
+          await this.db
+            .update(wahaSessions)
+            .set({ status: 'working', updatedAt: new Date() })
+            .where(eq(wahaSessions.id, id));
+          return { connected: true };
+        }
+      } catch {
+        // Session check also failed — worker is genuinely unavailable
+      }
+      throw new ServiceUnavailableException(
+        'Worker is starting up, please wait',
+      );
+    }
   }
 
   @Post(':id/restart')
@@ -148,10 +181,13 @@ export class ConnectionsController {
       throw new NotFoundException('No worker assigned to this connection');
     }
 
+    const wahaName = this.wahaService.resolveSessionName(
+      connection.sessionName,
+    );
     await this.wahaService.restartSession(
       worker.internalIp,
       worker.apiKeyEnc,
-      connection.sessionName,
+      wahaName,
     );
 
     const [updated] = await this.db
@@ -206,10 +242,13 @@ export class ConnectionsController {
       const worker = await this.workersService.getWorkerForSession(id);
 
       if (worker) {
+        const wahaName = this.wahaService.resolveSessionName(
+          connection.sessionName,
+        );
         await this.wahaService.stopSession(
           worker.internalIp,
           worker.apiKeyEnc,
-          connection.sessionName,
+          wahaName,
         );
         await this.workersService.unassignSession(worker.id, id);
       }

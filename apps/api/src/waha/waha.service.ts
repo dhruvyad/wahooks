@@ -1,9 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { WahaSessionResponse, WahaQrCodeResponse } from './waha.types';
 
 @Injectable()
 export class WahaService {
   private readonly logger = new Logger(WahaService.name);
+  private readonly maxSessions: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.maxSessions = Number(
+      this.configService.get('WAHA_MAX_SESSIONS', '1'),
+    );
+  }
+
+  /**
+   * Resolve the WAHA session name. WAHA Core only supports 'default'.
+   * WAHA Plus supports custom session names.
+   */
+  resolveSessionName(dbSessionName: string): string {
+    return this.maxSessions === 1 ? 'default' : dbSessionName;
+  }
+
+  getMaxSessions(): number {
+    return this.maxSessions;
+  }
 
   private buildUrl(workerUrl: string, path: string): string {
     return `http://${workerUrl}:3000${path}`;
@@ -89,9 +109,7 @@ export class WahaService {
           ? [
               {
                 url: webhookUrl,
-                events: [
-                  { name: '*' }, // Subscribe to all events
-                ],
+                events: ['*'],
               },
             ]
           : [],
@@ -176,7 +194,34 @@ export class WahaService {
       `Getting QR code for session "${sessionName}" on worker ${workerUrl}`,
     );
 
-    return this.request<WahaQrCodeResponse>('GET', url, headers);
+    // QR endpoint returns raw PNG by default, not JSON
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        const message = `WAHA API error: GET ${url} returned ${response.status} - ${body}`;
+        this.logger.error(message);
+        throw new Error(message);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const base64 = buffer.toString('base64');
+
+      return {
+        value: base64,
+        mimetype: response.headers.get('content-type') || 'image/png',
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async restartSession(
