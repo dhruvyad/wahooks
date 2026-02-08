@@ -10,6 +10,7 @@ import { ConnectionsModule } from "./connections/connections.module";
 import { HealthModule } from "./health/health.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 import { EventsModule } from "./events/events.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EventsModule } from "./events/events.module";
     HealthModule,
     WebhooksModule,
     EventsModule,
+    BillingModule,
   ],
   controllers: [AppController],
 })

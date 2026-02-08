@@ -32,6 +32,12 @@ export default async function DashboardLayout({
           >
             Connections
           </Link>
+          <Link
+            href="/billing"
+            className="block rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          >
+            Billing
+          </Link>
         </nav>
         <div className="mt-auto pt-8">
           <p className="mb-2 truncate text-sm text-gray-500">{user.email}</p>
