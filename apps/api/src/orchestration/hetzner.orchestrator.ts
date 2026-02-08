@@ -6,15 +6,6 @@ import {
   ProvisionResult,
 } from './orchestrator.interface';
 
-// Explicit fetch response interface (avoids conflict with Express Response)
-interface FetchResponse {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  text(): Promise<string>;
-  json(): Promise<unknown>;
-}
-
 @Injectable()
 export class HetznerOrchestrator implements ContainerOrchestrator {
   private readonly logger = new Logger(HetznerOrchestrator.name);
@@ -43,7 +34,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
 
     const userData = this.buildCloudInit(workerName, apiKey);
 
-    const response: FetchResponse = await fetch(`${this.apiBase}/servers`, {
+    const response = await fetch(`${this.apiBase}/servers`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -93,7 +84,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
   }
 
   async destroyWorker(hetznerServerId: string): Promise<void> {
-    const response: FetchResponse = await fetch(
+    const response = await fetch(
       `${this.apiBase}/servers/${hetznerServerId}`,
       {
         method: 'DELETE',
@@ -120,7 +111,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
   async getWorkerStatus(
     hetznerServerId: string,
   ): Promise<'running' | 'stopped' | 'unknown'> {
-    const response: FetchResponse = await fetch(
+    const response = await fetch(
       `${this.apiBase}/servers/${hetznerServerId}`,
       {
         method: 'GET',

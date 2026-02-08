@@ -1,12 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WahaSessionResponse, WahaQrCodeResponse } from './waha.types';
 
-interface FetchResponse {
-  ok: boolean;
-  status: number;
-  text(): Promise<string>;
-}
-
 @Injectable()
 export class WahaService {
   private readonly logger = new Logger(WahaService.name);
@@ -42,7 +36,7 @@ export class WahaService {
         options.body = JSON.stringify(body);
       }
 
-      const response: FetchResponse = await fetch(url, options);
+      const response = await fetch(url, options);
 
       if (!response.ok) {
         const responseBody = await response.text();
