@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { HealthService } from './health.service';
 import { WahaService } from '../waha/waha.service';
 import { WorkersService } from '../workers/workers.service';
@@ -7,7 +8,7 @@ import { DRIZZLE_TOKEN } from '../database/database.module';
 describe('HealthService', () => {
   let service: HealthService;
   let db: any;
-  let wahaService: jest.Mocked<Partial<WahaService>>;
+  let wahaService: jest.Mocked<Partial<WahaService>> & { resolveSessionName: jest.Mock };
   let workersService: jest.Mocked<Partial<WorkersService>>;
 
   function chainable(resolvedValue: any = []) {
@@ -29,6 +30,9 @@ describe('HealthService', () => {
     wahaService = {
       listSessions: jest.fn(),
       restartSession: jest.fn(),
+      createSession: jest.fn(),
+      startSession: jest.fn(),
+      resolveSessionName: jest.fn().mockImplementation((name: string) => name),
     };
 
     workersService = {
@@ -41,6 +45,7 @@ describe('HealthService', () => {
         { provide: DRIZZLE_TOKEN, useValue: db },
         { provide: WahaService, useValue: wahaService },
         { provide: WorkersService, useValue: workersService },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('http://localhost:3001') } },
       ],
     }).compile();
 

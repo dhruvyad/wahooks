@@ -58,7 +58,9 @@ export default function ConnectionDetailPage() {
       setError(null);
       return data as Connection;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load connection");
+      setError(
+        err instanceof Error ? err.message : "Failed to load connection"
+      );
       return null;
     }
   }, [id]);
@@ -135,9 +137,7 @@ export default function ConnectionDetailPage() {
 
   async function handleRestart() {
     setRestarting(true);
-    setConnection((prev) =>
-      prev ? { ...prev, status: "scan_qr" } : prev
-    );
+    setConnection((prev) => (prev ? { ...prev, status: "scan_qr" } : prev));
     setChats([]);
     setProfile(null);
     try {
@@ -159,20 +159,31 @@ export default function ConnectionDetailPage() {
     if (!confirmed) return;
 
     router.push("/connections");
-    apiFetch(`/api/connections/${id}`, { method: "DELETE" }).catch(() => {
-      // Fire-and-forget: user already navigated away
-    });
+    apiFetch(`/api/connections/${id}`, { method: "DELETE" }).catch(() => {});
   }
+
+  const backLink = (
+    <Link
+      href="/connections"
+      className="inline-flex items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
+    >
+      <svg
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+      Back to Connections
+    </Link>
+  );
 
   if (loading) {
     return (
       <div>
-        <Link
-          href="/connections"
-          className="text-sm text-text-secondary hover:text-wa-green"
-        >
-          &larr; Back to Connections
-        </Link>
+        {backLink}
         <div className="mt-12 text-center">
           <p className="text-text-secondary">Loading connection...</p>
         </div>
@@ -183,13 +194,8 @@ export default function ConnectionDetailPage() {
   if (error && !connection) {
     return (
       <div>
-        <Link
-          href="/connections"
-          className="text-sm text-text-secondary hover:text-wa-green"
-        >
-          &larr; Back to Connections
-        </Link>
-        <div className="mt-6 rounded-md border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
+        {backLink}
+        <div className="mt-6 rounded-lg border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
           {error}
         </div>
       </div>
@@ -198,55 +204,46 @@ export default function ConnectionDetailPage() {
 
   return (
     <div>
-      <Link
-        href="/connections"
-        className="text-sm text-text-secondary hover:text-wa-green"
-      >
-        &larr; Back to Connections
-      </Link>
+      {backLink}
 
-      <div className="mt-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">
-          {connection?.name || "Unnamed Connection"}
-        </h1>
+      <div className="mt-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">
+            {connection?.name || "Unnamed Connection"}
+          </h1>
+          <div className="mt-2 flex items-center gap-3">
+            <StatusBadge status={connection?.status ?? "pending"} />
+            <span className="text-xs text-text-tertiary font-mono">{id}</span>
+          </div>
+        </div>
         <button
           onClick={handleDelete}
-          className="rounded-md border border-status-error-border px-4 py-2 text-sm font-medium text-status-error-text hover:bg-status-error-bg transition-colors"
+          className="shrink-0 rounded-lg border border-status-error-border px-3 py-1.5 text-xs font-medium text-status-error-text transition-colors hover:bg-status-error-bg"
         >
           Delete
         </button>
       </div>
 
       {error && (
-        <div className="mt-4 rounded-md border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
+        <div className="mt-4 rounded-lg border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
           {error}
         </div>
       )}
 
-      <div className="mt-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-secondary">Status:</span>
-          <StatusBadge status={connection?.status ?? "pending"} />
-        </div>
-
-        <div>
-          <span className="text-sm font-medium text-text-secondary">ID:</span>
-          <span className="ml-2 text-sm text-text-tertiary">{id}</span>
-        </div>
-      </div>
-
       {/* QR Code section */}
       {(connection?.status === "scan_qr" ||
         connection?.status === "pending") && (
-        <div className="mt-8 rounded-md border border-border-secondary p-6">
-          <h2 className="text-lg font-semibold text-text-primary">Scan QR Code</h2>
+        <div className="mt-8 rounded-xl border border-border-secondary bg-bg-secondary p-6">
+          <h2 className="text-base font-semibold text-text-primary">
+            Scan QR Code
+          </h2>
           <p className="mt-1 text-sm text-text-secondary">
             Open WhatsApp on your phone and scan this QR code to connect.
           </p>
 
-          <div className="mt-4">
+          <div className="mt-6">
             {qrError && (
-              <div className="rounded-md border border-status-warning-border bg-status-warning-bg p-4 text-sm text-status-warning-text">
+              <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-4 text-sm text-status-warning-text">
                 {connection.status === "pending"
                   ? "Waiting for QR code to be generated..."
                   : `Failed to load QR code: ${qrError}`}
@@ -258,14 +255,16 @@ export default function ConnectionDetailPage() {
                 <img
                   src={`data:${qr.mimetype};base64,${qr.value}`}
                   alt="WhatsApp QR Code"
-                  className="h-64 w-64 rounded-md"
+                  className="h-64 w-64 rounded-lg"
                 />
               </div>
             )}
 
             {!qr && !qrError && (
-              <div className="flex h-64 w-64 items-center justify-center mx-auto rounded-md border border-border-primary bg-bg-secondary">
-                <p className="text-sm text-text-tertiary">Loading QR code...</p>
+              <div className="mx-auto flex h-64 w-64 items-center justify-center rounded-lg border border-border-primary bg-bg-elevated">
+                <p className="text-sm text-text-tertiary">
+                  Loading QR code...
+                </p>
               </div>
             )}
           </div>
@@ -275,45 +274,56 @@ export default function ConnectionDetailPage() {
       {/* Connected section */}
       {connection?.status === "working" && (
         <div className="mt-8 space-y-4">
-          <div className="rounded-md border border-status-success-border bg-status-success-bg p-6">
-            <h2 className="text-lg font-semibold text-status-success-text">Connected</h2>
-            {profile && (
-              <p className="mt-1 text-sm text-status-success-text">
-                Phone: {profile.id.replace("@c.us", "")}
-                {profile.pushName && ` (${profile.pushName})`}
-              </p>
-            )}
-            {!profile && connection.me?.id && (
-              <p className="mt-1 text-sm text-status-success-text">
-                Phone: {connection.me.id.replace("@c.us", "")}
-                {connection.me.pushName && ` (${connection.me.pushName})`}
-              </p>
-            )}
-            <button
-              onClick={handleRestart}
-              disabled={restarting}
-              className="mt-4 rounded-md border border-status-success-border bg-bg-primary px-4 py-2 text-sm font-medium text-status-success-text hover:bg-bg-hover disabled:opacity-50 transition-colors"
-            >
-              {restarting ? "Restarting..." : "Restart"}
-            </button>
+          <div className="rounded-xl border border-status-success-border bg-status-success-bg p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-status-success-text">
+                  Connected
+                </h2>
+                {profile && (
+                  <p className="mt-1 text-sm text-status-success-text opacity-80">
+                    {profile.id.replace("@c.us", "")}
+                    {profile.pushName && ` · ${profile.pushName}`}
+                  </p>
+                )}
+                {!profile && connection.me?.id && (
+                  <p className="mt-1 text-sm text-status-success-text opacity-80">
+                    {connection.me.id.replace("@c.us", "")}
+                    {connection.me.pushName && ` · ${connection.me.pushName}`}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleRestart}
+                disabled={restarting}
+                className="shrink-0 rounded-lg border border-status-success-border bg-bg-primary px-3 py-1.5 text-xs font-medium text-status-success-text transition-colors hover:bg-bg-hover disabled:opacity-50"
+              >
+                {restarting ? "Restarting..." : "Restart"}
+              </button>
+            </div>
           </div>
 
           {/* Recent chats */}
           {chats.length > 0 && (
-            <div className="rounded-md border border-border-secondary p-6">
-              <h2 className="text-lg font-semibold text-text-primary">Recent Chats</h2>
+            <div className="rounded-xl border border-border-secondary bg-bg-secondary p-6">
+              <h2 className="text-base font-semibold text-text-primary">
+                Recent Chats
+              </h2>
               <p className="mt-1 text-sm text-text-secondary">
-                Your WhatsApp connection is active. Here are your recent conversations.
+                Your recent WhatsApp conversations.
               </p>
-              <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+              <div className="mt-4 max-h-80 space-y-1.5 overflow-y-auto">
                 {chats.map((chat) => (
                   <div
                     key={chat.id}
-                    className="flex items-center justify-between rounded-md border border-border-primary bg-bg-secondary p-3"
+                    className="flex items-center justify-between rounded-lg border border-border-primary bg-bg-elevated px-3 py-2.5"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-text-primary">
-                        {chat.name || chat.id.replace("@c.us", "").replace("@g.us", "")}
+                        {chat.name ||
+                          chat.id
+                            .replace("@c.us", "")
+                            .replace("@g.us", "")}
                       </p>
                       {chat.lastMessage && (
                         <p className="mt-0.5 truncate text-xs text-text-tertiary">
@@ -324,7 +334,9 @@ export default function ConnectionDetailPage() {
                     </div>
                     {chat.lastMessage && (
                       <span className="ml-3 shrink-0 text-xs text-text-tertiary">
-                        {new Date(chat.lastMessage.timestamp * 1000).toLocaleTimeString([], {
+                        {new Date(
+                          chat.lastMessage.timestamp * 1000
+                        ).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -340,20 +352,24 @@ export default function ConnectionDetailPage() {
 
       {/* Failed section */}
       {connection?.status === "failed" && (
-        <div className="mt-8 rounded-md border border-status-error-border bg-status-error-bg p-6">
-          <h2 className="text-lg font-semibold text-status-error-text">
-            Connection Failed
-          </h2>
-          <p className="mt-1 text-sm text-status-error-text">
-            Something went wrong with this connection. Try restarting it.
-          </p>
-          <button
-            onClick={handleRestart}
-            disabled={restarting}
-            className="mt-4 rounded-md border border-status-error-border bg-bg-primary px-4 py-2 text-sm font-medium text-status-error-text hover:bg-bg-hover disabled:opacity-50 transition-colors"
-          >
-            {restarting ? "Restarting..." : "Restart"}
-          </button>
+        <div className="mt-8 rounded-xl border border-status-error-border bg-status-error-bg p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-status-error-text">
+                Connection Failed
+              </h2>
+              <p className="mt-1 text-sm text-status-error-text opacity-80">
+                Something went wrong. Try restarting the connection.
+              </p>
+            </div>
+            <button
+              onClick={handleRestart}
+              disabled={restarting}
+              className="shrink-0 rounded-lg border border-status-error-border bg-bg-primary px-3 py-1.5 text-xs font-medium text-status-error-text transition-colors hover:bg-bg-hover disabled:opacity-50"
+            >
+              {restarting ? "Restarting..." : "Restart"}
+            </button>
+          </div>
         </div>
       )}
 

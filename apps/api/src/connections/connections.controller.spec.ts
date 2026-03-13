@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConnectionsController } from './connections.controller';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -28,7 +28,7 @@ describe('ConnectionsController', () => {
   let controller: ConnectionsController;
   let db: ReturnType<typeof createMockDb>;
   let workersService: { findOrProvisionWorker: jest.Mock; assignSession: jest.Mock; getWorkerForSession: jest.Mock; unassignSession: jest.Mock };
-  let wahaService: { createSession: jest.Mock; startSession: jest.Mock; stopSession: jest.Mock; getQrCode: jest.Mock; restartSession: jest.Mock };
+  let wahaService: { createSession: jest.Mock; startSession: jest.Mock; stopSession: jest.Mock; getQrCode: jest.Mock; restartSession: jest.Mock; resolveSessionName: jest.Mock };
   let configService: { get: jest.Mock };
 
   beforeEach(async () => {
@@ -47,6 +47,7 @@ describe('ConnectionsController', () => {
       stopSession: jest.fn(),
       getQrCode: jest.fn(),
       restartSession: jest.fn(),
+      resolveSessionName: jest.fn().mockImplementation((name: string) => name),
     };
 
     configService = {
@@ -196,12 +197,12 @@ describe('ConnectionsController', () => {
       await expect(controller.getQrCode('sess-1', user)).rejects.toThrow(ForbiddenException);
     });
 
-    it('should throw NotFoundException when no worker is assigned', async () => {
+    it('should throw ServiceUnavailableException when no worker is assigned', async () => {
       const connection = { id: 'sess-1', userId: 'user-123', sessionName: 'u_user-123_s_abc', status: 'scan_qr' };
       db.where.mockResolvedValue([connection]);
       workersService.getWorkerForSession.mockResolvedValue(null);
 
-      await expect(controller.getQrCode('sess-1', user)).rejects.toThrow(NotFoundException);
+      await expect(controller.getQrCode('sess-1', user)).rejects.toThrow(ServiceUnavailableException);
     });
   });
 

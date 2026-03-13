@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { WahaService } from './waha.service';
 
 describe('WahaService', () => {
@@ -19,7 +20,10 @@ describe('WahaService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [WahaService],
+      providers: [
+        WahaService,
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('50') } },
+      ],
     }).compile();
 
     service = module.get<WahaService>(WahaService);
@@ -53,7 +57,7 @@ describe('WahaService', () => {
       const parsedBody = JSON.parse(options.body);
       expect(parsedBody.name).toBe('test-session');
       expect(parsedBody.config.webhooks).toEqual([
-        { url: 'https://hooks.example.com/wh', events: [{ name: '*' }] },
+        { url: 'https://hooks.example.com/wh', events: ['*'] },
       ]);
 
       expect(result).toEqual(responseData);
@@ -112,15 +116,21 @@ describe('WahaService', () => {
   });
 
   describe('getQrCode', () => {
-    it('should use correct URL path', async () => {
-      const qrResponse = { value: 'qr-data', mimetype: 'image/png' };
-      fetchSpy.mockResolvedValueOnce(mockFetchResponse(qrResponse));
+    it('should use correct URL path and return base64-encoded image', async () => {
+      const rawBytes = Buffer.from('fake-qr-image-data');
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: jest.fn().mockResolvedValue(rawBytes.buffer.slice(rawBytes.byteOffset, rawBytes.byteOffset + rawBytes.byteLength)),
+        headers: { get: jest.fn().mockReturnValue('image/png') },
+      } as unknown as Response);
 
       const result = await service.getQrCode(workerUrl, apiKey, 'my-session');
 
       const [url] = fetchSpy.mock.calls[0];
       expect(url).toBe('http://10.0.0.1:3000/api/my-session/auth/qr');
-      expect(result).toEqual(qrResponse);
+      expect(result.mimetype).toBe('image/png');
+      expect(result.value).toBe(rawBytes.toString('base64'));
     });
   });
 
