@@ -167,13 +167,20 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
   }
 
   return (
-    <div className="mt-8">
+    <div className="mt-8 border-t border-border-primary pt-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-text-primary">Webhooks</h2>
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">
+            Webhooks
+          </h2>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            Receive WhatsApp events at your endpoints.
+          </p>
+        </div>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark transition-colors"
+            className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark"
           >
             Add Webhook
           </button>
@@ -181,24 +188,24 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
       </div>
 
       {error && (
-        <div className="mt-3 rounded-md border border-status-error-border bg-status-error-bg p-3 text-sm text-status-error-text">
+        <div className="mt-3 rounded-lg border border-status-error-border bg-status-error-bg p-3 text-sm text-status-error-text">
           {error}
         </div>
       )}
 
       {/* Add Webhook Form */}
       {showForm && (
-        <div className="mt-4 rounded-md border border-border-secondary bg-bg-secondary p-4">
+        <div className="mt-4 rounded-xl border border-border-secondary bg-bg-secondary p-5">
           <h3 className="text-sm font-semibold text-text-primary">
             New Webhook
           </h3>
 
-          <div className="mt-3">
+          <div className="mt-4">
             <label
               htmlFor="webhook-url"
-              className="block text-sm font-medium text-text-secondary"
+              className="mb-1.5 block text-sm font-medium text-text-secondary"
             >
-              URL
+              Endpoint URL
             </label>
             <input
               id="webhook-url"
@@ -206,15 +213,15 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
               value={formUrl}
               onChange={(e) => setFormUrl(e.target.value)}
               placeholder="https://example.com/webhook"
-              className="mt-1 block w-full rounded-md border border-border-secondary bg-bg-elevated px-3 py-2 text-sm text-text-primary shadow-sm placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
+              className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2.5 text-sm text-text-primary transition-colors placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
             />
           </div>
 
-          <div className="mt-3">
-            <span className="block text-sm font-medium text-text-secondary">
+          <div className="mt-4">
+            <span className="mb-2 block text-sm font-medium text-text-secondary">
               Events
             </span>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {EVENT_TYPES.map((event) => (
                 <label
                   key={event}
@@ -240,13 +247,13 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
             <p className="mt-3 text-sm text-status-error-text">{formError}</p>
           )}
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-5 flex gap-2">
             <button
               onClick={handleCreate}
               disabled={formSubmitting}
-              className="rounded-md bg-wa-green px-4 py-2 text-sm font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
+              className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
             >
-              {formSubmitting ? "Saving..." : "Save"}
+              {formSubmitting ? "Saving..." : "Save Webhook"}
             </button>
             <button
               onClick={() => {
@@ -255,7 +262,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                 setFormEvents([]);
                 setFormError(null);
               }}
-              className="rounded-md border border-border-secondary px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
+              className="rounded-lg border border-border-secondary px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover"
             >
               Cancel
             </button>
@@ -271,7 +278,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
       {/* Empty state */}
       {!loading && !error && webhooks.length === 0 && !showForm && (
         <p className="mt-4 text-sm text-text-secondary">
-          No webhooks configured. Add a webhook to start receiving events.
+          No webhooks configured. Add one to start receiving events.
         </p>
       )}
 
@@ -281,13 +288,13 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
           {webhooks.map((webhook) => (
             <div
               key={webhook.id}
-              className="rounded-md border border-border-primary bg-bg-secondary p-4"
+              className="rounded-xl border border-border-primary bg-bg-secondary p-4"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <button
                     onClick={() => toggleExpand(webhook.id)}
-                    className="text-left text-sm font-medium text-wa-green hover:underline break-all"
+                    className="break-all text-left text-sm font-medium text-wa-green hover:underline"
                   >
                     {webhook.url}
                   </button>
@@ -312,14 +319,14 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                     </code>
                     <button
                       onClick={() => toggleSecretReveal(webhook.id)}
-                      className="text-xs text-text-tertiary hover:text-wa-green underline"
+                      className="text-xs text-text-tertiary underline hover:text-wa-green"
                     >
                       {revealedSecrets.has(webhook.id) ? "Hide" : "Reveal"}
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     onClick={() => handleToggleActive(webhook)}
                     disabled={togglingIds.has(webhook.id)}
@@ -338,7 +345,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                   <button
                     onClick={() => handleDelete(webhook.id)}
                     disabled={deletingIds.has(webhook.id)}
-                    className="rounded-md border border-status-error-border px-3 py-1.5 text-xs font-medium text-status-error-text hover:bg-status-error-bg disabled:opacity-50 transition-colors"
+                    className="rounded-lg border border-status-error-border px-3 py-1.5 text-xs font-medium text-status-error-text transition-colors hover:bg-status-error-bg disabled:opacity-50"
                   >
                     {deletingIds.has(webhook.id) ? "..." : "Delete"}
                   </button>
@@ -355,7 +362,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                   onClick={() => toggleExpand(webhook.id)}
                   className="mt-2 text-xs text-text-tertiary hover:text-text-secondary"
                 >
-                  Click to view event log
+                  View event log
                 </button>
               )}
             </div>

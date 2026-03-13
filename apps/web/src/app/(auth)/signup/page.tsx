@@ -47,18 +47,23 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-text-primary">Create your account</h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            Start managing WhatsApp webhooks
-          </p>
-        </div>
+    <div className="w-full max-w-md">
+      <div className="mb-8 text-center">
+        <Link
+          href="/"
+          className="text-2xl font-bold tracking-tight text-wa-green"
+        >
+          WAHooks
+        </Link>
+        <p className="mt-2 text-sm text-text-tertiary">
+          Create your free account
+        </p>
+      </div>
 
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-8">
         <button
           onClick={handleGoogleSignup}
-          className="flex w-full items-center justify-center gap-3 rounded-md border border-border-secondary bg-bg-elevated px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-bg-hover transition-colors"
+          className="flex w-full items-center justify-center gap-3 rounded-lg border border-border-secondary bg-bg-elevated px-4 py-3 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -81,18 +86,20 @@ export default function SignupPage() {
           Continue with Google
         </button>
 
-        <div className="relative">
+        <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-border-primary" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-bg-primary px-2 text-text-tertiary">or</span>
+            <span className="bg-bg-secondary px-2 text-text-tertiary">
+              or continue with email
+            </span>
           </div>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-4">
           {error && (
-            <div className="rounded-md border border-status-error-border bg-status-error-bg p-3 text-sm text-status-error-text">
+            <div className="rounded-lg border border-status-error-border bg-status-error-bg p-3 text-sm text-status-error-text">
               {error}
             </div>
           )}
@@ -100,9 +107,9 @@ export default function SignupPage() {
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-text-secondary"
+              className="mb-1.5 block text-sm font-medium text-text-secondary"
             >
-              Email
+              Email address
             </label>
             <input
               id="email"
@@ -110,14 +117,15 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="mt-1 block w-full rounded-md border border-border-secondary bg-bg-elevated px-3 py-2 text-text-primary shadow-sm placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
+              autoComplete="email"
+              className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2.5 text-text-primary transition-colors placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-text-secondary"
+              className="mb-1.5 block text-sm font-medium text-text-secondary"
             >
               Password
             </label>
@@ -128,26 +136,33 @@ export default function SignupPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="mt-1 block w-full rounded-md border border-border-secondary bg-bg-elevated px-3 py-2 text-text-primary shadow-sm placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
+              autoComplete="new-password"
+              className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2.5 text-text-primary transition-colors placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
             />
+            <p className="mt-1.5 text-xs text-text-tertiary">
+              At least 6 characters
+            </p>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-wa-green px-4 py-2 font-medium text-text-inverse hover:bg-wa-green-dark disabled:opacity-50 transition-colors"
+            className="mt-2 w-full rounded-lg bg-wa-green px-4 py-2.5 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
           >
-            {loading ? "Creating account..." : "Sign up"}
+            {loading ? "Creating account..." : "Create account"}
           </button>
         </form>
-
-        <p className="text-center text-sm text-text-secondary">
-          Already have an account?{" "}
-          <Link href="/login" className="font-medium text-wa-green hover:underline">
-            Sign in
-          </Link>
-        </p>
       </div>
+
+      <p className="mt-6 text-center text-sm text-text-secondary">
+        Already have an account?{" "}
+        <Link
+          href="/login"
+          className="font-semibold text-wa-green hover:underline"
+        >
+          Sign in
+        </Link>
+      </p>
     </div>
   );
 }
