@@ -51,18 +51,21 @@ variable "supabase_url" {
 variable "stripe_secret_key" {
   type        = string
   sensitive   = true
-  description = "Stripe secret key"
+  default     = ""
+  description = "Stripe secret key (optional — billing disabled if empty)"
 }
 
 variable "stripe_price_id" {
   type        = string
-  description = "Stripe price ID for usage billing"
+  default     = ""
+  description = "Stripe price ID for usage billing (optional)"
 }
 
 variable "stripe_webhook_secret" {
   type        = string
   sensitive   = true
-  description = "Stripe webhook signing secret"
+  default     = ""
+  description = "Stripe webhook signing secret (optional)"
 }
 
 # ── URLs ──────────────────────────────────────────────
