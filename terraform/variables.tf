@@ -83,6 +83,6 @@ variable "frontend_url" {
 
 variable "api_image" {
   type        = string
-  default     = "ghcr.io/noclick/wahooks-api:latest"
+  default     = "ghcr.io/dhruvyad/wahooks/api:latest"
   description = "API container image (updated by CI/CD)"
 }

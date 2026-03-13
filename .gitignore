@@ -12,3 +12,4 @@ coverage/
 .vercel
 supabase/
 TODO.md
+.env.secrets
