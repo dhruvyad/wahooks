@@ -1,0 +1,113 @@
+# Kubernetes Cluster Autoscaler — Hetzner Cloud provider
+# Scales k3s worker nodes in the "waha-workers" node pool based on pod demand.
+# When WAHA StatefulSet replicas exceed node capacity, CA provisions new CX23 nodes.
+# When nodes are underutilized for scale-down-unneeded-time, CA removes them.
+#
+# Prerequisites:
+#   kubectl create secret generic hetzner-secret \
+#     --from-literal=token=<HETZNER_API_TOKEN> \
+#     --namespace kube-system
+#
+# Ref: https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler/cloudprovider/hetzner
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["events", "endpoints"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces", "persistentvolumeclaims", "persistentvolumes", "replicationcontrollers", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "statefulsets", "daemonsets", "deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create", "get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: cluster-autoscaler
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: cluster-autoscaler
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:
+      serviceAccountName: cluster-autoscaler
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      containers:
+        - name: cluster-autoscaler
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.30.0
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider=hetzner
+            # min:max:type:location:pool-name — must match hetzner-k3s-config.yaml pool name
+            - --nodes=1:10:cx23:nbg1:waha-workers
+            - --scale-down-delay-after-add=10m      # wait after scale-up before considering scale-down
+            - --scale-down-unneeded-time=10m         # node must be unneeded for 10m before removal
+            - --scale-down-utilization-threshold=0.5 # remove nodes below 50% utilization
+            - --skip-nodes-with-local-storage=false
+            - --skip-nodes-with-system-pods=false
+            - --balance-similar-node-groups=true
+            - --v=2
+          env:
+            - name: HCLOUD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hetzner-secret
+                  key: token
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

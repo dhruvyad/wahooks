@@ -1,0 +1,75 @@
+# NestJS API Deployment — runs inside the k3s cluster so it can reach WAHA
+# pods via their headless Service DNS (waha-0.waha.default.svc.cluster.local).
+#
+# Pinned to control-plane nodes via nodeAffinity so Redis (on the host at
+# the control-plane node's internal IP) is always reachable.
+# REDIS_URL uses the Hetzner private IP of the control-plane node (10.0.0.2).
+#
+# Exposed externally via the api-service NodePort; Caddy on the host proxies
+# api.wahooks.com → 127.0.0.1:<nodePort>.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wahooks-api
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wahooks-api
+  template:
+    metadata:
+      labels:
+        app: wahooks-api
+    spec:
+      serviceAccountName: wahooks-api    # grants K8sOrchestrator permissions
+      # Pin to control-plane so Redis on the host is accessible at localhost
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      containers:
+        - name: api
+          image: ghcr.io/noclick/wahooks-api:latest   # built by deploy-api.yml
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - secretRef:
+                name: wahooks-api-secret   # all env vars from /opt/wahooks/.env
+          env:
+            # Override Redis to use host network (control-plane node's private IP)
+            - name: REDIS_URL
+              value: "redis://10.0.0.2:6379"
+            - name: ORCHESTRATOR
+              value: "k8s"
+            - name: K8S_NAMESPACE
+              value: "default"
+            - name: WAHA_STATEFULSET_NAME
+              value: "waha"
+            - name: WAHA_HEADLESS_SERVICE
+              value: "waha"
+          readinessProbe:
+            httpGet:
+              path: /api
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi

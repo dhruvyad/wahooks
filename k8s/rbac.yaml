@@ -1,0 +1,41 @@
+# RBAC for the NestJS API (K8sOrchestrator) to manage the WAHA StatefulSet.
+# When NestJS runs as a pod inside the cluster, it uses this ServiceAccount.
+# When running outside (on the host), create a long-lived token from this SA
+# and add it to KUBECONFIG on the API server.
+#
+# To create a static token for out-of-cluster use:
+#   kubectl create token wahooks-api --duration=8760h
+# Then add to /opt/wahooks/kubeconfig as a user token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wahooks-api
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wahooks-api-role
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    resourceNames: ["waha"]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wahooks-api-rolebinding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: wahooks-api
+    namespace: default
+roleRef:
+  kind: Role
+  name: wahooks-api-role
+  apiGroup: rbac.authorization.k8s.io

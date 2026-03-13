@@ -1,0 +1,53 @@
+# hetzner-k3s cluster bootstrap config
+# Usage: hetzner-k3s create --config k8s/hetzner-k3s-config.yaml
+# Docs: https://github.com/vitobotta/hetzner-k3s
+#
+# This provisions a 2-node HA k3s cluster using Supabase Postgres as the
+# external datastore (no 3rd control-plane node needed for etcd quorum).
+# Node 1 = existing CX23 API server (reused); Node 2 = new CX22 (~€3.79/mo).
+
+cluster_name: wahooks
+kubeconfig_path: ~/.kube/wahooks.yaml
+k3s_version: v1.30.4+k3s1
+hetzner_token: "<HETZNER_API_TOKEN>"    # set HCLOUD_TOKEN env instead to avoid committing
+public_ssh_key_path: "~/.ssh/wahooks_deploy.pub"
+private_ssh_key_path: "~/.ssh/wahooks_deploy"
+
+networking:
+  ssh:
+    port: 22
+    use_agent: false
+  public_network:
+    ipv4: true
+    ipv6: false
+  private_network:
+    enabled: true
+    subnet: "10.0.0.0/16"
+    existing_network_name: "wahooks-network"   # your existing Hetzner private network
+
+# Use Supabase Postgres as k3s datastore — eliminates the need for a 3rd
+# control-plane node (embedded etcd needs 3 for quorum; external DB only needs 2).
+datastore:
+  mode: external
+  endpoint: "<SUPABASE_DATABASE_URL>"   # postgres://... from Supabase dashboard
+
+masters:
+  instance_type: cx23
+  instance_count: 2          # 2-node HA; Supabase Postgres holds cluster state
+  location: nbg1
+  image: ubuntu-24.04
+
+worker_node_pools:
+  - name: waha-workers
+    instance_type: cx23
+    instance_count: 1        # initial count; Cluster Autoscaler scales to max
+    location: nbg1
+    image: ubuntu-24.04
+    autoscaling:
+      enabled: true
+      min_instances: 1
+      max_instances: 10
+
+# Additional k3s server flags (applied to all control-plane nodes)
+k3s_server_args:
+  - "--disable=traefik"      # we use Caddy on the host, not Traefik

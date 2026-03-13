@@ -1,0 +1,18 @@
+# Headless Service — gives each StatefulSet pod a stable DNS name:
+#   waha-0.waha.default.svc.cluster.local
+#   waha-1.waha.default.svc.cluster.local  ...
+# This is what gets stored in waha_workers.internal_ip and used by
+# WahaService to route requests to the correct WAHA instance.
+apiVersion: v1
+kind: Service
+metadata:
+  name: waha
+  namespace: default
+spec:
+  clusterIP: None    # headless: enables per-pod DNS via StatefulSet serviceName
+  selector:
+    app: waha
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
