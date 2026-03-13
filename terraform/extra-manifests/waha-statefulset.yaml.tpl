@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: waha
-          image: devlikeapro/waha-plus:latest
+          image: devlikeapro/waha:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
@@ -24,7 +24,7 @@ spec:
             - name: WHATSAPP_DEFAULT_ENGINE
               value: NOWEB
             - name: WAHA_MAX_SESSIONS
-              value: "50"
+              value: "1"
             - name: WHATSAPP_API_KEY
               valueFrom:
                 secretKeyRef:

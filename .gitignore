@@ -11,3 +11,4 @@ coverage/
 *.log
 .vercel
 supabase/
+TODO.md
