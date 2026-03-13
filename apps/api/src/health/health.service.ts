@@ -185,7 +185,7 @@ export class HealthService {
           break;
         }
         this.logger.warn(
-          `Session "${sessionName}" is FAILED in WAHA, marking as failed and attempting one restart`,
+          `Session "${sessionName}" is FAILED in WAHA, marking as failed and attempting logout + restart`,
         );
         // Mark as failed first to prevent restart loops
         await this.db
@@ -193,13 +193,32 @@ export class HealthService {
           .set({ status: 'failed', updatedAt: new Date() })
           .where(eq(wahaSessions.id, dbSession.id));
         try {
-          await this.wahaService.restartSession(
+          // Must logout to clear corrupted auth state, then start fresh
+          try {
+            await this.wahaService.stopSession(
+              worker.internalIp,
+              worker.apiKeyEnc,
+              wahaName,
+            );
+          } catch {
+            // Ignore
+          }
+          try {
+            await this.wahaService.logoutSession(
+              worker.internalIp,
+              worker.apiKeyEnc,
+              wahaName,
+            );
+          } catch {
+            // Ignore
+          }
+          await this.wahaService.startSession(
             worker.internalIp,
             worker.apiKeyEnc,
             wahaName,
           );
           this.logger.log(
-            `Restart initiated for failed session "${sessionName}" on worker ${worker.id}`,
+            `Logout + start initiated for failed session "${sessionName}" on worker ${worker.id}`,
           );
         } catch (error) {
           this.logger.error(

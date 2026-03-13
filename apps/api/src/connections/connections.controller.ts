@@ -76,7 +76,8 @@ export class ConnectionsController {
       const webhookUrl = `${apiUrl}/api/events/waha`;
       const wahaName = this.wahaService.resolveSessionName(sessionName);
 
-      // For WAHA Core (single session), clean up any existing failed session
+      // For WAHA Core (single session), clean up any existing failed session.
+      // Must logout (not just stop) to clear corrupted auth state.
       try {
         const existing = await this.wahaService.getSession(
           worker.internalIp,
@@ -88,7 +89,7 @@ export class ConnectionsController {
           (existing.status === 'FAILED' || existing.status === 'STOPPED')
         ) {
           this.logger.log(
-            `Existing WAHA session "${wahaName}" is ${existing.status}, stopping before re-create`,
+            `Existing WAHA session "${wahaName}" is ${existing.status}, logging out before re-create`,
           );
           try {
             await this.wahaService.stopSession(
@@ -98,6 +99,15 @@ export class ConnectionsController {
             );
           } catch {
             // Ignore stop errors
+          }
+          try {
+            await this.wahaService.logoutSession(
+              worker.internalIp,
+              worker.apiKey,
+              wahaName,
+            );
+          } catch {
+            // Ignore logout errors
           }
         }
       } catch {
@@ -183,12 +193,30 @@ export class ConnectionsController {
             .where(eq(wahaSessions.id, id));
           return { connected: true };
         }
-        if (session.status === 'FAILED') {
-          // Auto-restart failed sessions so next poll gets a fresh QR
+        if (session.status === 'FAILED' || session.status === 'STOPPED') {
+          // Logout to clear corrupted auth, then start fresh
           this.logger.log(
-            `Session ${wahaName} is FAILED, auto-restarting...`,
+            `Session ${wahaName} is ${session.status}, logging out and restarting...`,
           );
-          await this.wahaService.restartSession(
+          try {
+            await this.wahaService.stopSession(
+              worker.internalIp,
+              worker.apiKeyEnc,
+              wahaName,
+            );
+          } catch {
+            // Ignore
+          }
+          try {
+            await this.wahaService.logoutSession(
+              worker.internalIp,
+              worker.apiKeyEnc,
+              wahaName,
+            );
+          } catch {
+            // Ignore
+          }
+          await this.wahaService.startSession(
             worker.internalIp,
             worker.apiKeyEnc,
             wahaName,
@@ -242,9 +270,9 @@ export class ConnectionsController {
         wahaName,
       );
     } catch (error) {
-      // If restart fails (e.g. session in FAILED state), try stop + start
+      // If restart fails, try logout + start to clear corrupted state
       this.logger.warn(
-        `Restart failed for ${wahaName}, trying stop + start: ${error instanceof Error ? error.message : String(error)}`,
+        `Restart failed for ${wahaName}, trying logout + start: ${error instanceof Error ? error.message : String(error)}`,
       );
       try {
         await this.wahaService.stopSession(
@@ -253,7 +281,16 @@ export class ConnectionsController {
           wahaName,
         );
       } catch {
-        // Ignore stop errors
+        // Ignore
+      }
+      try {
+        await this.wahaService.logoutSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+        );
+      } catch {
+        // Ignore
       }
       await this.wahaService.startSession(
         worker.internalIp,
