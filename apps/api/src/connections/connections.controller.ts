@@ -4,6 +4,7 @@ import {
   Post,
   Delete,
   Param,
+  Body,
   Inject,
   UseGuards,
   Logger,
@@ -280,6 +281,46 @@ export class ConnectionsController {
     } catch {
       return null;
     }
+  }
+
+  @Post(':id/send')
+  async sendText(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; text: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+
+    if (connection.userId !== user.sub) {
+      throw new ForbiddenException('You do not own this connection');
+    }
+
+    const worker = await this.workersService.getWorkerForSession(id);
+
+    if (!worker) {
+      throw new ServiceUnavailableException(
+        'No worker assigned to this connection',
+      );
+    }
+
+    const wahaName = this.wahaService.resolveSessionName(
+      connection.sessionName,
+    );
+
+    return this.wahaService.sendText(
+      worker.internalIp,
+      worker.apiKeyEnc,
+      wahaName,
+      body.chatId,
+      body.text,
+    );
   }
 
   @Get(':id')

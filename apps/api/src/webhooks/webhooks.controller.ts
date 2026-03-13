@@ -11,6 +11,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { eq, and, desc } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { webhookConfigs, webhookEventLogs, wahaSessions } from '@wahooks/db';
@@ -22,7 +24,10 @@ import { CreateWebhookDto, UpdateWebhookDto } from './webhooks.dto';
 @Controller()
 @UseGuards(AuthGuard)
 export class WebhooksController {
-  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: any) {}
+  constructor(
+    @Inject(DRIZZLE_TOKEN) private readonly db: any,
+    @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
+  ) {}
 
   /**
    * List all webhook configs for a connection.
@@ -150,6 +155,56 @@ export class WebhooksController {
       .limit(100);
 
     return logs;
+  }
+
+  /**
+   * Send a test event to a webhook.
+   */
+  @Post('webhooks/:id/test')
+  async testWebhook(
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    const config = await this.findWebhookConfigOrFail(id);
+
+    if (config.userId !== user.sub) {
+      throw new ForbiddenException('You do not own this webhook config');
+    }
+
+    const testPayload = {
+      event: 'test',
+      session: 'test',
+      payload: {
+        message: 'This is a test webhook event from WAHooks',
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    const [log] = await this.db
+      .insert(webhookEventLogs)
+      .values({
+        webhookConfigId: config.id,
+        eventType: 'test',
+        payload: testPayload,
+        status: 'pending',
+      })
+      .returning();
+
+    await this.webhookQueue.add('deliver', {
+      webhookConfigId: config.id,
+      url: config.url,
+      signingSecret: config.signingSecret,
+      eventType: 'test',
+      payload: testPayload,
+      sessionId: config.sessionId,
+      logId: log.id,
+    });
+
+    return {
+      success: true,
+      logId: log.id,
+      message: 'Test event enqueued for delivery',
+    };
   }
 
   /**

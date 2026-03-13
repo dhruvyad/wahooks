@@ -29,3 +29,8 @@ export interface WahaMeResponse {
   id: string;
   pushName: string;
 }
+
+export interface WahaSendTextResponse {
+  id: string;
+  timestamp: number;
+}

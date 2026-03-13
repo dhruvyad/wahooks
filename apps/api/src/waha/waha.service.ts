@@ -5,6 +5,7 @@ import {
   WahaQrCodeResponse,
   WahaChatResponse,
   WahaMeResponse,
+  WahaSendTextResponse,
 } from './waha.types';
 
 @Injectable()
@@ -273,6 +274,27 @@ export class WahaService {
     const headers = this.buildHeaders(apiKey);
 
     return this.request<WahaMeResponse>('GET', url, headers);
+  }
+
+  async sendText(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    text: string,
+  ): Promise<WahaSendTextResponse> {
+    const url = this.buildUrl(workerUrl, '/api/sendText');
+    const headers = this.buildHeaders(apiKey);
+
+    this.logger.log(
+      `Sending text to ${chatId} via session "${sessionName}" on worker ${workerUrl}`,
+    );
+
+    return this.request<WahaSendTextResponse>('POST', url, headers, {
+      chatId,
+      text,
+      session: sessionName,
+    });
   }
 
   async logoutSession(

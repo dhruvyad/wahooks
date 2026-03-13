@@ -201,6 +201,30 @@ var whLogsCmd = &cobra.Command{
 	},
 }
 
+var whTestCmd = &cobra.Command{
+	Use:   "test <webhook-id>",
+	Short: "Send a test event to a webhook",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		resp, err := client.Do("POST", "/api/webhooks/"+args[0]+"/test", nil)
+		if err != nil {
+			return err
+		}
+
+		var result map[string]interface{}
+		if err := resp.JSON(&result); err == nil {
+			if success, _ := result["success"].(bool); success {
+				logId, _ := result["logId"].(string)
+				color.Green("Test event enqueued (log: %s)", logId)
+				return nil
+			}
+		}
+
+		resp.Print()
+		return nil
+	},
+}
+
 func init() {
 	whUpdateCmd.Flags().String("url", "", "New webhook URL")
 	whUpdateCmd.Flags().String("events", "", "Comma-separated event types")
@@ -211,6 +235,7 @@ func init() {
 	webhooksCmd.AddCommand(whUpdateCmd)
 	webhooksCmd.AddCommand(whDeleteCmd)
 	webhooksCmd.AddCommand(whLogsCmd)
+	webhooksCmd.AddCommand(whTestCmd)
 
 	rootCmd.AddCommand(webhooksCmd)
 }

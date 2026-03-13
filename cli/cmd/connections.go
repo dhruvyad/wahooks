@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -238,6 +239,40 @@ var connChatsCmd = &cobra.Command{
 	},
 }
 
+var connSendCmd = &cobra.Command{
+	Use:   "send <id> <phone> <message>",
+	Short: "Send a text message via a connection",
+	Args:  cobra.ExactArgs(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		connID := args[0]
+		phone := args[1]
+		message := args[2]
+
+		chatId := phone
+		if !strings.Contains(chatId, "@") {
+			chatId = chatId + "@c.us"
+		}
+
+		body := map[string]interface{}{
+			"chatId": chatId,
+			"text":   message,
+		}
+
+		resp, err := client.Do("POST", "/api/connections/"+connID+"/send", body)
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			color.Green("Message sent to %s", phone)
+			return nil
+		}
+
+		resp.Print()
+		return nil
+	},
+}
+
 var connRestartCmd = &cobra.Command{
 	Use:   "restart <id>",
 	Short: "Restart a connection",
@@ -419,6 +454,7 @@ func init() {
 	connectionsCmd.AddCommand(connQRCmd)
 	connectionsCmd.AddCommand(connMeCmd)
 	connectionsCmd.AddCommand(connChatsCmd)
+	connectionsCmd.AddCommand(connSendCmd)
 	connectionsCmd.AddCommand(connRestartCmd)
 	connectionsCmd.AddCommand(connDeleteCmd)
 	connectionsCmd.AddCommand(connE2ECmd)
