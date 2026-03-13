@@ -47,22 +47,20 @@ spec:
               cpu: "4"
               memory: "4Gi"
           readinessProbe:
-            httpGet:
-              path: /api/server/version
-              port: 3000
-              httpHeaders:
-                - name: X-Api-Key
-                  value: "$(WHATSAPP_API_KEY)"
+            exec:
+              command:
+                - sh
+                - -c
+                - 'wget -q --header="X-Api-Key: $WHATSAPP_API_KEY" -O /dev/null http://localhost:3000/api/server/version'
             initialDelaySeconds: 15
             periodSeconds: 5
             failureThreshold: 12
           livenessProbe:
-            httpGet:
-              path: /api/server/version
-              port: 3000
-              httpHeaders:
-                - name: X-Api-Key
-                  value: "$(WHATSAPP_API_KEY)"
+            exec:
+              command:
+                - sh
+                - -c
+                - 'wget -q --header="X-Api-Key: $WHATSAPP_API_KEY" -O /dev/null http://localhost:3000/api/server/version'
             initialDelaySeconds: 60
             periodSeconds: 30
             failureThreshold: 3

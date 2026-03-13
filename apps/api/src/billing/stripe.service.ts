@@ -8,10 +8,14 @@ export class StripeService {
   private readonly logger = new Logger(StripeService.name);
 
   constructor(private readonly configService: ConfigService) {
+    const key = this.configService.get<string>('STRIPE_SECRET_KEY', '');
     this.stripe = new Stripe(
-      this.configService.get<string>('STRIPE_SECRET_KEY', ''),
+      key || 'sk_not_configured',
       { apiVersion: '2025-04-30.basil' as any },
     );
+    if (!key) {
+      this.logger.warn('STRIPE_SECRET_KEY not set — billing calls will fail');
+    }
   }
 
   // Create a Stripe customer for a new user

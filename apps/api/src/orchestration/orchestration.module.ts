@@ -8,24 +8,29 @@ import { MockOrchestrator } from './mock.orchestrator';
 @Global()
 @Module({
   providers: [
-    HetznerOrchestrator,
-    K8sOrchestrator,
-    MockOrchestrator,
     {
       provide: ORCHESTRATOR_TOKEN,
-      inject: [ConfigService, HetznerOrchestrator, K8sOrchestrator, MockOrchestrator],
-      useFactory: (
-        configService: ConfigService,
-        hetzner: HetznerOrchestrator,
-        k8s: K8sOrchestrator,
-        mock: MockOrchestrator,
-      ) => {
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
         const orchestrator = configService.get<string>('ORCHESTRATOR');
-        if (orchestrator === 'k8s') return k8s;
-        if (orchestrator === 'hetzner') return hetzner;
-        // Default: k8s in production, mock in dev
         const nodeEnv = configService.get<string>('NODE_ENV');
-        return nodeEnv === 'production' ? k8s : mock;
+        const choice =
+          orchestrator === 'k8s'
+            ? 'k8s'
+            : orchestrator === 'hetzner'
+              ? 'hetzner'
+              : nodeEnv === 'production'
+                ? 'k8s'
+                : 'mock';
+
+        switch (choice) {
+          case 'k8s':
+            return new K8sOrchestrator(configService);
+          case 'hetzner':
+            return new HetznerOrchestrator(configService);
+          default:
+            return new MockOrchestrator();
+        }
       },
     },
   ],
