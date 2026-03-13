@@ -25,6 +25,8 @@ spec:
             - secretRef:
                 name: wahooks-api-secret
           env:
+            - name: NODE_OPTIONS
+              value: "--dns-result-order=ipv4first"
             - name: REDIS_URL
               value: "redis://redis.default.svc.cluster.local:6379"
             - name: ORCHESTRATOR
