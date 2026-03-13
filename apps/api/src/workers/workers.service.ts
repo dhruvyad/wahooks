@@ -64,7 +64,7 @@ export class WorkersService {
     const [inserted] = await this.db
       .insert(wahaWorkers)
       .values({
-        hetznerServerId: result.hetznerServerId,
+        podName: result.podName,
         internalIp: result.internalIp,
         apiKeyEnc: result.apiKey, // encryption handled later
         status: 'active',
@@ -242,17 +242,34 @@ export class WorkersService {
       return;
     }
 
-    // Scale up: only if NO worker has available capacity
+    // Scale up: only if NO worker has available capacity AND there are
+    // pending sessions that need a worker assignment
     const hasAvailableCapacity = activeWorkers.some(
       (w: any) => w.currentSessions < w.maxSessions,
     );
 
     if (!hasAvailableCapacity) {
-      this.logger.log(
-        'All workers at capacity, provisioning new worker for headroom',
-      );
-      await this.findOrProvisionWorker();
-      return;
+      const pendingSessions = await this.db
+        .select()
+        .from(wahaSessions)
+        .where(
+          and(
+            eq(wahaSessions.status, 'pending'),
+            sql`${wahaSessions.workerId} IS NULL`,
+          ),
+        );
+
+      if (pendingSessions.length > 0) {
+        this.logger.log(
+          `All workers at capacity and ${pendingSessions.length} pending session(s), provisioning new worker`,
+        );
+        await this.findOrProvisionWorker();
+        return;
+      } else {
+        this.logger.log(
+          'All workers at capacity but no pending sessions — skipping scale-up',
+        );
+      }
     }
 
     // Scale down: if ALL workers are below 30% utilization and there are >1 workers
@@ -310,10 +327,10 @@ export class WorkersService {
       .where(eq(wahaWorkers.id, workerId))
       .limit(1);
 
-    if (row?.hetznerServerId) {
-      await this.orchestrator.destroyWorker(row.hetznerServerId);
+    if (row?.podName) {
+      await this.orchestrator.destroyWorker(row.podName);
       this.logger.log(
-        `Destroyed Hetzner server ${row.hetznerServerId} for worker ${workerId}`,
+        `Destroyed worker pod ${row.podName} for worker ${workerId}`,
       );
     }
 

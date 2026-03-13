@@ -1,14 +1,14 @@
 export interface ProvisionResult {
-  hetznerServerId: string;
+  podName: string; // k8s: "waha-0"; hetzner (legacy): server ID string
   internalIp: string;
   apiKey: string; // generated WAHA API key
 }
 
 export interface ContainerOrchestrator {
   provisionWorker(): Promise<ProvisionResult>;
-  destroyWorker(hetznerServerId: string): Promise<void>;
+  destroyWorker(podName: string): Promise<void>;
   getWorkerStatus(
-    hetznerServerId: string,
+    podName: string,
   ): Promise<'running' | 'stopped' | 'unknown'>;
 }
 

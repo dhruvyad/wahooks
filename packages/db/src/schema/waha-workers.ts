@@ -2,7 +2,7 @@ import { pgTable, uuid, text, integer, timestamp } from "drizzle-orm/pg-core";
 
 export const wahaWorkers = pgTable("waha_workers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  hetznerServerId: text("hetzner_server_id").unique(),
+  podName: text("pod_name").unique(),
   internalIp: text("internal_ip"),
   apiKeyEnc: text("api_key_enc").notNull(), // encrypted WAHA API key
   status: text("status", {

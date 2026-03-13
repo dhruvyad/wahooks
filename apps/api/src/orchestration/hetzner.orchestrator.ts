@@ -77,42 +77,38 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
     );
 
     return {
-      hetznerServerId: serverId,
+      podName: serverId, // stores Hetzner server ID in the podName field for legacy compat
       internalIp,
       apiKey,
     };
   }
 
-  async destroyWorker(hetznerServerId: string): Promise<void> {
-    const response = await fetch(
-      `${this.apiBase}/servers/${hetznerServerId}`,
-      {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-        },
+  async destroyWorker(podName: string): Promise<void> {
+    const response = await fetch(`${this.apiBase}/servers/${podName}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
       },
-    );
+    });
 
     if (!response.ok) {
       const body = await response.text();
       this.logger.error(
-        `Hetzner delete server ${hetznerServerId} failed (${response.status}): ${body}`,
+        `Hetzner delete server ${podName} failed (${response.status}): ${body}`,
       );
       throw new HttpException(
-        `Failed to destroy worker ${hetznerServerId}: ${response.statusText}`,
+        `Failed to destroy worker ${podName}: ${response.statusText}`,
         HttpStatus.BAD_GATEWAY,
       );
     }
 
-    this.logger.log(`Destroyed worker (server ${hetznerServerId})`);
+    this.logger.log(`Destroyed worker (server ${podName})`);
   }
 
   async getWorkerStatus(
-    hetznerServerId: string,
+    podName: string,
   ): Promise<'running' | 'stopped' | 'unknown'> {
-    const response = await fetch(
-      `${this.apiBase}/servers/${hetznerServerId}`,
+    const response = await fetch(`${this.apiBase}/servers/${podName}`,
       {
         method: 'GET',
         headers: {
@@ -123,7 +119,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
 
     if (!response.ok) {
       this.logger.warn(
-        `Hetzner get server ${hetznerServerId} failed (${response.status})`,
+        `Hetzner get server ${podName} failed (${response.status})`,
       );
       return 'unknown';
     }
