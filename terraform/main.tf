@@ -79,6 +79,25 @@ module "kube-hetzner" {
   firewall_ssh_source      = var.firewall_ssh_source
   firewall_kube_api_source = var.firewall_kube_api_source
 
+  extra_firewall_rules = [
+    {
+      description     = "Allow outbound Postgres (Supabase direct)"
+      direction       = "out"
+      protocol        = "tcp"
+      port            = "5432"
+      source_ips      = []
+      destination_ips = ["0.0.0.0/0", "::/0"]
+    },
+    {
+      description     = "Allow outbound Postgres pooler (Supabase)"
+      direction       = "out"
+      protocol        = "tcp"
+      port            = "6543"
+      source_ips      = []
+      destination_ips = ["0.0.0.0/0", "::/0"]
+    },
+  ]
+
   # ── K3s Components ──────────────────────────────────
   cni_plugin            = "flannel"
   ingress_controller    = "traefik"
