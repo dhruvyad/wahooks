@@ -31,19 +31,11 @@ module "kube-hetzner" {
   network_region      = "eu-central"
   initial_k3s_channel = "stable"
 
-  # ── Control Plane (3-node HA for etcd quorum) ───────
+  # ── Control Plane (single node, no HA — sufficient for early stage)
   control_plane_nodepools = [
     {
-      name        = "cp-fsn1"
-      server_type = "cx22"
-      location    = "fsn1"
-      labels      = []
-      taints      = []
-      count       = 2
-    },
-    {
       name        = "cp-nbg1"
-      server_type = "cx22"
+      server_type = "cx23"
       location    = "nbg1"
       labels      = []
       taints      = []
@@ -51,15 +43,15 @@ module "kube-hetzner" {
     }
   ]
 
-  # ── Static agent (runs API + Redis; autoscaler handles WAHA workers)
+  # ── No static agents — workloads run on control plane + autoscaled workers
   agent_nodepools = [
     {
-      name        = "api"
-      server_type = "cx22"
-      location    = "fsn1"
+      name        = "placeholder"
+      server_type = "cx23"
+      location    = "nbg1"
       labels      = []
       taints      = []
-      count       = 1
+      count       = 0
     }
   ]
 
@@ -68,7 +60,7 @@ module "kube-hetzner" {
     {
       name        = "waha-workers"
       server_type = "cx23"
-      location    = "fsn1"
+      location    = "nbg1"
       min_nodes   = 1
       max_nodes   = 10
       labels      = {}
@@ -77,10 +69,11 @@ module "kube-hetzner" {
     }
   ]
 
-  # ── HA ──────────────────────────────────────────────
-  use_control_plane_lb      = true
-  automatically_upgrade_os  = false # required: reboots break etcd quorum
-  automatically_upgrade_k3s = true
+  # ── Scheduling ─────────────────────────────────────
+  allow_scheduling_on_control_plane = true  # run API+Redis on CP node
+  use_control_plane_lb              = false # no LB needed with single CP
+  automatically_upgrade_os          = false
+  automatically_upgrade_k3s         = true
 
   # ── Networking ──────────────────────────────────────
   firewall_ssh_source      = var.firewall_ssh_source
@@ -89,9 +82,11 @@ module "kube-hetzner" {
   # ── K3s Components ──────────────────────────────────
   cni_plugin            = "flannel"
   ingress_controller    = "traefik"
+  traefik_version       = "27.0.2" # pin: v28+ removed globalArguments schema
   enable_cert_manager   = true
   enable_longhorn       = false
   enable_metrics_server = true
+  kured_version         = "1.16.0" # pin to avoid GitHub API rate-limit failures
 
   # ── Extra Manifests (applied via kustomize) ─────────
   extra_kustomize_parameters = {

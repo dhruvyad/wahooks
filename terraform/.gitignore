@@ -5,3 +5,5 @@
 terraform.tfvars
 *.auto.tfvars
 crash.log
+tfplan
+.terraform.tfstate.lock.info
