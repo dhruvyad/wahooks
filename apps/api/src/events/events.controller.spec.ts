@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { EventsController } from './events.controller';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { WahaService } from '../waha/waha.service';
 
 function createMockDb() {
   const mock: any = {};
@@ -34,6 +35,7 @@ describe('EventsController', () => {
       providers: [
         { provide: DRIZZLE_TOKEN, useValue: db },
         { provide: getQueueToken('webhook-delivery'), useValue: webhookQueue },
+        { provide: WahaService, useValue: { getMaxSessions: jest.fn().mockReturnValue(2) } },
       ],
     }).compile();
 

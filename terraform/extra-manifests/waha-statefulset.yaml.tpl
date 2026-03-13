@@ -39,6 +39,10 @@ spec:
                 secretKeyRef:
                   name: waha-secret
                   key: database-url
+            - name: WHATSAPP_NOWEB_STORE_ENABLED
+              value: "true"
+            - name: WHATSAPP_NOWEB_STORE_FULL_SYNC
+              value: "true"
           resources:
             requests:
               cpu: "1"

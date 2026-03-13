@@ -2,9 +2,10 @@ import { Controller, Post, Body, Inject, Logger } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, not } from 'drizzle-orm';
 import { wahaSessions, webhookConfigs, webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { WahaService } from '../waha/waha.service';
 
 interface WahaEvent {
   event: string;
@@ -21,6 +22,7 @@ export class EventsController {
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
+    private readonly wahaService: WahaService,
   ) {}
 
   /**
@@ -34,10 +36,27 @@ export class EventsController {
     );
 
     // 1. Look up the session by sessionName
-    const [session] = await this.db
-      .select()
-      .from(wahaSessions)
-      .where(eq(wahaSessions.sessionName, event.session));
+    // WAHA Core (single session) always reports session name as "default",
+    // but the DB stores the full name (e.g. u_xxx_s_yyy). In Core mode,
+    // find the single active/working session instead.
+    let session: any;
+    if (
+      event.session === 'default' &&
+      this.wahaService.getMaxSessions() === 1
+    ) {
+      const sessions = await this.db
+        .select()
+        .from(wahaSessions)
+        .where(not(eq(wahaSessions.status, 'stopped')))
+        .limit(1);
+      session = sessions[0];
+    } else {
+      const sessions = await this.db
+        .select()
+        .from(wahaSessions)
+        .where(eq(wahaSessions.sessionName, event.session));
+      session = sessions[0];
+    }
 
     if (!session) {
       this.logger.warn(

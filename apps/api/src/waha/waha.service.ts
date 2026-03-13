@@ -111,6 +111,12 @@ export class WahaService {
     return this.request<WahaSessionResponse>('POST', url, headers, {
       name: sessionName,
       config: {
+        noweb: {
+          store: {
+            enabled: true,
+            fullSync: true,
+          },
+        },
         webhooks: webhookUrl
           ? [
               {
