@@ -35,6 +35,7 @@ describe('WebhooksController', () => {
       controllers: [WebhooksController],
       providers: [
         { provide: DRIZZLE_TOKEN, useValue: db },
+        { provide: 'BullQueue_webhook-delivery', useValue: { add: jest.fn() } },
       ],
     })
       .overrideGuard(AuthGuard)

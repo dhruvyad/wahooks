@@ -30,6 +30,8 @@ describe('HealthService', () => {
     wahaService = {
       listSessions: jest.fn(),
       restartSession: jest.fn(),
+      stopSession: jest.fn(),
+      logoutSession: jest.fn(),
       createSession: jest.fn(),
       startSession: jest.fn(),
       resolveSessionName: jest.fn().mockImplementation((name: string) => name),
@@ -134,24 +136,27 @@ describe('HealthService', () => {
       expect(db.update).toHaveBeenCalled();
     });
 
-    it('should trigger restart when WAHA reports FAILED', async () => {
+    it('should trigger logout+start when WAHA reports FAILED', async () => {
       const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key' };
       const wahaSessionsList = [{ name: 's1', status: 'FAILED' as const }];
       const dbSessions = [{ id: 'sid1', sessionName: 's1', status: 'working' }];
 
       db.where
         .mockResolvedValueOnce([worker])
-        .mockResolvedValueOnce(dbSessions);
+        .mockResolvedValueOnce(dbSessions)
+        .mockResolvedValueOnce(undefined); // update to 'failed'
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
-      wahaService.restartSession!.mockResolvedValueOnce(undefined);
+      wahaService.stopSession!.mockResolvedValueOnce(undefined);
+      wahaService.logoutSession!.mockResolvedValueOnce(undefined);
+      wahaService.startSession!.mockResolvedValueOnce(undefined);
 
       await service.pollWorkerHealth();
 
-      expect(wahaService.restartSession).toHaveBeenCalledWith('10.0.0.1', 'key', 's1');
+      expect(wahaService.startSession).toHaveBeenCalledWith('10.0.0.1', 'key', 's1');
     });
 
-    it('should mark session as failed in DB when restart after FAILED status throws', async () => {
+    it('should mark session as failed in DB when logout+start after FAILED status throws', async () => {
       const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key' };
       const wahaSessionsList = [{ name: 's1', status: 'FAILED' as const }];
       const dbSessions = [{ id: 'sid1', sessionName: 's1', status: 'working' }];
@@ -162,7 +167,9 @@ describe('HealthService', () => {
         .mockResolvedValueOnce(undefined); // the update to 'failed'
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
-      wahaService.restartSession!.mockRejectedValueOnce(new Error('Restart failed'));
+      wahaService.stopSession!.mockResolvedValueOnce(undefined);
+      wahaService.logoutSession!.mockResolvedValueOnce(undefined);
+      wahaService.startSession!.mockRejectedValueOnce(new Error('Start failed'));
 
       await service.pollWorkerHealth();
 
