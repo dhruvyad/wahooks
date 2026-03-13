@@ -1,91 +1,73 @@
-# WAHooks Kubernetes Migration
+# WAHooks Kubernetes Infrastructure
 
-Migrates WAHA worker orchestration from ad-hoc Hetzner VMs to a k3s cluster
-with the Kubernetes Cluster Autoscaler — replacing the custom autoscaler with
-battle-tested cooldowns, drain/cordon, and hysteresis.
+Manages WAHA worker orchestration on a k3s cluster with the Kubernetes Cluster
+Autoscaler — replacing the custom Hetzner VM autoscaler with battle-tested
+cooldowns, drain/cordon, and hysteresis.
 
 ## Architecture
 
 ```
-Hetzner CX23 (existing API server)   New CX22 (~€3.79/mo)
-├── k3s server node 1                 └── k3s server node 2
-├── Redis (Docker, --network host)
-└── Caddy (HTTPS proxy)
+3× CX22 control-plane nodes (HA etcd)
+├── flannel CNI + Traefik ingress
+├── wahooks-api Deployment
+├── Redis Deployment
+└── Load Balancer (k8s API)
 
-k3s cluster state → Supabase Postgres (existing, no extra cost)
-
-Autoscaled CX23 worker node pool
+Autoscaled CX23 worker node pool (1–10 nodes)
 └── waha StatefulSet pods
     ├── waha-0  (sessions A, B, C …)
     ├── waha-1  (sessions D, E, F …)
     └── …
 ```
 
-## Files
+## Deployment
 
-| File | Purpose |
-|------|---------|
-| `hetzner-k3s-config.yaml` | Cluster bootstrap config for the `hetzner-k3s` tool |
-| `waha-secret.yaml` | Template — apply with `kubectl create secret` (see below) |
-| `waha-service.yaml` | Headless Service for per-pod DNS |
-| `waha-statefulset.yaml` | WAHA Plus StatefulSet (Postgres session storage) |
-| `api-deployment.yaml` | NestJS API Deployment (inside k8s, uses SA for k8s API access) |
-| `api-service.yaml` | NodePort Service — Caddy proxies port 30001 |
-| `rbac.yaml` | ServiceAccount + Role for NestJS to manage StatefulSet |
-| `cluster-autoscaler.yaml` | Cluster Autoscaler for Hetzner node pool scaling |
+Infrastructure is managed declaratively with Terraform using the
+[kube-hetzner](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner)
+module. One `terraform apply` provisions the entire cluster, applies all
+k8s manifests, and configures the autoscaler.
 
-## Migration Steps
+See [`../terraform/`](../terraform/) for the Terraform configuration.
 
-### Phase 0 — DB schema migration (run before anything else)
+### Prerequisites
 
-```sql
-ALTER TABLE waha_workers RENAME COLUMN hetzner_server_id TO pod_name;
-```
+1. **SSH key** (ed25519, no passphrase):
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/wahooks_k8s -N ""
+   ```
 
-Or via Drizzle: `pnpm --filter @wahooks/db db:generate && pnpm --filter @wahooks/db db:migrate`
+2. **MicroOS snapshots** (one-time, ~10 min):
+   ```bash
+   export HCLOUD_TOKEN="your-token"
+   # Download packer template from kube-hetzner repo
+   packer init hcloud-microos-snapshots.pkr.hcl
+   packer build hcloud-microos-snapshots.pkr.hcl
+   ```
 
-### Phase 1 — Provision k3s cluster
+3. **Terraform** >= 1.5.0
+
+### Deploy
 
 ```bash
-# Install hetzner-k3s
-brew install vitobotta/tap/hetzner-k3s   # or download binary from GitHub
+cd terraform/
 
-# Edit k8s/hetzner-k3s-config.yaml — fill in HETZNER_API_TOKEN and SUPABASE_DATABASE_URL
-hetzner-k3s create --config k8s/hetzner-k3s-config.yaml
+# Copy and fill in secrets
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with real values
 
-# Kubeconfig is written to ~/.kube/wahooks.yaml
+terraform init
+terraform plan
+terraform apply
+
+# Save kubeconfig
+terraform output -raw kubeconfig > ~/.kube/wahooks.yaml
 export KUBECONFIG=~/.kube/wahooks.yaml
-kubectl get nodes   # should show 2 masters + 1 worker
+kubectl get nodes
 ```
 
-### Phase 2 — Apply manifests
+### Post-deploy: Seed first worker
 
-```bash
-# Secrets (never commit real values)
-kubectl create secret generic waha-secret \
-  --from-literal=api-key=<WAHA_API_KEY> \
-  --from-literal=database-url=<SUPABASE_DATABASE_URL>
-
-kubectl create secret generic hetzner-secret \
-  --from-literal=token=<HETZNER_API_TOKEN> \
-  --namespace kube-system
-
-# Load all API server env vars as a secret
-kubectl create secret generic wahooks-api-secret \
-  --from-env-file=/opt/wahooks/.env
-
-# Apply manifests
-kubectl apply -f k8s/rbac.yaml
-kubectl apply -f k8s/waha-service.yaml
-kubectl apply -f k8s/waha-statefulset.yaml
-kubectl apply -f k8s/cluster-autoscaler.yaml
-kubectl apply -f k8s/api-service.yaml
-kubectl apply -f k8s/api-deployment.yaml
-```
-
-### Phase 3 — Seed the first worker DB row
-
-After `waha-0` becomes Ready (check: `kubectl get pods -w`):
+After `waha-0` becomes Ready (`kubectl get pods -w`):
 
 ```sql
 INSERT INTO waha_workers (pod_name, internal_ip, api_key_enc, status, max_sessions)
@@ -98,58 +80,33 @@ VALUES (
 );
 ```
 
-Then point existing sessions at the new worker:
-```sql
-UPDATE waha_sessions
-SET worker_id = (SELECT id FROM waha_workers WHERE pod_name = 'waha-0')
-WHERE status != 'stopped';
-```
+### CI/CD
 
-WAHA Plus will auto-reconnect sessions from Postgres storage within ~1 minute.
-The health cron reconciles status on the next poll.
+The GitHub Actions workflow (`.github/workflows/deploy-api.yml`) builds the API
+image, pushes to GHCR, and updates the k8s Deployment via `kubectl set image`.
 
-### Phase 4 — Update Caddy & env, cut over
-
-On the API server host:
-
+Store the kubeconfig as a base64-encoded GitHub secret (`DEPLOY_KUBECONFIG`):
 ```bash
-# Add ORCHESTRATOR and k8s config to env
-echo "ORCHESTRATOR=k8s" >> /opt/wahooks/.env
-echo "KUBECONFIG=/opt/wahooks/kubeconfig" >> /opt/wahooks/.env
-echo "WAHA_API_KEY=<same key as in waha-secret>" >> /opt/wahooks/.env
-
-# Copy kubeconfig for out-of-cluster access
-cp ~/.kube/wahooks.yaml /opt/wahooks/kubeconfig
-
-# Generate a long-lived SA token for the kubeconfig
-kubectl create token wahooks-api --duration=8760h
-# Add this token to /opt/wahooks/kubeconfig as the user token
-
-# Update Caddy to proxy to NodePort
-# /etc/caddy/Caddyfile:
-#   api.wahooks.com {
-#     reverse_proxy 127.0.0.1:30001
-#   }
-systemctl reload caddy
-
-# Redeploy API container (or switch to the k8s Deployment)
-docker restart wahooks-api
+base64 < ~/.kube/wahooks.yaml | pbcopy
+# Paste into GitHub repo Settings → Secrets → DEPLOY_KUBECONFIG
 ```
 
-### Phase 5 — Validate
+### DNS
 
+Point `api.wahooks.com` to the ingress IP:
 ```bash
-./scripts/e2e-test.sh https://api.wahooks.com --no-scan
-kubectl logs -l app=wahooks-api --tail=50
-kubectl logs -l app=waha --tail=50
+terraform output ingress_public_ipv4
 ```
 
-### Phase 6 — Decommission old WAHA VMs
+## Reference Files
 
-Once health cron confirms all sessions are `working` on the k8s pods,
-delete the old WAHA Hetzner VMs from the Cloud Console.
+| Directory | Purpose |
+|-----------|---------|
+| `terraform/` | Terraform config (kube-hetzner module + variables) |
+| `terraform/extra-manifests/` | K8s manifests applied via kustomize |
+| `k8s/` | Legacy manual manifests (reference only) |
 
-## Environment Variables Added
+## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -158,4 +115,3 @@ delete the old WAHA Hetzner VMs from the Cloud Console.
 | `K8S_NAMESPACE` | No | `default` | k8s namespace for WAHA StatefulSet |
 | `WAHA_STATEFULSET_NAME` | No | `waha` | StatefulSet name |
 | `WAHA_HEADLESS_SERVICE` | No | `waha` | Headless Service name for pod DNS |
-| `KUBECONFIG` | No* | `~/.kube/config` | Path to kubeconfig (needed when running outside cluster) |
