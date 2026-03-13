@@ -30,6 +30,13 @@ variable "firewall_kube_api_source" {
   description = "CIDRs allowed k8s API access (restrict in production)"
 }
 
+# ── Container Registry ───────────────────────────────
+variable "ghcr_auth" {
+  type        = string
+  sensitive   = true
+  description = "Base64-encoded 'username:token' for ghcr.io image pulls"
+}
+
 # ── Application Secrets ───────────────────────────────
 variable "waha_api_key" {
   type        = string

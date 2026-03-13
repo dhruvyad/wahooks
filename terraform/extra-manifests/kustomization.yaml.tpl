@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
+  - ghcr-secret.yaml
   - waha-secret.yaml
   - wahooks-api-secret.yaml
   - rbac.yaml

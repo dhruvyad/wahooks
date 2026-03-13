@@ -109,6 +109,7 @@ module "kube-hetzner" {
 
   # ── Extra Manifests (applied via kustomize) ─────────
   extra_kustomize_parameters = {
+    ghcr_auth             = var.ghcr_auth
     waha_api_key          = var.waha_api_key
     database_url          = var.database_url
     supabase_url          = var.supabase_url
