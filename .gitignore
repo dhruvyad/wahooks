@@ -13,3 +13,4 @@ coverage/
 supabase/
 TODO.md
 .env.secrets
+cli/wahooks
