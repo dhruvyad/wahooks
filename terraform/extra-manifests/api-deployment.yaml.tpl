@@ -14,8 +14,6 @@ spec:
         app: wahooks-api
     spec:
       serviceAccountName: wahooks-api
-      imagePullSecrets:
-        - name: ghcr-secret
       containers:
         - name: api
           image: "${api_image}"

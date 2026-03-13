@@ -43,6 +43,8 @@ COPY --from=builder /app/apps/api/package.json ./apps/api/
 
 COPY --from=builder /app/packages/db/dist ./packages/db/dist
 COPY --from=builder /app/packages/db/package.json ./packages/db/
+COPY --from=builder /app/packages/db/drizzle ./packages/db/drizzle
+COPY --from=builder /app/packages/db/scripts/migrate.cjs ./packages/db/scripts/migrate.cjs
 
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/packages/shared-types/package.json ./packages/shared-types/

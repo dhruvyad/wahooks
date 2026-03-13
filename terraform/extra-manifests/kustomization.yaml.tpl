@@ -6,7 +6,9 @@ resources:
   - wahooks-api-secret.yaml
   - rbac.yaml
   - redis.yaml
+  - db-proxy.yaml
   - waha-service.yaml
   - waha-statefulset.yaml
   - api-deployment.yaml
   - api-service.yaml
+  - api-ingress.yaml

@@ -49,24 +49,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.DEPLOY_KUBECONFIG }}" | base64 -d > ~/.kube/config
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
+      - name: Run migrations in-cluster
+        run: |
+          kubectl run migrate-$(echo ${{ github.sha }} | cut -c1-8) \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --restart=Never \
+            --namespace=default \
+            --env="DATABASE_URL=$(kubectl get secret wahooks-api-secret -n default -o jsonpath='{.data.DATABASE_URL}' | base64 -d)" \
+            --command -- node packages/db/scripts/migrate.cjs
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          # Wait for migration job to complete
+          kubectl wait --for=condition=Ready \
+            pod/migrate-$(echo ${{ github.sha }} | cut -c1-8) \
+            --namespace=default \
+            --timeout=30s 2>/dev/null || true
 
-      - name: Run migrations
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: pnpm db:migrate
+          # Stream logs and check exit status
+          kubectl logs --follow \
+            migrate-$(echo ${{ github.sha }} | cut -c1-8) \
+            --namespace=default
+
+          # Check pod succeeded
+          STATUS=$(kubectl get pod migrate-$(echo ${{ github.sha }} | cut -c1-8) -n default -o jsonpath='{.status.phase}')
+          echo "Migration pod status: $STATUS"
+
+          # Cleanup
+          kubectl delete pod migrate-$(echo ${{ github.sha }} | cut -c1-8) -n default --ignore-not-found
+
+          if [ "$STATUS" != "Succeeded" ]; then
+            echo "Migration failed with status: $STATUS"
+            exit 1
+          fi
 
   deploy:
     needs: [build-and-push, migrate]
