@@ -7,3 +7,5 @@ terraform.tfvars
 crash.log
 tfplan
 .terraform.tfstate.lock.info
+wahooks_kubeconfig.yaml
+wahooks_kustomization_backup.yaml
