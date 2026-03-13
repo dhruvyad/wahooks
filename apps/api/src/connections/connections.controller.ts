@@ -75,6 +75,35 @@ export class ConnectionsController {
       );
       const webhookUrl = `${apiUrl}/api/events/waha`;
       const wahaName = this.wahaService.resolveSessionName(sessionName);
+
+      // For WAHA Core (single session), clean up any existing failed session
+      try {
+        const existing = await this.wahaService.getSession(
+          worker.internalIp,
+          worker.apiKey,
+          wahaName,
+        );
+        if (
+          existing &&
+          (existing.status === 'FAILED' || existing.status === 'STOPPED')
+        ) {
+          this.logger.log(
+            `Existing WAHA session "${wahaName}" is ${existing.status}, stopping before re-create`,
+          );
+          try {
+            await this.wahaService.stopSession(
+              worker.internalIp,
+              worker.apiKey,
+              wahaName,
+            );
+          } catch {
+            // Ignore stop errors
+          }
+        }
+      } catch {
+        // Session doesn't exist yet — fine
+      }
+
       await this.wahaService.createSession(
         worker.internalIp,
         worker.apiKey,
@@ -140,7 +169,7 @@ export class ConnectionsController {
       );
       return qr;
     } catch {
-      // QR fetch failed — check if the session has moved past SCAN_QR_CODE
+      // QR fetch failed — check session status
       try {
         const session = await this.wahaService.getSession(
           worker.internalIp,
@@ -153,6 +182,21 @@ export class ConnectionsController {
             .set({ status: 'working', updatedAt: new Date() })
             .where(eq(wahaSessions.id, id));
           return { connected: true };
+        }
+        if (session.status === 'FAILED') {
+          // Auto-restart failed sessions so next poll gets a fresh QR
+          this.logger.log(
+            `Session ${wahaName} is FAILED, auto-restarting...`,
+          );
+          await this.wahaService.restartSession(
+            worker.internalIp,
+            worker.apiKeyEnc,
+            wahaName,
+          );
+          await this.db
+            .update(wahaSessions)
+            .set({ status: 'scan_qr', updatedAt: new Date() })
+            .where(eq(wahaSessions.id, id));
         }
       } catch {
         // Session check also failed — worker is genuinely unavailable
@@ -190,11 +234,33 @@ export class ConnectionsController {
     const wahaName = this.wahaService.resolveSessionName(
       connection.sessionName,
     );
-    await this.wahaService.restartSession(
-      worker.internalIp,
-      worker.apiKeyEnc,
-      wahaName,
-    );
+
+    try {
+      await this.wahaService.restartSession(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+      );
+    } catch (error) {
+      // If restart fails (e.g. session in FAILED state), try stop + start
+      this.logger.warn(
+        `Restart failed for ${wahaName}, trying stop + start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      try {
+        await this.wahaService.stopSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+        );
+      } catch {
+        // Ignore stop errors
+      }
+      await this.wahaService.startSession(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+      );
+    }
 
     const [updated] = await this.db
       .update(wahaSessions)

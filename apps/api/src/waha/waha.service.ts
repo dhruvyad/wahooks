@@ -255,7 +255,7 @@ export class WahaService {
   ): Promise<WahaChatResponse[]> {
     const url = this.buildUrl(
       workerUrl,
-      `/api/${encodeURIComponent(sessionName)}/chats?limit=20&sortBy=messageTimestamp&sortOrder=desc`,
+      `/api/${encodeURIComponent(sessionName)}/chats?limit=20&sortBy=conversationTimestamp&sortOrder=desc`,
     );
     const headers = this.buildHeaders(apiKey);
 
