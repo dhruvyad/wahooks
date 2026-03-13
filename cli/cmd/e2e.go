@@ -490,10 +490,10 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	bold.Println("\n17. Restart connection")
 	resp, _ = client.Do("POST", "/api/connections/"+connID+"/restart", nil)
-	if resp != nil && resp.StatusCode == 200 {
+	if resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		ok(fmt.Sprintf("POST /restart: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
 	} else {
-		bad("restart failed")
+		bad(fmt.Sprintf("restart failed (HTTP %d)", resp.StatusCode))
 	}
 
 	// ───────────────────────────────────────────────────────

@@ -276,6 +276,59 @@ export class WahaService {
     return this.request<WahaMeResponse>('GET', url, headers);
   }
 
+  async sendSeen(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+  ): Promise<void> {
+    const url = this.buildUrl(workerUrl, '/api/sendSeen');
+    const headers = this.buildHeaders(apiKey);
+
+    await this.request<void>('POST', url, headers, {
+      chatId,
+      session: sessionName,
+    });
+  }
+
+  async startTyping(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+  ): Promise<void> {
+    const url = this.buildUrl(workerUrl, '/api/startTyping');
+    const headers = this.buildHeaders(apiKey);
+
+    await this.request<void>('POST', url, headers, {
+      chatId,
+      session: sessionName,
+    });
+  }
+
+  async stopTyping(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+  ): Promise<void> {
+    const url = this.buildUrl(workerUrl, '/api/stopTyping');
+    const headers = this.buildHeaders(apiKey);
+
+    await this.request<void>('POST', url, headers, {
+      chatId,
+      session: sessionName,
+    });
+  }
+
+  /**
+   * Send text with anti-spam behavior:
+   * 1. Mark chat as seen
+   * 2. Start typing indicator
+   * 3. Wait a random delay based on message length (simulates human typing)
+   * 4. Stop typing
+   * 5. Send the message
+   */
   async sendText(
     workerUrl: string,
     apiKey: string,
@@ -283,12 +336,37 @@ export class WahaService {
     chatId: string,
     text: string,
   ): Promise<WahaSendTextResponse> {
-    const url = this.buildUrl(workerUrl, '/api/sendText');
-    const headers = this.buildHeaders(apiKey);
-
     this.logger.log(
       `Sending text to ${chatId} via session "${sessionName}" on worker ${workerUrl}`,
     );
+
+    // Anti-spam: simulate human behavior
+    try {
+      await this.sendSeen(workerUrl, apiKey, sessionName, chatId);
+    } catch {
+      // Non-critical — continue sending
+    }
+
+    try {
+      await this.startTyping(workerUrl, apiKey, sessionName, chatId);
+    } catch {
+      // Non-critical — continue sending
+    }
+
+    // Random delay: 1-3s base + ~50ms per character (capped at 8s)
+    const baseDelay = 1000 + Math.random() * 2000;
+    const typingDelay = Math.min(text.length * 50, 5000);
+    const totalDelay = baseDelay + typingDelay;
+    await new Promise((resolve) => setTimeout(resolve, totalDelay));
+
+    try {
+      await this.stopTyping(workerUrl, apiKey, sessionName, chatId);
+    } catch {
+      // Non-critical — continue sending
+    }
+
+    const url = this.buildUrl(workerUrl, '/api/sendText');
+    const headers = this.buildHeaders(apiKey);
 
     return this.request<WahaSendTextResponse>('POST', url, headers, {
       chatId,
