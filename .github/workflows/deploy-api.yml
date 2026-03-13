@@ -67,20 +67,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Hetzner
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            docker stop wahooks-api || true
-            docker rm wahooks-api || true
-            docker run -d \
-              --name wahooks-api \
-              --restart unless-stopped \
-              --env-file /opt/wahooks/.env \
-              -p 3001:3001 \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            docker image prune -f
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.DEPLOY_KUBECONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: Update API image and restart
+        run: |
+          kubectl set image deployment/wahooks-api \
+            api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --namespace default
+          kubectl rollout status deployment/wahooks-api \
+            --namespace default \
+            --timeout=120s
