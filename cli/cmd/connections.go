@@ -341,7 +341,12 @@ var connE2ECmd = &cobra.Command{
 		bold.Println("Fetch QR code...")
 		qrObtained := false
 		for i := 1; i <= 20; i++ {
-			resp, _ = client.Do("GET", "/api/connections/"+connID+"/qr", nil)
+			resp, err = client.Do("GET", "/api/connections/"+connID+"/qr", nil)
+			if err != nil || resp == nil {
+				color.New(color.Faint).Printf("  attempt %d/20: request failed, retrying...\n", i)
+				time.Sleep(3 * time.Second)
+				continue
+			}
 			if resp.StatusCode == 200 {
 				var qr map[string]interface{}
 				resp.JSON(&qr)

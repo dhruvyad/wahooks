@@ -1,7 +1,13 @@
 name: Deploy API
 
 on:
-  workflow_dispatch: # Manual trigger only until secrets are configured
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'packages/db/**'
+      - 'packages/shared-types/**'
 
 concurrency:
   group: deploy-api

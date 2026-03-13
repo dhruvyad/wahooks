@@ -28,13 +28,16 @@ var loginCmd = &cobra.Command{
 			email = strings.TrimSpace(email)
 		}
 
-		fmt.Print("Password: ")
-		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			return fmt.Errorf("read password: %w", err)
+		password, _ := cmd.Flags().GetString("password")
+		if password == "" {
+			fmt.Print("Password: ")
+			passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Println()
+			if err != nil {
+				return fmt.Errorf("read password: %w", err)
+			}
+			password = string(passwordBytes)
 		}
-		password := string(passwordBytes)
 
 		result, err := auth.Login(email, password)
 		if err != nil {
@@ -84,6 +87,8 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
+	loginCmd.Flags().StringP("password", "p", "", "Password (avoids interactive prompt)")
+
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(configSetCmd)
 	rootCmd.AddCommand(statusCmd)
