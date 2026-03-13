@@ -272,21 +272,24 @@ export class WorkersService {
       }
     }
 
-    // Scale down: if ALL workers are below 30% utilization and there are >1 workers
+    // Scale down: if ALL workers are below 30% utilization and there are >1 workers.
+    // Drain the highest-ordinal worker so it matches what k8s StatefulSet removes
+    // on scale-down (always removes the highest-ordinal pod first).
     const allUnderThreshold = activeWorkers.every(
       (w: any) => w.currentSessions / w.maxSessions < 0.3,
     );
 
     if (allUnderThreshold && activeWorkers.length > 1) {
-      // Find the emptiest worker
-      const emptiest = activeWorkers.reduce((min: any, w: any) =>
-        w.currentSessions < min.currentSessions ? w : min,
-      );
+      const drainTarget = [...activeWorkers].sort((a: any, b: any) => {
+        const ordA = parseInt(a.podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
+        const ordB = parseInt(b.podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
+        return ordB - ordA; // descending: highest ordinal first
+      })[0];
 
       this.logger.log(
-        `All workers below 30% utilization, draining worker ${emptiest.id} (${emptiest.currentSessions} sessions)`,
+        `All workers below 30% utilization, draining pod ${drainTarget.podName ?? drainTarget.id} (${drainTarget.currentSessions} sessions)`,
       );
-      await this.drainWorker(emptiest.id);
+      await this.drainWorker(drainTarget.id);
     }
   }
 
