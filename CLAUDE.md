@@ -70,6 +70,8 @@ All routes prefixed with `/api`. Auth = Supabase JWT in `Authorization: Bearer` 
 | `POST` | `/api/connections` | Yes | Create connection (provisions WAHA session) |
 | `GET` | `/api/connections/:id` | Yes | Get connection detail |
 | `GET` | `/api/connections/:id/qr` | Yes | Get QR code for WhatsApp linking |
+| `GET` | `/api/connections/:id/chats` | Yes | Get recent WhatsApp chats (max 20) |
+| `GET` | `/api/connections/:id/me` | Yes | Get WhatsApp profile info |
 | `POST` | `/api/connections/:id/restart` | Yes | Restart WAHA session |
 | `DELETE` | `/api/connections/:id` | Yes | Stop and remove connection |
 | `GET` | `/api/connections/:cid/webhooks` | Yes | List webhook configs |
@@ -116,15 +118,15 @@ Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test
 
 | Area | Decision |
 |------|----------|
-| WAHA Edition | WAHA Plus (NOWEB engine) -- multi-session, ~50 sessions per CX22 VM |
+| WAHA Edition | WAHA Plus (NOWEB engine) -- multi-session, ~50 sessions per CX23 VM |
 | API Framework | TypeScript + NestJS |
 | Frontend | Next.js + React + Tailwind CSS + shadcn/ui |
 | Database + Auth | Supabase (Postgres + Auth) + Drizzle ORM |
 | Container Orchestration | Hetzner Cloud VMs + Docker |
-| Message Queue | BullMQ + Upstash Redis |
+| Message Queue | BullMQ + Redis (self-hosted on API server) |
 | Billing | Stripe -- pure usage-based, hourly resolution ($0.25/connection/month) |
 | Repo | Turborepo + pnpm workspaces |
-| Deployment | Hetzner (API + WAHA), Vercel (web), Supabase (DB+Auth), Upstash (Redis) |
+| Deployment | Hetzner (API + Redis + WAHA), Vercel (web), Supabase (DB+Auth) |
 
 ## Database Schema
 
@@ -142,7 +144,80 @@ Tables in `packages/db/src/schema/`:
 - Each worker gets a unique `WAHA_API_KEY`, stored encrypted, never exposed to users
 - WAHA session auth state persisted in Supabase Postgres (survives VM replacement)
 - Health monitoring: 1-min cron polls WAHA sessions, auto-restarts failed/stopped sessions
-- Scale up: any worker >80% capacity. Scale down: all workers <30% for sustained period (never zero)
+- Scale up: only when NO worker has available capacity. Scale down: all workers <30% for sustained period (never zero)
 - Outbound webhooks signed with HMAC-SHA256 (`X-WAHooks-Signature` header)
 - Webhook delivery: BullMQ with 5 attempts, exponential backoff (5s base), last 1000 failed jobs retained
 - Usage metering: hourly cron records connection-hours, separate cron reports to Stripe
+
+## Production Deployment
+
+| Component | URL | Infrastructure |
+|-----------|-----|----------------|
+| Dashboard | `https://wahooks.com` | Vercel (project: `noclick/wahooks`) |
+| API | `https://api.wahooks.com` | Hetzner CX23 (`116.203.149.15`, private IP `10.0.0.2`) |
+| WAHA Workers | Private network only | Hetzner CX23 VMs on `10.0.0.x` |
+| Database | Supabase Postgres | `db.fvatjlbtyegsqjuwbxxx.supabase.co` |
+| Redis | Self-hosted on API server | `localhost:6379` (Docker: `redis:7-alpine`) |
+
+### API Server Setup
+- Docker containers with `--network host`: `wahooks-api` (NestJS) + `redis` (Redis 7 Alpine, `noeviction` policy, 64MB max)
+- Caddy reverse proxy on the same server for automatic HTTPS (`/etc/caddy/Caddyfile`)
+- Env file at `/opt/wahooks/.env` (`REDIS_URL=redis://localhost:6379`)
+- SSH access: `ssh -i ~/.ssh/wahooks_deploy root@116.203.149.15`
+
+### Deployment Commands
+- **API**: Build image locally, `docker save | ssh ... docker load`, restart container
+- **Web**: `vercel --prod` from monorepo root, or push to GitHub for auto-deploy
+- **GitHub Actions**: `.github/workflows/deploy-api.yml` (needs secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DATABASE_URL`)
+
+### Known Issues / Notes
+- Hetzner `cx22` server type is deprecated; use `cx23` (set via `HETZNER_SERVER_TYPE` env var)
+- Docker containers on Hetzner need `--network host` or IPv4-forced DNS to reach Supabase (IPv6-only resolution fails in default Docker bridge network)
+- WAHA Core mode (`WAHA_MAX_SESSIONS=1`) uses session name `default` regardless of DB session name
+- List connections endpoint filters out `stopped` connections (soft-deleted)
+
+## E2E Testing
+
+### Test Script
+```bash
+# Full test with QR scan (interactive — opens QR in Preview)
+./scripts/e2e-test.sh
+
+# Automated test without QR scan (tests all endpoints)
+./scripts/e2e-test.sh --no-scan
+
+# Against a different API URL
+./scripts/e2e-test.sh http://localhost:3001
+./scripts/e2e-test.sh https://api.wahooks.com --no-scan
+```
+
+### Test Account
+- Email: `e2e-test@wahooks.com` / Password: `wahooks-e2e-test-2026`
+- User ID: `a80ffc98-6f8b-4f96-a633-f756124c16af`
+- Created in Supabase Auth, email confirmed
+
+### What the Script Tests
+1. Supabase authentication (JWT token)
+2. Health check (`GET /api`)
+3. Auth guard (no token → 401)
+4. List connections (`GET /api/connections`)
+5. Create connection (`POST /api/connections`)
+6. Fetch QR code (`GET /api/connections/:id/qr`) — polls until worker boots
+7. Profile endpoint (`GET /api/connections/:id/me`)
+8. Chats endpoint (`GET /api/connections/:id/chats`)
+9. *With `--no-scan` skipped:* Poll for QR scan, then re-test profile/chats with connected session
+10. Restart connection (`POST /api/connections/:id/restart`)
+11. Delete connection (`DELETE /api/connections/:id`)
+12. Verify deletion (list should exclude stopped)
+
+### Typical Response Times (Production)
+| Endpoint | Time |
+|----------|------|
+| Health check | ~780ms |
+| List/Get connections | ~800-900ms |
+| Create connection | ~1000ms (worker available), ~11s (new worker provisioned) |
+| QR code fetch | ~950ms |
+| Profile/Chats | ~800ms |
+| Restart | ~4s |
+| Delete | ~4s |
+| Worker boot (cloud-init) | ~3 min |

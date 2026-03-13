@@ -12,7 +12,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
+import { eq, and, ne } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
@@ -38,7 +38,12 @@ export class ConnectionsController {
     const results = await this.db
       .select()
       .from(wahaSessions)
-      .where(eq(wahaSessions.userId, user.sub));
+      .where(
+        and(
+          eq(wahaSessions.userId, user.sub),
+          ne(wahaSessions.status, 'stopped'),
+        ),
+      );
 
     return results;
   }
