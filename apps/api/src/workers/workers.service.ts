@@ -243,7 +243,8 @@ export class WorkersService {
     }
 
     // Scale up: only if NO worker has available capacity AND there are
-    // pending sessions that need a worker assignment
+    // pending sessions that need a worker assignment.
+    // Guard: never provision more workers than non-stopped sessions.
     const hasAvailableCapacity = activeWorkers.some(
       (w: any) => w.currentSessions < w.maxSessions,
     );
@@ -260,6 +261,22 @@ export class WorkersService {
         );
 
       if (pendingSessions.length > 0) {
+        // In WAHA Core mode (1 session/pod), check if we already have
+        // enough workers for all active sessions before scaling up.
+        const allActiveSessions = await this.db
+          .select()
+          .from(wahaSessions)
+          .where(
+            sql`${wahaSessions.status} NOT IN ('stopped')`,
+          );
+
+        if (activeWorkers.length >= allActiveSessions.length) {
+          this.logger.log(
+            `Workers (${activeWorkers.length}) >= active sessions (${allActiveSessions.length}), skipping scale-up`,
+          );
+          return;
+        }
+
         this.logger.log(
           `All workers at capacity and ${pendingSessions.length} pending session(s), provisioning new worker`,
         );

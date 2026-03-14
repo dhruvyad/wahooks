@@ -220,9 +220,11 @@ describe('WorkersService', () => {
       db.mockResult([fullWorker]);
       // 3. pending sessions query -> [one pending session]
       db.mockResult([{ id: 'session-pending', status: 'pending' }]);
-      // 4. findOrProvisionWorker: no available workers
+      // 4. all active sessions (guard) -> 2 sessions (more than 1 worker)
+      db.mockResult([{ id: 's1', status: 'working' }, { id: 'session-pending', status: 'pending' }]);
+      // 5. findOrProvisionWorker: no available workers
       db.mockResult([]);
-      // 5. insert new worker -> returning
+      // 6. insert new worker -> returning
       const newWorker = { id: 'worker-new', internalIp: '10.0.0.99', apiKeyEnc: 'new-key' };
 
       orchestrator.provisionWorker.mockResolvedValue({
