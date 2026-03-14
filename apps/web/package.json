@@ -13,11 +13,13 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "@types/mdx": "^2.0.13",
+    "@types/qrcode": "^1.5.6",
     "@wahooks/shared-types": "workspace:*",
     "fumadocs-core": "^16.6.17",
     "fumadocs-mdx": "^14.2.10",
     "fumadocs-ui": "^16.6.17",
     "next": "^16.1.6",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

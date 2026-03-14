@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import QRCode from "qrcode";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 import { StatusBadge } from "@/components/status-badge";
@@ -37,6 +38,14 @@ function getStoredName(connectionId: string): string | null {
 function QrUpgradePrompt() {
   const [quantity, setQuantity] = useState(1);
   const [redirecting, setRedirecting] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    QRCode.toDataURL(
+      "https://wahooks.com/connect/placeholder-session-id",
+      { width: 400, margin: 2, color: { dark: "#000000", light: "#ffffff" } },
+    ).then(setQrDataUrl).catch(() => {});
+  }, []);
 
   async function handleCheckout() {
     setRedirecting(true);
@@ -57,52 +66,30 @@ function QrUpgradePrompt() {
   }
 
   return (
-    <div className="mt-10 flex flex-col items-center">
-      {/* Fake QR code — blurred with overlay */}
+    <div className="mt-8 flex flex-col items-center">
       <div className="relative">
-        {/* QR grid (decorative) */}
-        <div className="h-64 w-64 rounded-2xl border border-border-primary bg-white p-4 blur-[6px]">
-          <svg viewBox="0 0 200 200" className="h-full w-full">
-            {/* Generate a fake QR pattern */}
-            {Array.from({ length: 20 }).map((_, row) =>
-              Array.from({ length: 20 }).map((_, col) => {
-                // Deterministic pseudo-random pattern
-                const filled =
-                  (row < 7 && col < 7) ||
-                  (row < 7 && col > 12) ||
-                  (row > 12 && col < 7) ||
-                  ((row * 13 + col * 7 + row * col) % 3 === 0);
-                return filled ? (
-                  <rect
-                    key={`${row}-${col}`}
-                    x={col * 10}
-                    y={row * 10}
-                    width={10}
-                    height={10}
-                    fill="#000"
-                  />
-                ) : null;
-              })
-            )}
-          </svg>
-        </div>
+        {/* Real QR code — lightly blurred */}
+        {qrDataUrl && (
+          <div className="rounded-2xl border border-border-primary bg-white p-4 blur-[2px]">
+            <img
+              src={qrDataUrl}
+              alt=""
+              className="h-[400px] w-[400px]"
+              draggable={false}
+            />
+          </div>
+        )}
 
-        {/* Overlay card */}
+        {/* Overlay */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-72 rounded-xl border border-border-secondary bg-bg-secondary/95 p-5 text-center shadow-xl backdrop-blur-sm">
-            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-wa-green/10">
-              <svg className="h-5 w-5 text-wa-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <p className="mt-3 text-sm font-semibold text-text-primary">
-              Unlock WhatsApp Connection
+            <p className="text-sm font-semibold text-text-primary">
+              You need a connection slot
             </p>
             <p className="mt-1 text-xs text-text-secondary">
-              Purchase a slot to scan the QR code and connect your WhatsApp number.
+              Each WhatsApp connection costs $0.99/month.
             </p>
 
-            {/* Quantity picker */}
             <div className="mt-4 flex items-center justify-center gap-2">
               <div className="flex items-center rounded-lg border border-border-secondary">
                 <button
@@ -133,15 +120,11 @@ function QrUpgradePrompt() {
               disabled={redirecting}
               className="mt-3 w-full rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
             >
-              {redirecting ? "Redirecting..." : "Continue to Checkout"}
+              {redirecting ? "Redirecting..." : "Buy & Connect"}
             </button>
           </div>
         </div>
       </div>
-
-      <p className="mt-6 text-xs text-text-tertiary">
-        You&apos;re one step away from connecting your WhatsApp number.
-      </p>
     </div>
   );
 }
