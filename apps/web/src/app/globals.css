@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+@source "../../node_modules/fumadocs-ui/dist/**/*.js";
 
 @theme {
   /* Backgrounds */
@@ -52,8 +56,6 @@ html {
 }
 
 body {
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -63,20 +65,9 @@ body {
   color: var(--color-text-primary);
 }
 
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border-secondary);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-tertiary);
+/* Fumadocs dark theme — green accent overrides */
+:root.dark {
+  --color-fd-primary: #25D366;
+  --color-fd-primary-foreground: #0a0a0a;
+  --color-fd-ring: rgba(37, 211, 102, 0.4);
 }

@@ -11,6 +11,12 @@ export default function Home() {
           </Link>
           <div className="flex items-center gap-4">
             <Link
+              href="/docs"
+              className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Docs
+            </Link>
+            <Link
               href="/login"
               className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
             >
@@ -211,9 +217,17 @@ export default function Home() {
       <footer className="border-t border-border-primary px-6 py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <span className="text-sm font-semibold text-wa-green">WAHooks</span>
-          <span className="text-sm text-text-tertiary">
-            &copy; {new Date().getFullYear()} WAHooks. All rights reserved.
-          </span>
+          <div className="flex items-center gap-6">
+            <Link href="/docs" className="text-sm text-text-tertiary hover:text-text-primary transition-colors">
+              Documentation
+            </Link>
+            <a href="https://github.com/dhruvyad/wahooks" className="text-sm text-text-tertiary hover:text-text-primary transition-colors">
+              GitHub
+            </a>
+            <span className="text-sm text-text-tertiary">
+              &copy; {new Date().getFullYear()} WAHooks
+            </span>
+          </div>
         </div>
       </footer>
     </div>

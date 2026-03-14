@@ -6,7 +6,8 @@ export default function DocsRootLayout({ children }: { children: ReactNode }) {
   return (
     <DocsLayout
       tree={source.pageTree}
-      nav={{ title: 'WAHooks' }}
+      nav={{ title: 'WAHooks', url: '/docs' }}
+      githubUrl="https://github.com/dhruvyad/wahooks"
     >
       {children}
     </DocsLayout>

@@ -3,51 +3,97 @@ title: Introduction
 description: "Cloud-hosted WhatsApp API with managed webhooks"
 ---
 
-WAHooks lets you connect WhatsApp numbers to your application through a simple API. Send and receive messages, get real-time webhook notifications, and manage everything through the dashboard, CLI, or SDKs.
+WAHooks is a cloud-hosted WhatsApp API that lets you send messages, receive real-time webhooks, and manage WhatsApp connections — without running any infrastructure yourself.
+
+## Quick example
+
+<Tabs items={["TypeScript", "Python", "cURL"]}>
+  <Tab value="TypeScript">
+```typescript
+import { WAHooks } from '@wahooks/sdk';
+
+const client = new WAHooks({ apiKey: 'wh_...' });
+
+// Send a message
+await client.sendMessage(connectionId, '1234567890@s.whatsapp.net', 'Hello!');
+
+// Set up a webhook for incoming messages
+await client.createWebhook(connectionId, 'https://your-server.com/webhook');
+```
+  </Tab>
+  <Tab value="Python">
+```python
+from wahooks import WAHooks
+
+client = WAHooks(api_key="wh_...")
+
+# Send a message
+client.send_message(connection_id, chat_id="1234567890@s.whatsapp.net", text="Hello!")
+
+# Set up a webhook for incoming messages
+client.create_webhook(connection_id, url="https://your-server.com/webhook")
+```
+  </Tab>
+  <Tab value="cURL">
+```bash
+# Send a message
+curl -X POST https://api.wahooks.com/api/connections/CONNECTION_ID/send \
+  -H "Authorization: Bearer wh_..." \
+  -H "Content-Type: application/json" \
+  -d '{"chatId": "1234567890@s.whatsapp.net", "text": "Hello!"}'
+
+# Create a webhook
+curl -X POST https://api.wahooks.com/api/connections/CONNECTION_ID/webhooks \
+  -H "Authorization: Bearer wh_..." \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://your-server.com/webhook", "events": ["*"]}'
+```
+  </Tab>
+</Tabs>
 
 ## How it works
 
 <Steps>
   <Step>
     ### Connect a WhatsApp number
-    Create a connection and scan a QR code to link your WhatsApp account.
+    Create a connection and scan a QR code with WhatsApp to link your account. WAHooks provisions a dedicated cloud session that stays connected 24/7.
   </Step>
   <Step>
     ### Configure webhooks
-    Set up webhook URLs to receive real-time events when messages arrive.
+    Point webhook URLs at your server. When messages arrive, WAHooks delivers them as signed HTTP POST requests with automatic retries.
   </Step>
   <Step>
-    ### Send and receive messages
-    Use the API, SDK, or CLI to send messages and process incoming webhooks.
+    ### Build your app
+    Use the TypeScript or Python SDK to send messages, fetch chats, and manage connections. Or call the REST API directly.
   </Step>
 </Steps>
 
-## Key features
+## Why WAHooks
 
 <Cards>
-  <Card title="Managed Infrastructure">
-    No need to host WAHA yourself. WAHooks handles provisioning, scaling, and health monitoring.
+  <Card title="Zero infrastructure" href="/docs/concepts/connections">
+    WAHooks runs WAHA sessions in Kubernetes with automatic health monitoring, failover, and scaling. You just call the API.
   </Card>
-  <Card title="Webhook Delivery">
-    Reliable webhook delivery with HMAC-SHA256 signatures, exponential backoff, and delivery logs.
+  <Card title="Reliable webhooks" href="/docs/concepts/webhooks">
+    HMAC-SHA256 signed deliveries with exponential backoff (5 retries), delivery logs, and a dead-letter queue for failed events.
   </Card>
-  <Card title="SDKs">
-    Official Python and TypeScript SDKs with full API coverage.
+  <Card title="Official SDKs" href="/docs/sdk/typescript">
+    TypeScript and Python SDKs with full API coverage. Install with `npm install @wahooks/sdk` or `pip install wahooks`.
   </Card>
-  <Card title="CLI">
-    Full-featured CLI for managing connections, webhooks, and API tokens.
+  <Card title="CLI & API tokens" href="/docs/cli/installation">
+    Manage everything from the terminal. Browser-based login, auto-refreshing tokens, and long-lived API keys for your apps.
   </Card>
 </Cards>
 
-## Quick install
+## Install
 
-<Tabs items={["npm", "pip", "CLI"]}>
-  <Tab value="npm">
+<Tabs items={["TypeScript SDK", "Python SDK", "CLI"]}>
+  <Tab value="TypeScript SDK">
 ```bash
 npm install @wahooks/sdk
 ```
   </Tab>
-  <Tab value="pip">
+  <Tab value="Python SDK">
 ```bash
 pip install wahooks
 ```
@@ -63,9 +109,15 @@ curl -fsSL https://raw.githubusercontent.com/dhruvyad/wahooks/main/cli/install.s
 
 <Cards>
   <Card title="Quick Start" href="/docs/quickstart">
-    Get up and running in 5 minutes.
+    Connect a WhatsApp number, set up webhooks, and send your first message in 5 minutes.
   </Card>
   <Card title="API Reference" href="/docs/api-reference">
-    Explore the full REST API.
+    Explore all REST endpoints with request/response examples.
+  </Card>
+  <Card title="TypeScript SDK" href="/docs/sdk/typescript">
+    Full SDK reference with types, error handling, and examples.
+  </Card>
+  <Card title="Python SDK" href="/docs/sdk/python">
+    Full SDK reference with context manager support and error handling.
   </Card>
 </Cards>

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { RootProvider } from "fumadocs-ui/provider";
-import "fumadocs-ui/style.css";
+import { RootProvider } from "fumadocs-ui/provider/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,9 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-bg-primary text-text-primary antialiased">
-        <RootProvider>{children}</RootProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <RootProvider>
+          {children}
+        </RootProvider>
       </body>
     </html>
   );
