@@ -35,6 +35,7 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/signup") &&
     !request.nextUrl.pathname.startsWith("/auth/callback") &&
+    !request.nextUrl.pathname.startsWith("/cli/auth") &&
     request.nextUrl.pathname !== "/"
   ) {
     const url = request.nextUrl.clone();
@@ -43,8 +44,10 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages to dashboard
+  // (unless they have a redirect param, e.g. CLI auth flow)
   if (
     user &&
+    !request.nextUrl.searchParams.has("redirect") &&
     (request.nextUrl.pathname.startsWith("/login") ||
       request.nextUrl.pathname.startsWith("/signup"))
   ) {
