@@ -203,10 +203,11 @@ describe('StripeService', () => {
         data: [{
           id: 'sub_1',
           status: 'active',
-          current_period_end: periodEnd,
+          cancel_at_period_end: false,
           items: {
             data: [{
               quantity: 3,
+              current_period_end: periodEnd,
               price: { unit_amount: 500, currency: 'usd' },
             }],
           },
@@ -219,8 +220,9 @@ describe('StripeService', () => {
         active: true,
         slots: 3,
         status: 'active',
+        cancelAtPeriodEnd: false,
         currentPeriodEnd: new Date(periodEnd * 1000),
-        monthlyAmount: 15, // (500 * 3) / 100
+        monthlyAmount: 15,
         currency: 'usd',
       });
     });
@@ -234,6 +236,7 @@ describe('StripeService', () => {
         active: false,
         slots: 0,
         status: null,
+        cancelAtPeriodEnd: false,
         currentPeriodEnd: null,
         monthlyAmount: 0,
         currency: 'usd',
@@ -246,10 +249,11 @@ describe('StripeService', () => {
         data: [{
           id: 'sub_1',
           status: 'past_due',
-          current_period_end: periodEnd,
+          cancel_at_period_end: false,
           items: {
             data: [{
               quantity: 2,
+              current_period_end: periodEnd,
               price: { unit_amount: 500, currency: 'usd' },
             }],
           },

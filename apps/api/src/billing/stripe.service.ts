@@ -13,7 +13,7 @@ export class StripeService {
     const key = this.configService.get<string>('STRIPE_SECRET_KEY', '');
     this.stripe = new Stripe(
       key || 'sk_not_configured',
-      { apiVersion: '2024-06-20' as any },
+      { apiVersion: '2025-04-30.basil' as any },
     );
     this.usdPriceId = this.configService.get<string>(
       'STRIPE_USD_PRICE_ID', '',
@@ -151,12 +151,15 @@ export class StripeService {
     const qty = item?.quantity ?? 0;
     const unitAmount = item?.price?.unit_amount ?? 0;
 
+    // In basil API, current_period_end moved from Subscription to SubscriptionItem
+    const periodEnd = (item as any)?.current_period_end ?? 0;
+
     return {
       active: sub.status === 'active',
       slots: qty,
       status: sub.status,
-      cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? false,
-      currentPeriodEnd: new Date(((sub as any).current_period_end ?? 0) * 1000),
+      cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+      currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
       monthlyAmount: (unitAmount * qty) / 100,
       currency: item?.price?.currency ?? 'usd',
     };
