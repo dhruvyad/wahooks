@@ -1,25 +1,29 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { SignOutButton } from "./sign-out-button";
 import { NavLinks } from "./nav-links";
 import { ToastProvider } from "@/components/toast";
 import { ConfirmModalProvider } from "@/components/confirm-modal";
 import { AuthListener } from "@/components/auth-listener";
 
-export default async function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [email, setEmail] = useState<string | null>(null);
 
-  if (!user) {
-    redirect("/login");
-  }
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        setEmail(session.user.email);
+      }
+    });
+  }, []);
 
   return (
     <ToastProvider>
@@ -40,7 +44,7 @@ export default async function DashboardLayout({
             </div>
             <div className="border-t border-border-primary px-4 py-4">
               <p className="mb-3 truncate text-xs text-text-tertiary">
-                {user.email}
+                {email ?? "\u00A0"}
               </p>
               <SignOutButton />
             </div>
