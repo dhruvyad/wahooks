@@ -13,7 +13,7 @@ export class StripeService {
     const key = this.configService.get<string>('STRIPE_SECRET_KEY', '');
     this.stripe = new Stripe(
       key || 'sk_not_configured',
-      { apiVersion: '2025-04-30.basil' as any },
+      { apiVersion: '2024-06-20' as any },
     );
     this.usdPriceId = this.configService.get<string>(
       'STRIPE_USD_PRICE_ID', '',

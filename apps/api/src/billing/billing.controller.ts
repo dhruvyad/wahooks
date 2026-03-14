@@ -56,6 +56,7 @@ export class BillingController {
       subscription: {
         active: subscription.active,
         status: subscription.status,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         currentPeriodEnd: subscription.currentPeriodEnd,
         monthlyAmount: subscription.monthlyAmount,
         currency: subscription.currency,
