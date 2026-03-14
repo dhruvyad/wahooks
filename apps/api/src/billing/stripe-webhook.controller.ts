@@ -20,6 +20,9 @@ interface ExpressResponse {
 @Controller('stripe')
 export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);
+  // Track processed event IDs to prevent double-processing on retries
+  private readonly processedEvents = new Set<string>();
+  private readonly MAX_PROCESSED_EVENTS = 1000;
 
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
@@ -46,7 +49,19 @@ export class StripeWebhookController {
       return res.status(400).send(`Webhook Error: ${err}`);
     }
 
-    this.logger.log(`Stripe webhook: ${event.type}`);
+    // Idempotency: skip if we've already processed this event
+    if (this.processedEvents.has(event.id)) {
+      this.logger.log(`Stripe webhook: ${event.type} (event ${event.id} already processed, skipping)`);
+      return res.json({ received: true });
+    }
+    this.processedEvents.add(event.id);
+    // Prevent unbounded memory growth
+    if (this.processedEvents.size > this.MAX_PROCESSED_EVENTS) {
+      const oldest = this.processedEvents.values().next().value;
+      if (oldest) this.processedEvents.delete(oldest);
+    }
+
+    this.logger.log(`Stripe webhook: ${event.type} (event ${event.id})`);
 
     switch (event.type) {
       case 'customer.subscription.updated': {
