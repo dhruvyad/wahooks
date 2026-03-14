@@ -420,11 +420,17 @@ export default function ConnectionDetailPage() {
       };
 
       if (mediaFile) {
-        // Convert file to base64
-        const arrayBuffer = await mediaFile.arrayBuffer();
-        const base64 = btoa(
-          new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
-        );
+        // Convert file to base64 using FileReader (handles large files)
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            // Remove data URL prefix (data:image/png;base64,)
+            resolve(result.split(",")[1] || result);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(mediaFile);
+        });
         payload.mediaData = base64;
         payload.mimetype = mediaFile.type;
         payload.filename = mediaFile.name;
