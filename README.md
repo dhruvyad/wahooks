@@ -11,9 +11,9 @@
 
 <p align="center">
   <a href="https://wahooks.com"><img src="https://img.shields.io/badge/Website-wahooks.com-25D366" alt="Website"></a>
-  <a href="https://www.npmjs.com/package/wahooks"><img src="https://img.shields.io/npm/v/wahooks.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@wahooks/sdk"><img src="https://img.shields.io/npm/v/@wahooks/sdk.svg" alt="npm version"></a>
   <a href="https://pypi.org/project/wahooks/"><img src="https://img.shields.io/pypi/v/wahooks.svg" alt="PyPI version"></a>
-  <a href="https://discord.gg/B2XNf97Vby"><img src="https://img.shields.io/discord/1234567890?label=Discord&logo=discord" alt="Discord"></a>
+  <a href="https://discord.gg/B2XNf97Vby"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://x.com/dhruvyad"><img src="https://img.shields.io/twitter/follow/dhruvyad?style=social" alt="Twitter"></a>
 </p>
 
@@ -82,11 +82,11 @@ wahooks send <connection-id> --to 1234567890@s.whatsapp.net --text "Hello from W
 ### TypeScript
 
 ```bash
-npm install wahooks
+npm install @wahooks/sdk
 ```
 
 ```typescript
-import { WAHooks } from 'wahooks';
+import { WAHooks } from '@wahooks/sdk';
 
 const client = new WAHooks({ apiKey: 'wh_...' });
 const connections = await client.connections.list();
@@ -284,7 +284,3 @@ Join our [Discord](https://discord.gg/B2XNf97Vby) to discuss ideas and get help.
 [MIT](LICENSE)
 
 ---
-
-<p align="center">
-  brought to you by <a href="https://x.com/dhruvyad">@dhruvyad</a>
-</p>
