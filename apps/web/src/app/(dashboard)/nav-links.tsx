@@ -7,6 +7,7 @@ const navItems = [
   { href: "/connections", label: "Connections" },
   { href: "/tokens", label: "API Tokens" },
   { href: "/mcp", label: "MCP" },
+  { href: "/infrastructure", label: "Infrastructure" },
   { href: "/billing", label: "Billing" },
 ];
 
