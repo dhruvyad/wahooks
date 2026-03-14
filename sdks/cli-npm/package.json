@@ -1,0 +1,19 @@
+{
+  "name": "@wahooks/cli",
+  "version": "0.1.0",
+  "description": "WAHooks CLI — manage WhatsApp connections, webhooks, and billing",
+  "bin": {
+    "wahooks": "bin/wahooks"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": ["bin", "install.js"],
+  "keywords": ["wahooks", "whatsapp", "cli", "webhook"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dhruvyad/wahooks",
+    "directory": "sdks/cli-npm"
+  }
+}

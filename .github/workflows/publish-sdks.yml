@@ -16,6 +16,7 @@ jobs:
     outputs:
       ts-changed: ${{ steps.check.outputs.ts-changed }}
       py-changed: ${{ steps.check.outputs.py-changed }}
+      cli-changed: ${{ steps.check.outputs.cli-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,6 +30,9 @@ jobs:
           fi
           if git diff --name-only HEAD~1 HEAD | grep -q '^sdks/python/'; then
             echo "py-changed=true" >> $GITHUB_OUTPUT
+          fi
+          if git diff --name-only HEAD~1 HEAD | grep -q '^sdks/cli-npm/'; then
+            echo "cli-changed=true" >> $GITHUB_OUTPUT
           fi
 
   publish-typescript:
@@ -106,3 +110,36 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+  publish-cli-npm:
+    needs: check-versions
+    if: needs.check-versions.outputs.cli-changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Check if version exists
+        id: version-check
+        working-directory: sdks/cli-npm
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.exists == 'false'
+        working-directory: sdks/cli-npm
+        run: npm publish --access=public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

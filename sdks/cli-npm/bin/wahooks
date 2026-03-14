@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "wahooks CLI not installed. Run: npm rebuild @wahooks/cli"
+exit 1
