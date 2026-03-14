@@ -320,6 +320,12 @@ export default function Home() {
               Docs
             </Link>
             <a
+              href="https://discord.gg/B2XNf97Vby"
+              className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
+            >
+              Discord
+            </a>
+            <a
               href="https://github.com/dhruvyad/wahooks"
               className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
             >
@@ -330,6 +336,17 @@ export default function Home() {
             </span>
           </div>
         </div>
+        <p className="mt-4 text-center text-xs text-text-tertiary sm:mt-0">
+          brought to you by{" "}
+          <a
+            href="https://x.com/dhruvyad"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-text-secondary hover:text-text-primary transition-colors"
+          >
+            @dhruvyad
+          </a>
+        </p>
       </footer>
     </div>
   );

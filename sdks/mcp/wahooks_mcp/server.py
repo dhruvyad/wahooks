@@ -1,46 +1,21 @@
 """WAHooks MCP Server.
 
-Remote (OAuth via Supabase):
-  Deployed at api.wahooks.com/mcp — users just add the URL and log in.
-
-Local (API key):
-  WAHOOKS_API_KEY=wh_... wahooks-mcp
-
-Claude Desktop config:
-  {
-    "mcpServers": {
-      "wahooks": { "url": "https://api.wahooks.com/mcp" }
-    }
-  }
+Deployed at api.wahooks.com/mcp — users add the URL and authenticate via OAuth.
 """
 
 import os
-import sys
 
 import httpx
 from fastmcp import FastMCP, Context
+from fastmcp.server.auth.providers.supabase import SupabaseProvider
 
 API_BASE = os.environ.get("WAHOOKS_API_URL", "https://api.wahooks.com")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://fvatjlbtyegsqjuwbxxx.supabase.co")
 
-
-def _build_auth():
-    """Build auth provider: OAuth for remote, None for local with API key."""
-    api_key = os.environ.get("WAHOOKS_API_KEY")
-    if api_key:
-        return None  # Local mode — API key from env
-
-    # Remote mode — OAuth via Supabase (DCR enabled)
-    from fastmcp.server.auth.providers.supabase import SupabaseProvider
-
-    base_url = os.environ.get("MCP_BASE_URL", "https://api.wahooks.com")
-    return SupabaseProvider(
-        project_url=SUPABASE_URL,
-        base_url=base_url,
-    )
-
-
-auth = _build_auth()
+auth = SupabaseProvider(
+    project_url=SUPABASE_URL,
+    base_url=os.environ.get("MCP_BASE_URL", "https://api.wahooks.com"),
+)
 
 mcp = FastMCP(
     name="WAHooks",
@@ -59,32 +34,9 @@ mcp = FastMCP(
 # HTTP client helpers
 # ---------------------------------------------------------------------------
 
-_local_client: httpx.AsyncClient | None = None
-
-
-def _get_local_client() -> httpx.AsyncClient:
-    """Get a shared client for local (API key) mode."""
-    global _local_client
-    if _local_client is None or _local_client.is_closed:
-        api_key = os.environ["WAHOOKS_API_KEY"]
-        _local_client = httpx.AsyncClient(
-            base_url=f"{API_BASE}/api",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=120.0,
-        )
-    return _local_client
-
 
 async def _client_for_ctx(ctx: Context) -> httpx.AsyncClient:
-    """Get an HTTP client authenticated as the current user."""
-    api_key = os.environ.get("WAHOOKS_API_KEY")
-    if api_key:
-        return _get_local_client()
-
-    # OAuth mode — extract the Supabase access token from the HTTP request
+    """Get an HTTP client authenticated as the current user via OAuth."""
     try:
         request = ctx.get_http_request()
         auth_header = request.headers.get("authorization", "")

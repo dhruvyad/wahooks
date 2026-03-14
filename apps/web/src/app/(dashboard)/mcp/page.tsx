@@ -104,15 +104,6 @@ export default function McpPage() {
           <p className="mt-1.5 text-xs text-text-tertiary">Fully quit and restart Claude Desktop after editing.</p>
         </Section>
 
-        <Section id="local" title="Local Mode (API Key)">
-          <p>
-            Run the MCP server locally with your{" "}
-            <Link href="/tokens" className="text-wa-green hover:underline">API token</Link>:
-          </p>
-          <CodeBlock lang="bash" code="pip install wahooks-mcp" />
-          <CodeBlock lang="bash" code="WAHOOKS_API_KEY=wh_... wahooks-mcp" />
-        </Section>
-
         <Section id="verify" title="Verify">
           <p>Ask your AI assistant:</p>
           <CodeBlock code="List my WAHooks connections" />
