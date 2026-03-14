@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 import { BillingSkeleton } from "@/components/skeletons";
-import { getPricing, formatTotal } from "@/lib/pricing";
+import { usePricing, formatTotal } from "@/lib/pricing";
 
 interface BillingStatus {
   subscription: {
@@ -25,7 +25,7 @@ interface BillingStatus {
 
 function BillingContent() {
   const searchParams = useSearchParams();
-  const pricing = getPricing();
+  const pricing = usePricing();
   const [redirecting, setRedirecting] = useState(false);
   const [buyQuantity, setBuyQuantity] = useState(1);
 

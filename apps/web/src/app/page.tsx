@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { getPricing } from "@/lib/pricing";
+import { usePricing } from "@/lib/pricing";
 
 function CopySnippet({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -31,7 +31,7 @@ function CopySnippet({ text }: { text: string }) {
 }
 
 export default function Home() {
-  const pricing = getPricing();
+  const pricing = usePricing();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (

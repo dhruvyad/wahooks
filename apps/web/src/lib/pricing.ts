@@ -1,6 +1,8 @@
 "use client";
 
-interface Pricing {
+import { useState, useEffect } from "react";
+
+export interface Pricing {
   currency: "usd" | "inr";
   amount: number;
   symbol: string;
@@ -16,8 +18,17 @@ function getCountry(): string {
   return match?.[1] ?? "";
 }
 
-export function getPricing(): Pricing {
-  return getCountry() === "IN" ? INR : USD;
+/** Returns USD on first render (SSR-safe), then updates to INR if in India. */
+export function usePricing(): Pricing {
+  const [pricing, setPricing] = useState<Pricing>(USD);
+
+  useEffect(() => {
+    if (getCountry() === "IN") {
+      setPricing(INR);
+    }
+  }, []);
+
+  return pricing;
 }
 
 export function formatTotal(quantity: number, pricing: Pricing): string {

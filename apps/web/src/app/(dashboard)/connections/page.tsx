@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 import { StatusBadge } from "@/components/status-badge";
 import { ConnectionListSkeleton } from "@/components/skeletons";
-import { getPricing, formatTotal } from "@/lib/pricing";
+import { usePricing, formatTotal } from "@/lib/pricing";
 
 interface BillingSlots {
   paid: number;
@@ -37,7 +37,7 @@ function getStoredName(connectionId: string): string | null {
 /* ------------------------------------------------------------------ */
 
 function QrUpgradePrompt() {
-  const pricing = getPricing();
+  const pricing = usePricing();
   const [quantity, setQuantity] = useState(1);
   const [redirecting, setRedirecting] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
