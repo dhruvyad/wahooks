@@ -129,6 +129,16 @@ function BillingContent() {
                     {billing.slots.paid} slot{billing.slots.paid !== 1 ? "s" : ""} &middot;{" "}
                     {billing.subscription.currency.toUpperCase()}{" "}
                     {billing.subscription.monthlyAmount.toFixed(2)}/month
+                    {billing.subscription.currentPeriodEnd && (
+                      <span className="text-text-tertiary">
+                        {" "}&middot; Renews{" "}
+                        {new Date(billing.subscription.currentPeriodEnd).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <button
