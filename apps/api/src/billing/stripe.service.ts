@@ -21,7 +21,6 @@ export class StripeService {
     this.inrPriceId = this.configService.get<string>(
       'STRIPE_INR_PRICE_ID', '',
     ) || 'price_1TAtV31NPzR4qyVqSDNOfSNx';
-    );
     if (!key) {
       this.logger.warn('STRIPE_SECRET_KEY not set — billing calls will fail');
     }
