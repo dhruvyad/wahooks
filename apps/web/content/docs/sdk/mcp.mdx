@@ -1,0 +1,113 @@
+---
+title: MCP Server
+description: "Use WAHooks from Claude, ChatGPT, Cursor, and other AI assistants"
+---
+
+The WAHooks MCP (Model Context Protocol) server lets AI assistants manage WhatsApp connections, send messages, and configure webhooks directly.
+
+## Remote server (recommended)
+
+Add the WAHooks MCP server URL to your AI client. OAuth handles authentication — you'll be prompted to log in via your browser.
+
+### Claude Desktop
+
+Add to `~/.claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "wahooks": {
+      "url": "https://api.wahooks.com/mcp"
+    }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add wahooks https://api.wahooks.com/mcp
+```
+
+### Cursor
+
+Go to **Settings → MCP** and add:
+- **Name**: WAHooks
+- **URL**: `https://api.wahooks.com/mcp`
+
+## Local server (API key)
+
+For local or CI usage, run the MCP server with an API key:
+
+```bash
+pip install wahooks-mcp
+```
+
+```bash
+WAHOOKS_API_KEY=wh_... wahooks-mcp
+```
+
+Claude Desktop config for local mode:
+
+```json
+{
+  "mcpServers": {
+    "wahooks": {
+      "command": "wahooks-mcp",
+      "env": { "WAHOOKS_API_KEY": "wh_..." }
+    }
+  }
+}
+```
+
+## Available tools
+
+The MCP server exposes 18 tools:
+
+### Connections
+
+| Tool | Description |
+|------|-------------|
+| `list_connections` | List all active WhatsApp connections |
+| `create_connection` | Create a new connection (returns ID for QR scanning) |
+| `get_connection` | Get connection details by ID |
+| `delete_connection` | Stop and remove a connection |
+| `restart_connection` | Restart a connection (requires re-scanning QR) |
+| `get_qr` | Get QR code for linking WhatsApp |
+| `get_chats` | Get recent chats for a connection |
+| `get_profile` | Get WhatsApp profile info |
+
+### Messages
+
+| Tool | Description |
+|------|-------------|
+| `send_message` | Send a WhatsApp message (connection_id, chat_id, text) |
+
+### Webhooks
+
+| Tool | Description |
+|------|-------------|
+| `list_webhooks` | List webhook configs for a connection |
+| `create_webhook` | Create a webhook (connection_id, url, events) |
+| `update_webhook` | Update webhook URL, events, or active status |
+| `delete_webhook` | Delete a webhook |
+| `get_webhook_logs` | Get delivery logs for a webhook |
+| `test_webhook` | Send a test event to a webhook |
+
+### API Tokens
+
+| Tool | Description |
+|------|-------------|
+| `list_tokens` | List active API tokens |
+| `create_token` | Create a new API token |
+| `revoke_token` | Revoke an API token |
+
+## Example conversation
+
+Once connected, you can ask your AI assistant things like:
+
+- *"List my WhatsApp connections"*
+- *"Send 'Hello!' to 1234567890 on my WhatsApp connection"*
+- *"Create a webhook for my connection that sends events to https://example.com/hook"*
+- *"Show me the webhook delivery logs"*
+- *"Create an API token called 'production'"*

@@ -102,32 +102,30 @@ async def _client_for_ctx(ctx: Context) -> httpx.AsyncClient:
     )
 
 
-async def _get(path: str, ctx: Context) -> dict | list:
+async def _request(method: str, path: str, ctx: Context, json: dict | None = None) -> dict | list:
     client = await _client_for_ctx(ctx)
-    r = await client.get(path)
-    r.raise_for_status()
-    return r.json()
+    r = await client.request(method, path, json=json)
+    data = r.json() if r.content else {}
+    if not r.is_success:
+        msg = data.get("message", r.reason_phrase) if isinstance(data, dict) else r.reason_phrase
+        return {"error": msg, "statusCode": r.status_code}
+    return data
+
+
+async def _get(path: str, ctx: Context) -> dict | list:
+    return await _request("GET", path, ctx)
 
 
 async def _post(path: str, ctx: Context, json: dict | None = None) -> dict:
-    client = await _client_for_ctx(ctx)
-    r = await client.post(path, json=json)
-    r.raise_for_status()
-    return r.json()
+    return await _request("POST", path, ctx, json)
 
 
 async def _put(path: str, ctx: Context, json: dict) -> dict:
-    client = await _client_for_ctx(ctx)
-    r = await client.put(path, json=json)
-    r.raise_for_status()
-    return r.json()
+    return await _request("PUT", path, ctx, json)
 
 
 async def _delete(path: str, ctx: Context) -> dict:
-    client = await _client_for_ctx(ctx)
-    r = await client.delete(path)
-    r.raise_for_status()
-    return r.json()
+    return await _request("DELETE", path, ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +133,7 @@ async def _delete(path: str, ctx: Context) -> dict:
 # ---------------------------------------------------------------------------
 
 @mcp.tool
-async def list_connections(ctx: Context) -> list[dict]:
+async def list_connections(ctx: Context) -> list[dict] | dict:
     """List all active WhatsApp connections."""
     return await _get("/connections", ctx)
 
@@ -173,7 +171,7 @@ async def get_qr(connection_id: str, ctx: Context) -> dict:
 
 
 @mcp.tool
-async def get_chats(connection_id: str, ctx: Context) -> list[dict]:
+async def get_chats(connection_id: str, ctx: Context) -> list[dict] | dict:
     """Get recent WhatsApp chats for a connection. Returns chat IDs and names."""
     return await _get(f"/connections/{connection_id}/chats", ctx)
 
@@ -205,7 +203,7 @@ async def send_message(connection_id: str, chat_id: str, text: str, ctx: Context
 # ---------------------------------------------------------------------------
 
 @mcp.tool
-async def list_webhooks(connection_id: str, ctx: Context) -> list[dict]:
+async def list_webhooks(connection_id: str, ctx: Context) -> list[dict] | dict:
     """List webhook configurations for a connection."""
     return await _get(f"/connections/{connection_id}/webhooks", ctx)
 
@@ -264,7 +262,7 @@ async def delete_webhook(webhook_id: str, ctx: Context) -> dict:
 
 
 @mcp.tool
-async def get_webhook_logs(webhook_id: str, ctx: Context) -> list[dict]:
+async def get_webhook_logs(webhook_id: str, ctx: Context) -> list[dict] | dict:
     """Get delivery logs for a webhook. Shows event type, status, and payload."""
     return await _get(f"/webhooks/{webhook_id}/logs", ctx)
 
@@ -280,7 +278,7 @@ async def test_webhook(webhook_id: str, ctx: Context) -> dict:
 # ---------------------------------------------------------------------------
 
 @mcp.tool
-async def list_tokens(ctx: Context) -> list[dict]:
+async def list_tokens(ctx: Context) -> list[dict] | dict:
     """List active API tokens."""
     return await _get("/tokens", ctx)
 
