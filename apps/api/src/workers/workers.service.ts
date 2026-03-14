@@ -293,12 +293,16 @@ export class WorkersService {
       return;
     }
 
-    // 3. Scale up: only if ALL workers are full AND unassigned pending sessions exist
-    const hasAvailableCapacity = workers.some(
-      (w: any) => w.currentSessions < w.maxSessions,
-    );
+    // 3. Scale up: reactive (full + pending) or proactive (low remaining capacity)
+    const totalCapacity = workers.reduce((sum: number, w: any) => sum + w.maxSessions, 0);
+    const totalUsed = workers.reduce((sum: number, w: any) => sum + w.currentSessions, 0);
+    const remainingSlots = totalCapacity - totalUsed;
+    const PROACTIVE_THRESHOLD = 10; // Pre-warm when fewer than 10 slots remain
+
+    const hasAvailableCapacity = remainingSlots > 0;
 
     if (!hasAvailableCapacity) {
+      // Reactive: all workers full, check for pending sessions
       const pendingSessions = await this.db
         .select()
         .from(wahaSessions)
@@ -322,6 +326,19 @@ export class WorkersService {
         }
         return;
       }
+    } else if (remainingSlots <= PROACTIVE_THRESHOLD && !this.provisioningInProgress) {
+      // Proactive: capacity getting low, pre-warm a new worker
+      this.logger.log(
+        `Proactive scale-up: only ${remainingSlots} slots remaining across ${workers.length} workers (threshold: ${PROACTIVE_THRESHOLD}) — provisioning`,
+      );
+      try {
+        await this.findOrProvisionWorker();
+      } catch (error) {
+        this.logger.warn(
+          `Proactive scale-up failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return;
     }
 
     // 4. Scale down: if ALL workers below 30% and >1 workers
