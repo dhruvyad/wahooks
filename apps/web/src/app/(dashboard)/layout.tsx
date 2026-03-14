@@ -28,9 +28,10 @@ export default async function DashboardLayout({
             <div className="border-b border-border-primary px-6 py-5">
               <Link
                 href="/connections"
-                className="text-xl font-bold tracking-tight text-wa-green"
+                className="flex items-center gap-2.5"
               >
-                WAHooks
+                <img src="/logo.svg" alt="" className="h-7 w-7" />
+                <span className="text-xl font-bold tracking-tight text-wa-green">WAHooks</span>
               </Link>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-4">

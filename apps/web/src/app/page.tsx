@@ -6,8 +6,9 @@ export default function Home() {
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-border-primary bg-bg-primary/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-xl font-bold text-wa-green">
-            WAHooks
+          <Link href="/" className="flex items-center gap-2">
+            <img src="/logo.svg" alt="" className="h-7 w-7" />
+            <span className="text-xl font-bold text-wa-green">WAHooks</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link
@@ -216,7 +217,10 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-border-primary px-6 py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <span className="text-sm font-semibold text-wa-green">WAHooks</span>
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-wa-green">
+            <img src="/logo.svg" alt="" className="h-5 w-5" />
+            WAHooks
+          </span>
           <div className="flex items-center gap-6">
             <Link href="/docs" className="text-sm text-text-tertiary hover:text-text-primary transition-colors">
               Documentation

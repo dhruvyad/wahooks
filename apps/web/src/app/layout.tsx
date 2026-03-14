@@ -5,6 +5,13 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "WAHooks",
   description: "Cloud-hosted WhatsApp webhooks",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/logo.svg", type: "image/svg+xml" },
+    ],
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({

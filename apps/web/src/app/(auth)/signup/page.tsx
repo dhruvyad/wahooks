@@ -51,8 +51,9 @@ export default function SignupPage() {
       <div className="mb-8 text-center">
         <Link
           href="/"
-          className="text-2xl font-bold tracking-tight text-wa-green"
+          className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight text-wa-green"
         >
+          <img src="/logo.svg" alt="" className="h-8 w-8" />
           WAHooks
         </Link>
         <p className="mt-2 text-sm text-text-tertiary">
