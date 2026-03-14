@@ -124,7 +124,7 @@ Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test
 | Database + Auth | Supabase (Postgres + Auth) + Drizzle ORM |
 | Container Orchestration | Kubernetes (k3s on Hetzner Cloud via kube-hetzner Terraform module) |
 | Message Queue | BullMQ + Redis (in-cluster Deployment) |
-| Billing | Stripe — pure usage-based, hourly resolution ($0.25/connection/month). Not yet configured. |
+| Billing | Stripe — pure usage-based, monthly billing ($0.99/connection/month). Not yet configured. |
 | Repo | Turborepo + pnpm workspaces |
 | CI/CD | GitHub Actions: build Docker image → run migrations in-cluster → rolling deploy |
 | Deployment | Hetzner k3s cluster (API + Redis + WAHA), Vercel (web), Supabase (DB+Auth) |

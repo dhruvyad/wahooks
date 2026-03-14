@@ -135,9 +135,9 @@ export default function BillingPage() {
                   Set up billing to start using WAHooks. You will be charged
                   based on usage:{" "}
                   <span className="font-medium text-text-primary">
-                    $0.25 per connection per month
+                    $0.99 per connection per month
                   </span>
-                  , prorated to the hour.
+                  , billed monthly.
                 </p>
                 <button
                   onClick={handleSetupPayment}
@@ -228,7 +228,7 @@ export default function BillingPage() {
               </div>
             </div>
             <p className="mt-4 text-xs text-text-tertiary">
-              $0.25 per connection per month, billed hourly
+              $0.99 per connection per month, billed monthly
             </p>
           </div>
 
@@ -239,7 +239,7 @@ export default function BillingPage() {
             </h2>
             <p className="mt-2 text-sm text-text-secondary">
               You are billed based on usage. Each active WhatsApp connection
-              costs $0.25/month, prorated to the hour. You only pay for the
+              costs $0.99/month, billed monthly. You only pay for the
               time your connections are active.
             </p>
           </div>
