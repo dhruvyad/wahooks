@@ -25,9 +25,15 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Do not run code between createServerClient and
+  // supabase.auth.getClaims(). A simple mistake could make it very hard to
+  // debug issues with users being randomly logged out.
+  //
+  // getClaims() validates the JWT locally against the project's public keys
+  // (cached after first fetch), which is significantly faster than getUser()
+  // which makes a network request to Supabase Auth on every invocation.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims;
 
   // Redirect unauthenticated users to login (except auth pages and home)
   if (
