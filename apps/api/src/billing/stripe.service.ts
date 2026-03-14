@@ -155,7 +155,7 @@ export class StripeService {
       active: sub.status === 'active',
       slots: qty,
       status: sub.status,
-      currentPeriodEnd: new Date(sub.current_period_end * 1000),
+      currentPeriodEnd: new Date(((sub as any).current_period_end ?? 0) * 1000),
       monthlyAmount: (unitAmount * qty) / 100,
       currency: item?.price?.currency ?? 'usd',
     };
