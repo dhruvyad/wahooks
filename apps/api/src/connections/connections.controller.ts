@@ -76,39 +76,44 @@ export class ConnectionsController {
       const webhookUrl = `${apiUrl}/api/events/waha`;
       const wahaName = this.wahaService.resolveSessionName(sessionName);
 
-      // For WAHA Core (single session), clean up any existing failed session.
-      // Must logout (not just stop) to clear corrupted auth state.
+      // Clean up any existing session on this worker before creating a new one.
+      // In WAHA Core mode (1 session/pod), there can only be one session named "default".
       try {
-        const existing = await this.wahaService.getSession(
+        await this.wahaService.getSession(
           worker.internalIp,
           worker.apiKey,
           wahaName,
         );
-        if (
-          existing &&
-          (existing.status === 'FAILED' || existing.status === 'STOPPED')
-        ) {
-          this.logger.log(
-            `Existing WAHA session "${wahaName}" is ${existing.status}, logging out before re-create`,
+        // Session exists — delete it so we can create fresh with full config
+        this.logger.log(
+          `Existing WAHA session "${wahaName}" found, cleaning up before re-create`,
+        );
+        try {
+          await this.wahaService.stopSession(
+            worker.internalIp,
+            worker.apiKey,
+            wahaName,
           );
-          try {
-            await this.wahaService.stopSession(
-              worker.internalIp,
-              worker.apiKey,
-              wahaName,
-            );
-          } catch {
-            // Ignore stop errors
-          }
-          try {
-            await this.wahaService.logoutSession(
-              worker.internalIp,
-              worker.apiKey,
-              wahaName,
-            );
-          } catch {
-            // Ignore logout errors
-          }
+        } catch {
+          // Ignore
+        }
+        try {
+          await this.wahaService.logoutSession(
+            worker.internalIp,
+            worker.apiKey,
+            wahaName,
+          );
+        } catch {
+          // Ignore
+        }
+        try {
+          await this.wahaService.deleteSession(
+            worker.internalIp,
+            worker.apiKey,
+            wahaName,
+          );
+        } catch {
+          // Ignore
         }
       } catch {
         // Session doesn't exist yet — fine
@@ -194,32 +199,19 @@ export class ConnectionsController {
           return { connected: true };
         }
         if (session.status === 'FAILED' || session.status === 'STOPPED') {
-          // Logout to clear corrupted auth, then start fresh
           this.logger.log(
-            `Session ${wahaName} is ${session.status}, logging out and restarting...`,
+            `Session ${wahaName} is ${session.status}, resetting with full config...`,
           );
-          try {
-            await this.wahaService.stopSession(
-              worker.internalIp,
-              worker.apiKeyEnc,
-              wahaName,
-            );
-          } catch {
-            // Ignore
-          }
-          try {
-            await this.wahaService.logoutSession(
-              worker.internalIp,
-              worker.apiKeyEnc,
-              wahaName,
-            );
-          } catch {
-            // Ignore
-          }
-          await this.wahaService.startSession(
+          const apiUrl = this.configService.get<string>(
+            'API_URL',
+            'http://localhost:3001',
+          );
+          const webhookUrl = `${apiUrl}/api/events/waha`;
+          await this.wahaService.resetSession(
             worker.internalIp,
             worker.apiKeyEnc,
             wahaName,
+            webhookUrl,
           );
           await this.db
             .update(wahaSessions)
@@ -263,6 +255,12 @@ export class ConnectionsController {
       connection.sessionName,
     );
 
+    const apiUrl = this.configService.get<string>(
+      'API_URL',
+      'http://localhost:3001',
+    );
+    const webhookUrl = `${apiUrl}/api/events/waha`;
+
     try {
       await this.wahaService.restartSession(
         worker.internalIp,
@@ -270,32 +268,15 @@ export class ConnectionsController {
         wahaName,
       );
     } catch (error) {
-      // If restart fails, try logout + start to clear corrupted state
+      // If restart fails, do a full reset to clear corrupted state
       this.logger.warn(
-        `Restart failed for ${wahaName}, trying logout + start: ${error instanceof Error ? error.message : String(error)}`,
+        `Restart failed for ${wahaName}, doing full reset: ${error instanceof Error ? error.message : String(error)}`,
       );
-      try {
-        await this.wahaService.stopSession(
-          worker.internalIp,
-          worker.apiKeyEnc,
-          wahaName,
-        );
-      } catch {
-        // Ignore
-      }
-      try {
-        await this.wahaService.logoutSession(
-          worker.internalIp,
-          worker.apiKeyEnc,
-          wahaName,
-        );
-      } catch {
-        // Ignore
-      }
-      await this.wahaService.startSession(
+      await this.wahaService.resetSession(
         worker.internalIp,
         worker.apiKeyEnc,
         wahaName,
+        webhookUrl,
       );
     }
 

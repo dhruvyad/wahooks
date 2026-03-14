@@ -193,32 +193,19 @@ export class HealthService {
           .set({ status: 'failed', updatedAt: new Date() })
           .where(eq(wahaSessions.id, dbSession.id));
         try {
-          // Must logout to clear corrupted auth state, then start fresh
-          try {
-            await this.wahaService.stopSession(
-              worker.internalIp,
-              worker.apiKeyEnc,
-              wahaName,
-            );
-          } catch {
-            // Ignore
-          }
-          try {
-            await this.wahaService.logoutSession(
-              worker.internalIp,
-              worker.apiKeyEnc,
-              wahaName,
-            );
-          } catch {
-            // Ignore
-          }
-          await this.wahaService.startSession(
+          const apiUrl = this.configService.get<string>(
+            'API_URL',
+            'http://localhost:3001',
+          );
+          const webhookUrl = `${apiUrl}/api/events/waha`;
+          await this.wahaService.resetSession(
             worker.internalIp,
             worker.apiKeyEnc,
             wahaName,
+            webhookUrl,
           );
           this.logger.log(
-            `Logout + start initiated for failed session "${sessionName}" on worker ${worker.id}`,
+            `Reset initiated for failed session "${sessionName}" on worker ${worker.id}`,
           );
         } catch (error) {
           this.logger.error(
@@ -230,16 +217,22 @@ export class HealthService {
       case 'STOPPED':
         if (dbStatus === 'pending' || dbStatus === 'working' || dbStatus === 'scan_qr') {
           this.logger.warn(
-            `Session "${sessionName}" is STOPPED in WAHA but "${dbStatus}" in DB, attempting restart`,
+            `Session "${sessionName}" is STOPPED in WAHA but "${dbStatus}" in DB, resetting`,
           );
           try {
-            await this.wahaService.restartSession(
+            const apiUrl = this.configService.get<string>(
+              'API_URL',
+              'http://localhost:3001',
+            );
+            const webhookUrl = `${apiUrl}/api/events/waha`;
+            await this.wahaService.resetSession(
               worker.internalIp,
               worker.apiKeyEnc,
               wahaName,
+              webhookUrl,
             );
             this.logger.log(
-              `Restart initiated for stopped session "${sessionName}" on worker ${worker.id}`,
+              `Reset initiated for stopped session "${sessionName}" on worker ${worker.id}`,
             );
           } catch (error) {
             this.logger.error(

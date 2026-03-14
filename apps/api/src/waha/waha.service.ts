@@ -27,6 +27,38 @@ export class WahaService {
     return this.maxSessions === 1 ? 'default' : dbSessionName;
   }
 
+  /**
+   * Fully reset a WAHA session: stop → logout → delete → recreate with config.
+   * This ensures webhook URL and NOWEB store config are always preserved.
+   */
+  async resetSession(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    webhookUrl: string,
+  ): Promise<void> {
+    this.logger.log(
+      `Resetting session "${sessionName}" on worker ${workerUrl}`,
+    );
+    try {
+      await this.stopSession(workerUrl, apiKey, sessionName);
+    } catch {
+      // Ignore — may already be stopped
+    }
+    try {
+      await this.logoutSession(workerUrl, apiKey, sessionName);
+    } catch {
+      // Ignore — clears auth state
+    }
+    try {
+      await this.deleteSession(workerUrl, apiKey, sessionName);
+    } catch {
+      // Ignore — may not exist
+    }
+    await this.createSession(workerUrl, apiKey, sessionName, webhookUrl);
+    await this.startSession(workerUrl, apiKey, sessionName);
+  }
+
   getMaxSessions(): number {
     return this.maxSessions;
   }
@@ -159,6 +191,24 @@ export class WahaService {
     this.logger.log(`Stopping session "${sessionName}" on worker ${workerUrl}`);
 
     await this.request<void>('POST', url, headers);
+  }
+
+  async deleteSession(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+  ): Promise<void> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/sessions/${encodeURIComponent(sessionName)}`,
+    );
+    const headers = this.buildHeaders(apiKey);
+
+    this.logger.log(
+      `Deleting session "${sessionName}" on worker ${workerUrl}`,
+    );
+
+    await this.request<void>('DELETE', url, headers);
   }
 
   async getSession(

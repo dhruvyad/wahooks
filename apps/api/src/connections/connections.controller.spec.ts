@@ -28,7 +28,7 @@ describe('ConnectionsController', () => {
   let controller: ConnectionsController;
   let db: ReturnType<typeof createMockDb>;
   let workersService: { findOrProvisionWorker: jest.Mock; assignSession: jest.Mock; getWorkerForSession: jest.Mock; unassignSession: jest.Mock };
-  let wahaService: { createSession: jest.Mock; startSession: jest.Mock; stopSession: jest.Mock; getQrCode: jest.Mock; restartSession: jest.Mock; resolveSessionName: jest.Mock };
+  let wahaService: { createSession: jest.Mock; startSession: jest.Mock; stopSession: jest.Mock; getQrCode: jest.Mock; restartSession: jest.Mock; resetSession: jest.Mock; deleteSession: jest.Mock; getSession: jest.Mock; resolveSessionName: jest.Mock };
   let configService: { get: jest.Mock };
 
   beforeEach(async () => {
@@ -47,6 +47,9 @@ describe('ConnectionsController', () => {
       stopSession: jest.fn(),
       getQrCode: jest.fn(),
       restartSession: jest.fn(),
+      resetSession: jest.fn(),
+      deleteSession: jest.fn(),
+      getSession: jest.fn().mockRejectedValue(new Error('Not found')),
       resolveSessionName: jest.fn().mockImplementation((name: string) => name),
     };
 
