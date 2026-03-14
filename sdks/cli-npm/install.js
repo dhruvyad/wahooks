@@ -73,6 +73,6 @@ async function install() {
 
 install().catch((err) => {
   console.error("Failed to install wahooks CLI:", err.message);
-  console.error("You can install manually: curl -fsSL https://raw.githubusercontent.com/dhruvyad/wahooks/main/cli/install.sh | bash");
+  console.error("You can install manually: curl -fsSL https://wahooks.com/install | bash");
   process.exit(1);
 });

@@ -3,7 +3,13 @@ title: Installation
 description: "Install the WAHooks CLI"
 ---
 
-## Install via script (macOS/Linux)
+## Homebrew (macOS/Linux)
+
+```bash
+brew install dhruvyad/tap/wahooks
+```
+
+## Install script (macOS/Linux)
 
 ```bash
 curl -fsSL https://wahooks.com/install | bash
@@ -11,13 +17,13 @@ curl -fsSL https://wahooks.com/install | bash
 
 This downloads the correct binary for your platform and installs it to `/usr/local/bin`.
 
-## Install via npm
+## npm
 
 ```bash
 npm install -g @wahooks/cli
 ```
 
-## Install from GitHub Releases
+## GitHub Releases
 
 Download the binary for your platform from [GitHub Releases](https://github.com/dhruvyad/wahooks/releases):
 
@@ -28,13 +34,6 @@ Download the binary for your platform from [GitHub Releases](https://github.com/
 | Linux (x86_64) | `wahooks-linux-amd64` |
 | Linux (ARM64) | `wahooks-linux-arm64` |
 | Windows | `wahooks-windows-amd64.exe` |
-
-```bash
-# Example: macOS Apple Silicon
-curl -fsSL https://github.com/dhruvyad/wahooks/releases/latest/download/wahooks-darwin-arm64 -o wahooks
-chmod +x wahooks
-sudo mv wahooks /usr/local/bin/
-```
 
 ## Verify installation
 

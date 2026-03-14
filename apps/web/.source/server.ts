@@ -17,13 +17,13 @@ import * as __fd_glob_31 from "../content/docs/api-reference/connections/get.mdx
 import * as __fd_glob_30 from "../content/docs/api-reference/connections/delete.mdx?collection=docs"
 import * as __fd_glob_29 from "../content/docs/api-reference/connections/create.mdx?collection=docs"
 import * as __fd_glob_28 from "../content/docs/api-reference/connections/chats.mdx?collection=docs"
-import * as __fd_glob_27 from "../content/docs/sdk/typescript.mdx?collection=docs"
-import * as __fd_glob_26 from "../content/docs/sdk/python.mdx?collection=docs"
-import * as __fd_glob_25 from "../content/docs/sdk/mcp.mdx?collection=docs"
-import * as __fd_glob_24 from "../content/docs/quickstart/send-messages.mdx?collection=docs"
-import * as __fd_glob_23 from "../content/docs/quickstart/receive-webhooks.mdx?collection=docs"
-import * as __fd_glob_22 from "../content/docs/quickstart/index.mdx?collection=docs"
-import * as __fd_glob_21 from "../content/docs/quickstart/create-connection.mdx?collection=docs"
+import * as __fd_glob_27 from "../content/docs/quickstart/send-messages.mdx?collection=docs"
+import * as __fd_glob_26 from "../content/docs/quickstart/receive-webhooks.mdx?collection=docs"
+import * as __fd_glob_25 from "../content/docs/quickstart/index.mdx?collection=docs"
+import * as __fd_glob_24 from "../content/docs/quickstart/create-connection.mdx?collection=docs"
+import * as __fd_glob_23 from "../content/docs/sdk/typescript.mdx?collection=docs"
+import * as __fd_glob_22 from "../content/docs/sdk/python.mdx?collection=docs"
+import * as __fd_glob_21 from "../content/docs/sdk/mcp.mdx?collection=docs"
 import * as __fd_glob_20 from "../content/docs/concepts/webhooks.mdx?collection=docs"
 import * as __fd_glob_19 from "../content/docs/concepts/webhook-signatures.mdx?collection=docs"
 import * as __fd_glob_18 from "../content/docs/concepts/connections.mdx?collection=docs"
@@ -36,13 +36,13 @@ import * as __fd_glob_12 from "../content/docs/cli/authentication.mdx?collection
 import * as __fd_glob_11 from "../content/docs/api-reference/index.mdx?collection=docs"
 import * as __fd_glob_10 from "../content/docs/api-reference/authentication.mdx?collection=docs"
 import * as __fd_glob_9 from "../content/docs/index.mdx?collection=docs"
-import { default as __fd_glob_8 } from "../content/docs/api-reference/tokens/meta.json?collection=docs"
-import { default as __fd_glob_7 } from "../content/docs/api-reference/connections/meta.json?collection=docs"
-import { default as __fd_glob_6 } from "../content/docs/api-reference/webhooks/meta.json?collection=docs"
+import { default as __fd_glob_8 } from "../content/docs/api-reference/webhooks/meta.json?collection=docs"
+import { default as __fd_glob_7 } from "../content/docs/api-reference/tokens/meta.json?collection=docs"
+import { default as __fd_glob_6 } from "../content/docs/api-reference/connections/meta.json?collection=docs"
 import { default as __fd_glob_5 } from "../content/docs/sdk/meta.json?collection=docs"
 import { default as __fd_glob_4 } from "../content/docs/quickstart/meta.json?collection=docs"
-import { default as __fd_glob_3 } from "../content/docs/concepts/meta.json?collection=docs"
-import { default as __fd_glob_2 } from "../content/docs/cli/meta.json?collection=docs"
+import { default as __fd_glob_3 } from "../content/docs/cli/meta.json?collection=docs"
+import { default as __fd_glob_2 } from "../content/docs/concepts/meta.json?collection=docs"
 import { default as __fd_glob_1 } from "../content/docs/api-reference/meta.json?collection=docs"
 import { default as __fd_glob_0 } from "../content/docs/meta.json?collection=docs"
 import { server } from 'fumadocs-mdx/runtime/server';
@@ -53,4 +53,4 @@ const create = server<typeof Config, import("fumadocs-mdx/runtime/types").Intern
   }
 }>({"doc":{"passthroughs":["extractedReferences"]}});
 
-export const docs = await create.docs("docs", "content/docs", {"meta.json": __fd_glob_0, "api-reference/meta.json": __fd_glob_1, "cli/meta.json": __fd_glob_2, "concepts/meta.json": __fd_glob_3, "quickstart/meta.json": __fd_glob_4, "sdk/meta.json": __fd_glob_5, "api-reference/webhooks/meta.json": __fd_glob_6, "api-reference/connections/meta.json": __fd_glob_7, "api-reference/tokens/meta.json": __fd_glob_8, }, {"index.mdx": __fd_glob_9, "api-reference/authentication.mdx": __fd_glob_10, "api-reference/index.mdx": __fd_glob_11, "cli/authentication.mdx": __fd_glob_12, "cli/connections.mdx": __fd_glob_13, "cli/installation.mdx": __fd_glob_14, "cli/tokens.mdx": __fd_glob_15, "cli/webhooks.mdx": __fd_glob_16, "concepts/api-tokens.mdx": __fd_glob_17, "concepts/connections.mdx": __fd_glob_18, "concepts/webhook-signatures.mdx": __fd_glob_19, "concepts/webhooks.mdx": __fd_glob_20, "quickstart/create-connection.mdx": __fd_glob_21, "quickstart/index.mdx": __fd_glob_22, "quickstart/receive-webhooks.mdx": __fd_glob_23, "quickstart/send-messages.mdx": __fd_glob_24, "sdk/mcp.mdx": __fd_glob_25, "sdk/python.mdx": __fd_glob_26, "sdk/typescript.mdx": __fd_glob_27, "api-reference/connections/chats.mdx": __fd_glob_28, "api-reference/connections/create.mdx": __fd_glob_29, "api-reference/connections/delete.mdx": __fd_glob_30, "api-reference/connections/get.mdx": __fd_glob_31, "api-reference/connections/list.mdx": __fd_glob_32, "api-reference/connections/profile.mdx": __fd_glob_33, "api-reference/connections/qr.mdx": __fd_glob_34, "api-reference/connections/restart.mdx": __fd_glob_35, "api-reference/connections/send.mdx": __fd_glob_36, "api-reference/tokens/create.mdx": __fd_glob_37, "api-reference/tokens/list.mdx": __fd_glob_38, "api-reference/tokens/revoke.mdx": __fd_glob_39, "api-reference/webhooks/create.mdx": __fd_glob_40, "api-reference/webhooks/delete.mdx": __fd_glob_41, "api-reference/webhooks/list.mdx": __fd_glob_42, "api-reference/webhooks/logs.mdx": __fd_glob_43, "api-reference/webhooks/test.mdx": __fd_glob_44, "api-reference/webhooks/update.mdx": __fd_glob_45, });
+export const docs = await create.docs("docs", "content/docs", {"meta.json": __fd_glob_0, "api-reference/meta.json": __fd_glob_1, "concepts/meta.json": __fd_glob_2, "cli/meta.json": __fd_glob_3, "quickstart/meta.json": __fd_glob_4, "sdk/meta.json": __fd_glob_5, "api-reference/connections/meta.json": __fd_glob_6, "api-reference/tokens/meta.json": __fd_glob_7, "api-reference/webhooks/meta.json": __fd_glob_8, }, {"index.mdx": __fd_glob_9, "api-reference/authentication.mdx": __fd_glob_10, "api-reference/index.mdx": __fd_glob_11, "cli/authentication.mdx": __fd_glob_12, "cli/connections.mdx": __fd_glob_13, "cli/installation.mdx": __fd_glob_14, "cli/tokens.mdx": __fd_glob_15, "cli/webhooks.mdx": __fd_glob_16, "concepts/api-tokens.mdx": __fd_glob_17, "concepts/connections.mdx": __fd_glob_18, "concepts/webhook-signatures.mdx": __fd_glob_19, "concepts/webhooks.mdx": __fd_glob_20, "sdk/mcp.mdx": __fd_glob_21, "sdk/python.mdx": __fd_glob_22, "sdk/typescript.mdx": __fd_glob_23, "quickstart/create-connection.mdx": __fd_glob_24, "quickstart/index.mdx": __fd_glob_25, "quickstart/receive-webhooks.mdx": __fd_glob_26, "quickstart/send-messages.mdx": __fd_glob_27, "api-reference/connections/chats.mdx": __fd_glob_28, "api-reference/connections/create.mdx": __fd_glob_29, "api-reference/connections/delete.mdx": __fd_glob_30, "api-reference/connections/get.mdx": __fd_glob_31, "api-reference/connections/list.mdx": __fd_glob_32, "api-reference/connections/profile.mdx": __fd_glob_33, "api-reference/connections/qr.mdx": __fd_glob_34, "api-reference/connections/restart.mdx": __fd_glob_35, "api-reference/connections/send.mdx": __fd_glob_36, "api-reference/tokens/create.mdx": __fd_glob_37, "api-reference/tokens/list.mdx": __fd_glob_38, "api-reference/tokens/revoke.mdx": __fd_glob_39, "api-reference/webhooks/create.mdx": __fd_glob_40, "api-reference/webhooks/delete.mdx": __fd_glob_41, "api-reference/webhooks/list.mdx": __fd_glob_42, "api-reference/webhooks/logs.mdx": __fd_glob_43, "api-reference/webhooks/test.mdx": __fd_glob_44, "api-reference/webhooks/update.mdx": __fd_glob_45, });
