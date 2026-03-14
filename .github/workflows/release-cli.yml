@@ -65,3 +65,69 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#cli-v}"
+
+          # Calculate SHA256 for each platform
+          SHA_DARWIN_ARM64=$(shasum -a 256 artifacts/wahooks-darwin-arm64 | cut -d' ' -f1)
+          SHA_DARWIN_AMD64=$(shasum -a 256 artifacts/wahooks-darwin-amd64 | cut -d' ' -f1)
+          SHA_LINUX_AMD64=$(shasum -a 256 artifacts/wahooks-linux-amd64 | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(shasum -a 256 artifacts/wahooks-linux-arm64 | cut -d' ' -f1)
+
+          # Clone tap repo
+          git clone https://x-access-token:${GH_TOKEN}@github.com/dhruvyad/homebrew-tap.git /tmp/tap
+          cd /tmp/tap
+
+          # Generate updated formula
+          cat > Formula/wahooks.rb << FORMULA
+          class Wahooks < Formula
+            desc "CLI for WAHooks — manage WhatsApp connections, webhooks, and messaging"
+            homepage "https://github.com/dhruvyad/wahooks"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/dhruvyad/wahooks/releases/download/cli-v#{version}/wahooks-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/dhruvyad/wahooks/releases/download/cli-v#{version}/wahooks-darwin-amd64"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/dhruvyad/wahooks/releases/download/cli-v#{version}/wahooks-linux-arm64"
+                sha256 "${SHA_LINUX_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/dhruvyad/wahooks/releases/download/cli-v#{version}/wahooks-linux-amd64"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+            end
+
+            def install
+              binary = Dir["wahooks-*"].first || "wahooks"
+              bin.install binary => "wahooks"
+            end
+
+            test do
+              assert_match "WAHooks CLI", shell_output("#{bin}/wahooks --help")
+            end
+          end
+          FORMULA
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' Formula/wahooks.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/wahooks.rb
+          git commit -m "Update wahooks to v${VERSION}" || echo "No changes"
+          git push
