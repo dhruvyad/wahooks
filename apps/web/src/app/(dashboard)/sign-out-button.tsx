@@ -9,8 +9,8 @@ export function SignOutButton() {
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    // Use window.location for a hard redirect to clear all client state
+    window.location.href = "/login";
   }
 
   return (
