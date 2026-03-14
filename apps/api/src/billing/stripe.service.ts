@@ -124,6 +124,7 @@ export class StripeService {
     active: boolean;
     slots: number;
     status: string | null;
+    cancelAtPeriodEnd: boolean;
     currentPeriodEnd: Date | null;
     monthlyAmount: number;
     currency: string;
@@ -138,6 +139,7 @@ export class StripeService {
         active: false,
         slots: 0,
         status: null,
+        cancelAtPeriodEnd: false,
         currentPeriodEnd: null,
         monthlyAmount: 0,
         currency: 'usd',
@@ -153,6 +155,7 @@ export class StripeService {
       active: sub.status === 'active',
       slots: qty,
       status: sub.status,
+      cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? false,
       currentPeriodEnd: new Date(((sub as any).current_period_end ?? 0) * 1000),
       monthlyAmount: (unitAmount * qty) / 100,
       currency: item?.price?.currency ?? 'usd',

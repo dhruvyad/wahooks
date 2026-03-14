@@ -54,28 +54,37 @@ export class StripeWebhookController {
         const customerId = subscription.customer as string;
         const newQuantity = subscription.items?.data?.[0]?.quantity ?? 0;
         const status = subscription.status;
+        const cancelAtPeriodEnd = subscription.cancel_at_period_end ?? false;
 
         this.logger.log(
-          `Subscription updated: customer=${customerId} status=${status} quantity=${newQuantity}`,
+          `Subscription updated: customer=${customerId} status=${status} quantity=${newQuantity} cancelAtPeriodEnd=${cancelAtPeriodEnd}`,
         );
 
-        // If subscription is canceled or unpaid, stop excess connections
-        if (status === 'canceled' || status === 'unpaid') {
+        if (cancelAtPeriodEnd && status === 'active') {
+          // User clicked "Cancel" — they keep access until period end.
+          // No action needed. Connections stay active.
+          this.logger.log(
+            `Subscription will cancel at period end — no action until then`,
+          );
+        } else if (status === 'canceled' || status === 'unpaid') {
+          // Subscription actually expired or payment failed permanently
           await this.enforceSlotLimit(customerId, 0);
         } else if (status === 'active' || status === 'past_due') {
-          // Enforce new quantity — stop connections that exceed the new limit
+          // Quantity changed (upgrade/downgrade) — enforce new limit
           await this.enforceSlotLimit(customerId, newQuantity);
         }
         break;
       }
 
       case 'customer.subscription.deleted': {
+        // Fires when the subscription period actually ends after cancellation
         const subscription = event.data.object as any;
         const customerId = subscription.customer as string;
 
-        this.logger.log(`Subscription deleted: customer=${customerId}`);
+        this.logger.log(
+          `Subscription expired: customer=${customerId} — stopping all connections`,
+        );
 
-        // Stop all connections for this customer
         await this.enforceSlotLimit(customerId, 0);
         break;
       }

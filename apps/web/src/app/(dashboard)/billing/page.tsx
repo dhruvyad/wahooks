@@ -10,6 +10,7 @@ interface BillingStatus {
   subscription: {
     active: boolean;
     status: string | null;
+    cancelAtPeriodEnd: boolean;
     currentPeriodEnd: string | null;
     monthlyAmount: number;
     currency: string;
@@ -121,9 +122,15 @@ function BillingContent() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold text-text-primary">Subscription</h2>
-                    <span className="rounded-full bg-status-success-bg px-2 py-0.5 text-[10px] font-medium text-status-success-text">
-                      Active
-                    </span>
+                    {billing.subscription.cancelAtPeriodEnd ? (
+                      <span className="rounded-full bg-status-warning-bg px-2 py-0.5 text-[10px] font-medium text-status-warning-text">
+                        Canceling
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-status-success-bg px-2 py-0.5 text-[10px] font-medium text-status-success-text">
+                        Active
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 text-sm text-text-secondary">
                     {billing.slots.paid} slot{billing.slots.paid !== 1 ? "s" : ""} &middot;{" "}
@@ -131,7 +138,8 @@ function BillingContent() {
                     {billing.subscription.monthlyAmount.toFixed(2)}/month
                     {billing.subscription.currentPeriodEnd && (
                       <span className="text-text-tertiary">
-                        {" "}&middot; Renews{" "}
+                        {" "}&middot;{" "}
+                        {billing.subscription.cancelAtPeriodEnd ? "Expires" : "Renews"}{" "}
                         {new Date(billing.subscription.currentPeriodEnd).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
