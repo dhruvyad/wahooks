@@ -326,12 +326,13 @@ export class WahaService {
   ): Promise<{ profilePictureUrl: string | null }> {
     const url = this.buildUrl(
       workerUrl,
-      `/api/${encodeURIComponent(sessionName)}/contacts/${encodeURIComponent(contactId)}/profile-picture`,
+      `/api/contacts/profile-picture?contactId=${encodeURIComponent(contactId)}&session=${encodeURIComponent(sessionName)}`,
     );
     const headers = this.buildHeaders(apiKey);
 
     try {
-      return await this.request<{ profilePictureUrl: string | null }>('GET', url, headers);
+      const result = await this.request<{ profilePictureURL: string | null }>('GET', url, headers);
+      return { profilePictureUrl: result.profilePictureURL };
     } catch {
       return { profilePictureUrl: null };
     }
