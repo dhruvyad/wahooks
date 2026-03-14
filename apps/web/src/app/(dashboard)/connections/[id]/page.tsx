@@ -872,7 +872,7 @@ export default function ConnectionDetailPage() {
                           )}
                           <button
                             type="submit"
-                            disabled={sending || !mediaUrl.trim()}
+                            disabled={sending || (!mediaFile && !mediaUrl.trim())}
                             className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
                           >
                             {sending ? "Sending..." : "Send"}
