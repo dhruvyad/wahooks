@@ -2,13 +2,12 @@ import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
 import { eq, ne, sql, and } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
-import { AdminOnly } from '../auth/admin.guard';
+import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 
 @Controller('infrastructure')
-@UseGuards(AuthGuard)
-@AdminOnly()
+@UseGuards(AuthGuard, AdminGuard)
 export class WorkersController {
   constructor(@Inject(DRIZZLE_TOKEN) private readonly db: any) {}
 

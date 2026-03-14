@@ -3,7 +3,6 @@ import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
-import { AdminGuard } from './auth/admin.guard';
 import { AppController } from "./app.controller";
 import { DatabaseModule } from "./database/database.module";
 import { OrchestrationModule } from "./orchestration/orchestration.module";
@@ -42,10 +41,6 @@ import { BillingModule } from "./billing/billing.module";
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: AdminGuard,
     },
   ],
 })
