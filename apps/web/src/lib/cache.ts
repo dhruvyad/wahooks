@@ -31,6 +31,9 @@ export function useApiData<T>(
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
 
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
   const fetchFnRef = useRef(fetchFn);
   fetchFnRef.current = fetchFn;
   const keyRef = useRef(key);
@@ -79,14 +82,14 @@ export function useApiData<T>(
       }
       const newData =
         typeof updater === "function"
-          ? (updater as (prev: T | null) => T | null)(data)
+          ? (updater as (prev: T | null) => T | null)(dataRef.current)
           : updater;
       if (newData !== null) {
-        cache.set(key, { data: newData, timestamp: Date.now() });
+        cache.set(keyRef.current, { data: newData, timestamp: Date.now() });
       }
       setData(newData);
     },
-    [key, data, revalidate]
+    [revalidate]
   );
 
   return { data, loading, error, mutate };

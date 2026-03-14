@@ -43,7 +43,7 @@ function QrUpgradePrompt() {
   useEffect(() => {
     QRCode.toDataURL(
       "https://wahooks.com/connect/placeholder-session-id",
-      { width: 400, margin: 2, color: { dark: "#000000", light: "#ffffff" } },
+      { width: 400, margin: 0, color: { dark: "#000000", light: "#ffffff" } },
     ).then(setQrDataUrl).catch(() => {});
   }, []);
 
@@ -70,11 +70,11 @@ function QrUpgradePrompt() {
       <div className="relative">
         {/* Real QR code — lightly blurred */}
         {qrDataUrl && (
-          <div className="rounded-2xl border border-border-primary bg-white p-4 blur-[2px]">
+          <div className="rounded-2xl border border-border-primary bg-white p-3 blur-[2px]">
             <img
               src={qrDataUrl}
               alt=""
-              className="h-[400px] w-[400px]"
+              className="h-[320px] w-[320px]"
               draggable={false}
             />
           </div>
