@@ -1,0 +1,55 @@
+---
+title: "List Chats"
+api: "GET /api/connections/{id}/chats"
+description: "Retrieve recent WhatsApp chats for a connection."
+---
+
+Returns the most recent WhatsApp chats (up to 20) for the specified connection. The connection must be in `online` status for this endpoint to return results.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Supabase Auth. Format: `Bearer <token>`
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the connection.
+</ParamField>
+
+<ResponseExample>
+```json 200
+[
+  {
+    "id": "1234567890@c.us",
+    "name": "John Doe",
+    "conversationTimestamp": 1710410700
+  },
+  {
+    "id": "0987654321@c.us",
+    "name": "Jane Smith",
+    "conversationTimestamp": 1710407100
+  },
+  {
+    "id": "1122334455-group@g.us",
+    "name": "Team Chat",
+    "conversationTimestamp": 1710403500
+  }
+]
+```
+
+```json 401
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json 404
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```
+</ResponseExample>

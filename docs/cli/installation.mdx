@@ -1,0 +1,53 @@
+---
+title: Installation
+description: "Install the WAHooks CLI"
+---
+
+## Install via script (macOS/Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dhruvyad/wahooks/main/cli/install.sh | bash
+```
+
+This downloads the correct binary for your platform and installs it to `/usr/local/bin`.
+
+## Install via npm
+
+```bash
+npm install -g @wahooks/cli
+```
+
+## Install from GitHub Releases
+
+Download the binary for your platform from [GitHub Releases](https://github.com/dhruvyad/wahooks/releases):
+
+| Platform | Binary |
+|----------|--------|
+| macOS (Apple Silicon) | `wahooks-darwin-arm64` |
+| macOS (Intel) | `wahooks-darwin-amd64` |
+| Linux (x86_64) | `wahooks-linux-amd64` |
+| Linux (ARM64) | `wahooks-linux-arm64` |
+| Windows | `wahooks-windows-amd64.exe` |
+
+```bash
+# Example: macOS Apple Silicon
+curl -fsSL https://github.com/dhruvyad/wahooks/releases/latest/download/wahooks-darwin-arm64 -o wahooks
+chmod +x wahooks
+sudo mv wahooks /usr/local/bin/
+```
+
+## Verify installation
+
+```bash
+wahooks --help
+```
+
+## Configure API URL
+
+By default the CLI points to `https://api.wahooks.com`. To change it:
+
+```bash
+wahooks config api-url https://api.wahooks.com
+```
+
+Config is stored at `~/.wahooks.json`.

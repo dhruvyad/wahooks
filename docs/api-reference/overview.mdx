@@ -1,0 +1,51 @@
+---
+title: API Overview
+description: "WAHooks REST API reference"
+---
+
+Base URL: `https://api.wahooks.com/api`
+
+## Authentication
+
+All endpoints (except health check) require authentication via the `Authorization` header:
+
+```
+Authorization: Bearer wh_your_api_token
+```
+
+Both API tokens (`wh_...`) and Supabase JWTs are accepted. See [API Tokens](/concepts/api-tokens) for details.
+
+## Response format
+
+All responses are JSON. Successful responses return the resource directly. Errors return:
+
+```json
+{
+  "message": "Connection not found",
+  "error": "Not Found",
+  "statusCode": 404
+}
+```
+
+## Status codes
+
+| Code | Meaning |
+|------|---------|
+| 200 | Success |
+| 201 | Created (POST requests) |
+| 401 | Invalid or missing authentication |
+| 403 | Forbidden (resource belongs to another user) |
+| 404 | Resource not found |
+| 503 | Service unavailable (worker still booting) |
+
+## Rate limiting
+
+The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'll receive a 429 response.
+
+## Endpoints
+
+| Group | Endpoints |
+|-------|-----------|
+| [Connections](/api-reference/connections/list) | CRUD, QR codes, chats, profile, send messages |
+| [Webhooks](/api-reference/webhooks/list) | CRUD, delivery logs, test events |
+| [Tokens](/api-reference/tokens/list) | Create, list, revoke API tokens |

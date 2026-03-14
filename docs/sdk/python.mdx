@@ -1,0 +1,132 @@
+---
+title: Python SDK
+description: "Official WAHooks SDK for Python"
+---
+
+## Installation
+
+```bash
+pip install wahooks
+```
+
+Requires Python 3.8+. Uses [httpx](https://www.python-httpx.org/) for HTTP requests.
+
+## Quick start
+
+```python
+from wahooks import WAHooks
+
+client = WAHooks(api_key="wh_...")
+
+# List connections
+connections = client.list_connections()
+
+# Send a message
+client.send_message(connection_id, chat_id="1234@s.whatsapp.net", text="Hello!")
+```
+
+## Configuration
+
+```python
+client = WAHooks(
+    api_key="wh_...",
+    base_url="https://api.wahooks.com",  # optional, defaults to production
+)
+```
+
+The client can be used as a context manager:
+
+```python
+with WAHooks(api_key="wh_...") as client:
+    connections = client.list_connections()
+# HTTP connection closed automatically
+```
+
+## API Reference
+
+### Connections
+
+```python
+# List all active connections
+connections = client.list_connections()
+
+# Create a new connection
+connection = client.create_connection()
+
+# Get connection details
+connection = client.get_connection(connection_id)
+
+# Delete a connection
+client.delete_connection(connection_id)
+
+# Restart a connection
+connection = client.restart_connection(connection_id)
+
+# Get QR code for linking
+qr = client.get_qr(connection_id)
+# qr["value"] = base64 PNG
+
+# Get recent chats
+chats = client.get_chats(connection_id)
+
+# Get WhatsApp profile info
+profile = client.get_profile(connection_id)
+
+# Send a text message
+result = client.send_message(connection_id, chat_id="1234@s.whatsapp.net", text="Hello!")
+```
+
+### Webhooks
+
+```python
+# List webhooks for a connection
+webhooks = client.list_webhooks(connection_id)
+
+# Create a webhook
+webhook = client.create_webhook(
+    connection_id,
+    url="https://example.com/hook",
+    events=["message", "message.any"],  # optional, defaults to ["*"]
+)
+
+# Update a webhook
+updated = client.update_webhook(webhook_id, url="https://example.com/new", active=False)
+
+# Delete a webhook
+client.delete_webhook(webhook_id)
+
+# Get delivery logs
+logs = client.get_webhook_logs(webhook_id)
+
+# Send a test event
+result = client.test_webhook(webhook_id)
+```
+
+### API Tokens
+
+```python
+# List active tokens
+tokens = client.list_tokens()
+
+# Create a new token (raw token shown once)
+token = client.create_token("my-token")
+print(token["token"])  # "wh_a1b2c3..."
+
+# Revoke a token
+client.revoke_token(token_id)
+```
+
+## Error handling
+
+The SDK raises `WAHooksError` for non-2xx responses:
+
+```python
+from wahooks import WAHooks, WAHooksError
+
+try:
+    client.get_connection("nonexistent-id")
+except WAHooksError as e:
+    print(e)              # "Connection not found"
+    print(e.status_code)  # 404
+    print(e.body)         # full error response dict
+```

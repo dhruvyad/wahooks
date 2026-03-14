@@ -1,0 +1,49 @@
+---
+title: "Restart Connection"
+api: "POST /api/connections/{id}/restart"
+description: "Restart the WAHA session for a connection."
+---
+
+Restarts the underlying WAHA session for the specified connection. This is useful when a connection is in a failed state or needs to be re-initialized. After restarting, the connection status will be set to `scan_qr` and you may need to re-scan the QR code to re-link your WhatsApp account.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Supabase Auth. Format: `Bearer <token>`
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the connection to restart.
+</ParamField>
+
+<ResponseExample>
+```json 200
+{
+  "id": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "userId": "a80ffc98-6f8b-4f96-a633-f756124c16af",
+  "workerId": "w9a8b7c6-d5e4-3f21-0fed-cba987654321",
+  "sessionName": "u_a80ffc98_s_c1a2b3c4",
+  "phoneNumber": "+1234567890",
+  "status": "scan_qr",
+  "engine": "NOWEB",
+  "createdAt": "2026-03-14T10:00:00.000Z",
+  "updatedAt": "2026-03-14T12:30:00.000Z"
+}
+```
+
+```json 401
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json 404
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```
+</ResponseExample>

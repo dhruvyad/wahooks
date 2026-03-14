@@ -1,0 +1,146 @@
+---
+title: TypeScript SDK
+description: "Official WAHooks SDK for TypeScript and JavaScript"
+---
+
+## Installation
+
+```bash
+npm install @wahooks/sdk
+```
+
+## Quick start
+
+```typescript
+import { WAHooks } from '@wahooks/sdk';
+
+const client = new WAHooks({ apiKey: 'wh_...' });
+
+// List connections
+const connections = await client.listConnections();
+
+// Send a message
+await client.sendMessage(connectionId, '1234@s.whatsapp.net', 'Hello!');
+```
+
+## Configuration
+
+```typescript
+const client = new WAHooks({
+  apiKey: 'wh_...',
+  baseUrl: 'https://api.wahooks.com', // optional, defaults to production
+});
+```
+
+## API Reference
+
+### Connections
+
+```typescript
+// List all active connections
+const connections: Connection[] = await client.listConnections();
+
+// Create a new connection
+const connection: Connection = await client.createConnection();
+
+// Get connection details
+const connection: Connection = await client.getConnection(id);
+
+// Delete a connection
+await client.deleteConnection(id);
+
+// Restart a connection
+const connection: Connection = await client.restartConnection(id);
+
+// Get QR code for linking
+const qr = await client.getQR(connectionId);
+// qr.value = base64 PNG
+
+// Get recent chats
+const chats: Chat[] = await client.getChats(connectionId);
+
+// Get WhatsApp profile info
+const profile: Profile = await client.getProfile(connectionId);
+
+// Send a text message
+const result: SendResult = await client.sendMessage(connectionId, chatId, text);
+```
+
+### Webhooks
+
+```typescript
+// List webhooks for a connection
+const webhooks: WebhookConfig[] = await client.listWebhooks(connectionId);
+
+// Create a webhook
+const webhook: WebhookConfig = await client.createWebhook(
+  connectionId,
+  'https://example.com/hook',
+  ['message', 'message.any'] // optional, defaults to ['*']
+);
+
+// Update a webhook
+const updated: WebhookConfig = await client.updateWebhook(webhookId, {
+  url: 'https://example.com/new-hook',
+  events: ['message'],
+  active: false,
+});
+
+// Delete a webhook
+await client.deleteWebhook(webhookId);
+
+// Get delivery logs
+const logs: WebhookLog[] = await client.getWebhookLogs(webhookId);
+
+// Send a test event
+const result = await client.testWebhook(webhookId);
+```
+
+### API Tokens
+
+```typescript
+// List active tokens
+const tokens: ApiToken[] = await client.listTokens();
+
+// Create a new token (raw token shown once)
+const token = await client.createToken('my-token');
+console.log(token.token); // "wh_a1b2c3..."
+
+// Revoke a token
+await client.revokeToken(tokenId);
+```
+
+## Error handling
+
+The SDK throws `WAHooksError` for non-2xx responses:
+
+```typescript
+import { WAHooks } from '@wahooks/sdk';
+
+try {
+  await client.getConnection('nonexistent-id');
+} catch (error) {
+  if (error instanceof Error && 'statusCode' in error) {
+    console.log(error.message);    // "Connection not found"
+    console.log(error.statusCode); // 404
+    console.log(error.body);       // full error response
+  }
+}
+```
+
+## Types
+
+The SDK exports all types for TypeScript users:
+
+```typescript
+import type {
+  Connection,
+  WebhookConfig,
+  WebhookLog,
+  ApiToken,
+  Chat,
+  Profile,
+  SendResult,
+  WAHooksOptions,
+} from '@wahooks/sdk';
+```

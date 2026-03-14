@@ -1,0 +1,68 @@
+---
+title: Send Messages
+description: "Send WhatsApp messages through the API"
+---
+
+Send text messages to any WhatsApp contact or group through a connected number.
+
+## Send a message
+
+<CodeGroup>
+```typescript TypeScript
+const result = await client.sendMessage(
+  connectionId,
+  '1234567890@s.whatsapp.net',
+  'Hello from WAHooks!'
+);
+console.log(result.id); // message ID
+```
+
+```python Python
+result = client.send_message(
+    connection_id,
+    chat_id="1234567890@s.whatsapp.net",
+    text="Hello from WAHooks!",
+)
+print(result["id"])
+```
+
+```bash CLI
+wahooks connections send CONNECTION_ID 1234567890@s.whatsapp.net "Hello from WAHooks!"
+```
+
+```bash cURL
+curl -X POST https://api.wahooks.com/api/connections/CONNECTION_ID/send \
+  -H "Authorization: Bearer wh_..." \
+  -H "Content-Type: application/json" \
+  -d '{"chatId": "1234567890@s.whatsapp.net", "text": "Hello from WAHooks!"}'
+```
+</CodeGroup>
+
+## Chat ID format
+
+| Type | Format | Example |
+|------|--------|---------|
+| Individual | `{phone}@s.whatsapp.net` | `1234567890@s.whatsapp.net` |
+| Group | `{id}@g.us` | `120363419246216126@g.us` |
+
+<Tip>
+  Use the [chats endpoint](/api-reference/connections/chats) to discover chat IDs
+  for existing conversations.
+</Tip>
+
+## Anti-spam protection
+
+WAHooks automatically follows WhatsApp anti-blocking best practices when sending messages:
+
+1. **Mark as seen** — acknowledges the conversation
+2. **Start typing** — shows typing indicator
+3. **Random delay** — 1-3s base + ~50ms per character (max 8s)
+4. **Stop typing** — clears indicator
+5. **Send message** — delivers the text
+
+This happens transparently — you just call `sendMessage` and the delay is handled server-side.
+
+<Warning>
+  WhatsApp may block numbers that send too many messages too quickly or send
+  unsolicited messages. Always respect WhatsApp's terms of service.
+</Warning>

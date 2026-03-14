@@ -1,0 +1,50 @@
+---
+title: "Get QR Code"
+api: "GET /api/connections/{id}/qr"
+description: "Retrieve the QR code for linking a WhatsApp account to a connection."
+---
+
+Returns the QR code as a base64-encoded PNG image. Scan this QR code with your WhatsApp mobile app to link the account to this connection.
+
+The QR code is only available when the connection is in `scan_qr` status. If the worker pod is still booting, a `503` response will be returned -- poll this endpoint until the QR code becomes available.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Supabase Auth. Format: `Bearer <token>`
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the connection.
+</ParamField>
+
+<ResponseExample>
+```json 200
+{
+  "value": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+}
+```
+
+```json 401
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json 404
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```
+
+```json 503
+{
+  "statusCode": 503,
+  "message": "Worker is booting, please retry in a few seconds"
+}
+```
+</ResponseExample>

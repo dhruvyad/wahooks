@@ -1,0 +1,89 @@
+---
+title: Connections
+description: "Manage WhatsApp connections from the CLI"
+---
+
+## List connections
+
+```bash
+wahooks connections list
+```
+
+```
+ID                                    STATUS      SESSION                         PHONE
+────────────────────────────────────  ──────────  ──────────────────────────────  ──────────────
+24ed01e6-bd9b-4f24-94b7-f4834c0b28c2  working     u_a80ffc986f8b_s_35a28b3871e5
+
+1 connection(s)
+```
+
+## Create a connection
+
+```bash
+wahooks connections create
+```
+
+```
+Created connection d7e5f208-... (status: pending)
+```
+
+## Get QR code
+
+```bash
+wahooks connections qr CONNECTION_ID --poll
+```
+
+The `--poll` flag retries until the QR is available (worker may need a few seconds to boot). The QR code is saved as a PNG file and opened automatically.
+
+## Get connection details
+
+```bash
+wahooks connections get CONNECTION_ID
+```
+
+## Get WhatsApp profile
+
+```bash
+wahooks connections me CONNECTION_ID
+```
+
+## List recent chats
+
+```bash
+wahooks connections chats CONNECTION_ID
+```
+
+## Send a message
+
+```bash
+wahooks connections send CONNECTION_ID CHAT_ID "Your message here"
+```
+
+Example:
+```bash
+wahooks connections send d7e5f208-... 1234567890@s.whatsapp.net "Hello from CLI!"
+```
+
+## Restart a connection
+
+```bash
+wahooks connections restart CONNECTION_ID
+```
+
+This fully resets the WAHA session (you'll need to scan QR again).
+
+## Delete a connection
+
+```bash
+wahooks connections delete CONNECTION_ID
+```
+
+## Aliases
+
+All connection commands support the alias `conn` or `c`:
+
+```bash
+wahooks c list
+wahooks c create
+wahooks c qr CONNECTION_ID --poll
+```

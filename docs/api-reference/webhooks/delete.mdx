@@ -1,0 +1,41 @@
+---
+title: "Delete Webhook"
+api: "DELETE /api/webhooks/{id}"
+description: "Delete a webhook configuration."
+---
+
+Permanently deletes the specified webhook configuration. Events will no longer be delivered to the configured URL. This action cannot be undone.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Supabase Auth. Format: `Bearer <token>`
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the webhook configuration to delete.
+</ParamField>
+
+<ResponseExample>
+```json 200
+{
+  "success": true
+}
+```
+
+```json 401
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json 404
+{
+  "statusCode": 404,
+  "message": "Webhook not found"
+}
+```
+</ResponseExample>

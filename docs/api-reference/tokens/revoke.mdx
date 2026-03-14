@@ -1,0 +1,41 @@
+---
+title: "Revoke API Token"
+api: "DELETE /api/tokens/{id}"
+description: "Revoke and permanently delete an API token."
+---
+
+Permanently revokes the specified API token. Any requests using this token will immediately begin returning `401 Unauthorized`. This action cannot be undone.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token from Supabase Auth. Format: `Bearer <token>`
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the API token to revoke.
+</ParamField>
+
+<ResponseExample>
+```json 200
+{
+  "success": true
+}
+```
+
+```json 401
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json 404
+{
+  "statusCode": 404,
+  "message": "Token not found"
+}
+```
+</ResponseExample>
