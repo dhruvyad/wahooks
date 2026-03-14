@@ -5,7 +5,10 @@ import time
 sys.path.insert(0, ".")
 from wahooks import WAHooks, WAHooksError
 
-API_KEY = os.environ.get("WAHOOKS_API_KEY", "wh_12c6edf917ce7e093a43748def67971e563162ba313e8ca9")
+API_KEY = os.environ.get("WAHOOKS_API_KEY")
+if not API_KEY:
+    print("Set WAHOOKS_API_KEY environment variable")
+    sys.exit(1)
 client = WAHooks(api_key=API_KEY)
 
 passed = 0

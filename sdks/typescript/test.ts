@@ -1,6 +1,10 @@
 import { WAHooks } from './src';
 
-const API_KEY = process.env.WAHOOKS_API_KEY || 'wh_12c6edf917ce7e093a43748def67971e563162ba313e8ca9';
+const API_KEY = process.env.WAHOOKS_API_KEY;
+if (!API_KEY) {
+  console.error('Set WAHOOKS_API_KEY environment variable');
+  process.exit(1);
+}
 const client = new WAHooks({ apiKey: API_KEY });
 
 let passed = 0;
