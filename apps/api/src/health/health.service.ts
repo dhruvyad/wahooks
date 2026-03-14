@@ -130,6 +130,14 @@ export class HealthService {
     worker: any,
     dbSession: any,
   ): Promise<void> {
+    // Don't create sessions on workers that are draining or stopped
+    if (worker.status === 'draining' || worker.status === 'stopped') {
+      this.logger.log(
+        `Skipping auto-create on ${worker.status} worker ${worker.id}`,
+      );
+      return;
+    }
+
     const wahaName = this.wahaService.resolveSessionName(
       dbSession.sessionName,
     );

@@ -333,31 +333,59 @@ export class WorkersService {
 
     if (allUnderThreshold) {
       // Find highest-ordinal worker to drain
-      const drainTarget = [...workers].sort((a: any, b: any) => {
+      const sorted = [...workers].sort((a: any, b: any) => {
         const ordA = parseInt(a.podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
         const ordB = parseInt(b.podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
         return ordB - ordA;
-      })[0];
+      });
 
-      this.logger.log(
-        `All workers below 30%, draining ${drainTarget.podName} (${drainTarget.currentSessions} sessions)`,
+      // Skip workers that have 'working' sessions (active WhatsApp connections)
+      const workingSessionCounts = await Promise.all(
+        sorted.map(async (w: any) => {
+          const rows = await this.db
+            .select({ count: sql`count(*)` })
+            .from(wahaSessions)
+            .where(
+              and(
+                eq(wahaSessions.workerId, w.id),
+                eq(wahaSessions.status, 'working'),
+              ),
+            );
+          return { worker: w, workingCount: Number(rows[0]?.count ?? 0) };
+        }),
       );
 
-      // If it has sessions, stop them first (they're all scan_qr/pending anyway)
-      if (drainTarget.currentSessions > 0) {
+      // Find first drainable worker (no working sessions, highest ordinal)
+      const drainTarget = workingSessionCounts.find((x) => x.workingCount === 0);
+
+      if (!drainTarget) {
+        this.logger.log(
+          'All workers below 30% but all have working sessions — skipping drain',
+        );
+        return;
+      }
+
+      const target = drainTarget.worker;
+      this.logger.log(
+        `All workers below 30%, draining ${target.podName} (${target.currentSessions} sessions, 0 working)`,
+      );
+
+      // Stop non-working sessions (scan_qr, pending, failed) on this worker
+      if (target.currentSessions > 0) {
         await this.db
           .update(wahaSessions)
           .set({ status: 'stopped', workerId: null })
           .where(
             and(
-              eq(wahaSessions.workerId, drainTarget.id),
+              eq(wahaSessions.workerId, target.id),
               ne(wahaSessions.status, 'stopped'),
+              ne(wahaSessions.status, 'working'),
             ),
           );
-        await this.reconcileWorkerCounter(drainTarget.id);
+        await this.reconcileWorkerCounter(target.id);
       }
 
-      await this.drainWorker(drainTarget.id);
+      await this.drainWorker(target.id);
     }
   }
 

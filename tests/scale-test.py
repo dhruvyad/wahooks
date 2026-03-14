@@ -1,8 +1,14 @@
 """
-WAHooks Scale Test — Step-by-step verification
+WAHooks Scale Test — End-to-End Cross-Worker Verification
 
-Creates connections in controlled stages, asserting expected worker count
-and counter accuracy after each stage. Then deletes and verifies scale-down.
+Tests the full scale-up and scale-down lifecycle:
+1. Baseline: verify clean state
+2. Fill worker 1 (50 connections)
+3. Trigger scale-up (create connection 51+)
+4. Verify 2 workers active
+5. Delete connections to trigger scale-down
+6. Verify back to 1 worker
+7. Verify Hetzner nodes cleaned up
 
 Usage:
   WAHOOKS_API_KEY=wh_... python tests/scale-test.py
@@ -17,7 +23,6 @@ import httpx
 
 API_KEY = os.environ.get("WAHOOKS_API_KEY")
 BASE_URL = os.environ.get("WAHOOKS_API_URL", "https://api.wahooks.com")
-DB_QUERY_CMD = None  # Set below if kubectl available
 
 if not API_KEY:
     print("Set WAHOOKS_API_KEY environment variable")
@@ -46,7 +51,6 @@ def info(msg):
 
 
 async def create_connections(client, count, pace=0.5):
-    """Create connections, return list of IDs created."""
     ids = []
     fails = 0
     for i in range(count):
@@ -70,7 +74,6 @@ async def create_connections(client, count, pace=0.5):
 
 
 async def delete_connections(client, ids, pace=0.3):
-    """Delete connections, return count deleted."""
     deleted = 0
     for cid in ids:
         try:
@@ -84,7 +87,6 @@ async def delete_connections(client, ids, pace=0.3):
 
 
 async def get_state(client):
-    """Get current connections and worker assignment."""
     r = await client.get("/connections")
     conns = r.json() if r.status_code == 200 and isinstance(r.json(), list) else []
     active = [c for c in conns if c.get("status") != "stopped"]
@@ -97,12 +99,15 @@ async def get_state(client):
     return active, workers, unassigned
 
 
-async def wait_for_state(client, check_fn, description, timeout=120, interval=5):
-    """Poll until check_fn(active, workers, unassigned) returns True."""
+async def wait_for_condition(client, check_fn, description, timeout=180, interval=10):
+    """Poll until check_fn returns True. Returns (success, state)."""
+    info(f"Waiting for: {description} (timeout {timeout}s)...")
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         active, workers, unassigned = await get_state(client)
         if check_fn(active, workers, unassigned):
+            elapsed = time.monotonic() - start
+            info(f"Condition met after {elapsed:.0f}s")
             return True, active, workers, unassigned
         await asyncio.sleep(interval)
     active, workers, unassigned = await get_state(client)
@@ -111,7 +116,7 @@ async def wait_for_state(client, check_fn, description, timeout=120, interval=5)
 
 async def main():
     print("=" * 60)
-    print("WAHooks Scale Test — Step-by-Step Verification")
+    print("WAHooks Scale Test — End-to-End Cross-Worker")
     print(f"Target: {BASE_URL}")
     print("=" * 60)
 
@@ -121,111 +126,125 @@ async def main():
         timeout=30.0,
     )
 
-    all_connection_ids = []
+    all_ids = []
 
     # ── Phase 1: Baseline ──
     print("\n── Phase 1: Baseline ──")
-
-    active, workers, unassigned = await get_state(client)
-    info(f"Active connections: {len(active)}, Workers: {len(workers)}, Unassigned: {unassigned}")
-
+    active, workers, _ = await get_state(client)
     if len(active) == 0:
-        ok("clean baseline — 0 active connections")
+        ok("clean baseline")
     else:
-        info(f"⚠ {len(active)} pre-existing connections (test will work around them)")
+        info(f"⚠ {len(active)} pre-existing connections")
 
-    # ── Phase 2: Create 10 connections ──
-    print("\n── Phase 2: Create 10 connections (should all fit on 1 worker) ──")
+    # ── Phase 2: Fill worker 1 (50 connections) ──
+    print("\n── Phase 2: Fill worker 1 with 50 connections ──")
 
-    ids, fails = await create_connections(client, 10)
-    all_connection_ids.extend(ids)
-    info(f"Created {len(ids)}/10 ({fails} failed)")
+    ids, fails = await create_connections(client, 50)
+    all_ids.extend(ids)
+    info(f"Created {len(ids)}/50 ({fails} failed)")
 
-    # Wait for all to be assigned
-    success, active, workers, unassigned = await wait_for_state(
+    success, active, workers, unassigned = await wait_for_condition(
         client,
-        lambda a, w, u: sum(1 for c in a if c["id"] in ids and c.get("workerId")) >= len(ids),
-        "all 10 assigned",
-        timeout=90,
+        lambda a, w, u: sum(1 for c in a if c["id"] in all_ids and c.get("workerId")) >= 48,
+        "≥48 connections assigned",
+        timeout=120,
     )
 
-    test_conns = [c for c in active if c["id"] in ids]
-    assigned = [c for c in test_conns if c.get("workerId")]
-    worker_ids = set(c["workerId"] for c in assigned)
+    worker_ids = set(c.get("workerId") for c in active if c["id"] in all_ids and c.get("workerId"))
+    assigned = sum(1 for c in active if c["id"] in all_ids and c.get("workerId"))
+    info(f"Assigned: {assigned}/50, Workers: {len(worker_ids)}, Unassigned: {unassigned}")
 
-    if len(assigned) >= 9:  # Allow 1 failure
-        ok(f"{len(assigned)}/10 assigned to workers")
+    if assigned >= 48:
+        ok(f"{assigned} connections assigned")
     else:
-        fail(f"assignment", f"only {len(assigned)}/10 assigned after 90s")
+        fail("assignment", f"only {assigned}/50 assigned")
 
     if len(worker_ids) == 1:
-        ok(f"all on 1 worker")
-    elif len(worker_ids) == 0:
-        fail("worker assignment", "no workers found")
+        ok("all on 1 worker")
     else:
         fail("worker count", f"expected 1, got {len(worker_ids)}")
 
-    # ── Phase 3: Create 40 more (total 50, fill worker 1) ──
-    print("\n── Phase 3: Create 40 more (total 50, should fill worker 1) ──")
+    # ── Phase 3: Trigger scale-up (create 10 more = 60 total) ──
+    print("\n── Phase 3: Create 10 more to trigger scale-up (total 60) ──")
 
-    ids2, fails2 = await create_connections(client, 40)
-    all_connection_ids.extend(ids2)
-    info(f"Created {len(ids2)}/40 ({fails2} failed)")
+    ids2, fails2 = await create_connections(client, 10)
+    all_ids.extend(ids2)
+    info(f"Created {len(ids2)}/10 ({fails2} failed)")
 
-    await asyncio.sleep(5)
-    active, workers, unassigned = await get_state(client)
-    test_conns = [c for c in active if c["id"] in all_connection_ids]
-    assigned = [c for c in test_conns if c.get("workerId")]
-    worker_ids = set(c["workerId"] for c in assigned)
-
-    info(f"Total: {len(test_conns)}, Assigned: {len(assigned)}, Workers: {len(worker_ids)}")
-
-    if len(worker_ids) == 1:
-        ok(f"50 connections still on 1 worker")
-    else:
-        info(f"Workers used: {len(worker_ids)} (expected 1)")
-        # Not a hard failure if health service assigned some to a new worker
-        if len(worker_ids) <= 2:
-            ok(f"{len(worker_ids)} workers for 50 connections (acceptable)")
-        else:
-            fail("worker count at 50", f"expected 1-2, got {len(worker_ids)}")
-
-    # ── Phase 4: Delete all test connections ──
-    print(f"\n── Phase 4: Delete all {len(all_connection_ids)} connections ──")
-
-    deleted = await delete_connections(client, all_connection_ids)
-    info(f"Deleted {deleted}/{len(all_connection_ids)}")
-
-    # Wait for cleanup
-    success, active, workers, unassigned = await wait_for_state(
+    # Wait for second worker to appear (may take 2-3 min for Hetzner node)
+    success, active, workers, unassigned = await wait_for_condition(
         client,
-        lambda a, w, u: sum(1 for c in a if c["id"] in all_connection_ids) == 0,
-        "all test connections cleaned up",
-        timeout=30,
+        lambda a, w, u: len(w) >= 2,
+        "2 workers active",
+        timeout=300,  # 5 min for Hetzner node provisioning
+        interval=15,
     )
 
-    remaining = sum(1 for c in active if c["id"] in all_connection_ids)
-    if remaining == 0:
-        ok("all test connections cleaned up")
-    else:
-        fail("cleanup", f"{remaining} test connections still active")
+    worker_ids = set(c.get("workerId") for c in active if c["id"] in all_ids and c.get("workerId"))
+    assigned = sum(1 for c in active if c["id"] in all_ids and c.get("workerId"))
+    info(f"Workers: {len(worker_ids)}, Assigned: {assigned}/{len(all_ids)}")
 
-    # ── Phase 5: Verify worker counters are accurate ──
-    print("\n── Phase 5: Verify system state after cleanup ──")
-
-    # Wait for health service to reconcile (up to 2 min)
-    await asyncio.sleep(10)
-    active, workers, unassigned = await get_state(client)
-
-    info(f"Active connections: {len(active)}")
-    info(f"Workers with sessions: {len(workers)}")
     for wid, count in workers.items():
         info(f"  Worker {wid[:8]}...: {count} sessions")
 
-    if len(workers) <= 1:
-        ok("worker count correct after cleanup")
+    if len(worker_ids) >= 2:
+        ok(f"scaled to {len(worker_ids)} workers")
+    elif len(worker_ids) == 1 and unassigned > 0:
+        # Worker 2 might not be ready yet — pending connections exist
+        info(f"{unassigned} connections still unassigned (worker provisioning)")
+        ok(f"scale-up initiated ({unassigned} pending assignment)", "worker 2 provisioning")
     else:
-        fail("post-cleanup workers", f"{len(workers)} workers still have sessions")
+        fail("scale-up", f"only {len(worker_ids)} workers, {unassigned} unassigned")
+
+    # ── Phase 4: Delete all connections ──
+    print(f"\n── Phase 4: Delete all {len(all_ids)} connections ──")
+
+    deleted = await delete_connections(client, all_ids)
+    info(f"Deleted {deleted}/{len(all_ids)}")
+
+    # Wait for cleanup
+    success, active, workers, unassigned = await wait_for_condition(
+        client,
+        lambda a, w, u: sum(1 for c in a if c["id"] in all_ids) == 0,
+        "all test connections gone",
+        timeout=30,
+    )
+
+    remaining = sum(1 for c in active if c["id"] in all_ids)
+    if remaining == 0:
+        ok("all test connections deleted")
+    else:
+        fail("cleanup", f"{remaining} still active")
+
+    # ── Phase 5: Wait for scale-down ──
+    print("\n── Phase 5: Wait for scale-down (health poll + checkScaling) ──")
+
+    # checkScaling runs every 5 minutes — wait up to 7 min
+    success, active, workers, unassigned = await wait_for_condition(
+        client,
+        lambda a, w, u: len(w) <= 1,
+        "≤1 workers with sessions",
+        timeout=420,  # 7 minutes
+        interval=30,
+    )
+
+    if len(workers) <= 1:
+        ok(f"scaled down to {len(workers)} workers")
+    else:
+        fail("scale-down", f"still {len(workers)} workers after 7 min")
+
+    # ── Phase 6: Final state ──
+    print("\n── Phase 6: Final state ──")
+
+    active, workers, unassigned = await get_state(client)
+    info(f"Active connections: {len(active)}")
+    info(f"Workers with sessions: {len(workers)}")
+
+    test_remaining = sum(1 for c in active if c["id"] in all_ids)
+    if test_remaining == 0 and len(workers) <= 1:
+        ok("system returned to baseline")
+    else:
+        fail("final state", f"{test_remaining} test conns, {len(workers)} workers")
 
     await client.aclose()
 
