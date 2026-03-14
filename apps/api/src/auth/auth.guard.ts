@@ -7,10 +7,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import jwksRsa from 'jwks-rsa';
-import { users } from '@wahooks/db';
-import { sql } from 'drizzle-orm';
+import { users, apiTokens } from '@wahooks/db';
+import { eq, sql } from 'drizzle-orm';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 
 @Injectable()
@@ -45,6 +46,13 @@ export class AuthGuard implements CanActivate {
     }
 
     const token = authHeader.slice(7);
+
+    // API token path: tokens starting with "wh_"
+    if (token.startsWith('wh_')) {
+      return this.verifyApiToken(request, token);
+    }
+
+    // JWT path: Supabase JWT
     const payload = await this.verifyJwt(token);
 
     // Upsert user into the users table so FK constraints are satisfied
@@ -67,6 +75,32 @@ export class AuthGuard implements CanActivate {
     }
 
     request.user = payload;
+    return true;
+  }
+
+  private async verifyApiToken(
+    request: any,
+    token: string,
+  ): Promise<boolean> {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+
+    const [apiToken] = await this.db
+      .select()
+      .from(apiTokens)
+      .where(eq(apiTokens.tokenHash, tokenHash));
+
+    if (!apiToken || !apiToken.active) {
+      throw new UnauthorizedException('Invalid or revoked API token');
+    }
+
+    // Update last used timestamp (fire and forget)
+    this.db
+      .update(apiTokens)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiTokens.id, apiToken.id))
+      .catch(() => {});
+
+    request.user = { sub: apiToken.userId };
     return true;
   }
 

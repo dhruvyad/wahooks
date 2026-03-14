@@ -15,6 +15,13 @@
       "when": 1773396912183,
       "tag": "0001_rename_hetzner_server_id",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773461385175,
+      "tag": "0002_absent_banshee",
+      "breakpoints": true
     }
   ]
 }
