@@ -94,19 +94,21 @@ export default function Home() {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="border-t border-border-primary bg-bg-secondary/95 backdrop-blur-xl px-6 py-4 space-y-3 sm:hidden">
-            <Link href="/docs" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">
+          <div className="border-t border-border-primary bg-bg-secondary/95 backdrop-blur-xl px-6 py-5 space-y-1 sm:hidden">
+            <Link href="/docs" onClick={() => setMobileMenuOpen(false)} className="block rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors">
               Docs
             </Link>
-            <a href="https://github.com/dhruvyad/wahooks" className="block text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">
+            <a href="https://github.com/dhruvyad/wahooks" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors">
               GitHub
             </a>
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-text-secondary hover:text-text-primary transition-colors">
+            <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="block rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors">
               Sign in
             </Link>
-            <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="block rounded-lg bg-wa-green px-4 py-2.5 text-center text-sm font-semibold text-text-inverse hover:bg-wa-green-dark transition-colors">
-              Get Started
-            </Link>
+            <div className="pt-2">
+              <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="block rounded-lg bg-wa-green px-4 py-2.5 text-center text-sm font-semibold text-text-inverse hover:bg-wa-green-dark transition-colors">
+                Get Started
+              </Link>
+            </div>
           </div>
         )}
       </nav>
@@ -305,17 +307,17 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-border-primary px-6 py-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+        <div className="mx-auto max-w-6xl flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
           <span className="flex items-center gap-1.5 text-sm font-semibold text-wa-green">
             <img src="/logo.svg" alt="" className="h-5 w-5" />
             WAHooks
           </span>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5">
             <Link
               href="/docs"
               className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
             >
-              Documentation
+              Docs
             </Link>
             <a
               href="https://github.com/dhruvyad/wahooks"
@@ -324,7 +326,7 @@ export default function Home() {
               GitHub
             </a>
             <span className="text-sm text-text-tertiary">
-              &copy; {new Date().getFullYear()} WAHooks
+              &copy; {new Date().getFullYear()}
             </span>
           </div>
         </div>
