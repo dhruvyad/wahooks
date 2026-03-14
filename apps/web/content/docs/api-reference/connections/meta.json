@@ -1,0 +1,4 @@
+{
+  "title": "Connections",
+  "pages": ["list", "create", "get", "delete", "restart", "qr", "chats", "profile", "send"]
+}

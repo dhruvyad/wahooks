@@ -1,0 +1,50 @@
+---
+title: Connections
+description: "How WhatsApp connections work in WAHooks"
+---
+
+A **connection** is a linked WhatsApp account. When you create a connection, WAHooks provisions a cloud-hosted WAHA session that maintains the WhatsApp Web connection on your behalf.
+
+## Architecture
+
+```
+Your App → WAHooks API → WAHA Worker Pod → WhatsApp
+```
+
+Each connection runs in its own isolated container (WAHA pod) in the WAHooks Kubernetes cluster. The pod handles:
+
+- WhatsApp Web protocol (NOWEB engine)
+- Message sending and receiving
+- Event forwarding to the WAHooks API
+- Session persistence (survives pod restarts)
+
+## Session lifecycle
+
+1. **Create** — a WAHA pod is provisioned and a session is created
+2. **QR Scan** — you scan a QR code with WhatsApp to link the account
+3. **Working** — the session is active, messages flow in and out
+4. **Failed** — the session lost connection (auto-recovered within 1 minute)
+5. **Stopped** — you deleted the connection
+
+## Health monitoring
+
+WAHooks polls WAHA sessions every minute:
+
+- **FAILED sessions** are automatically reset and restarted
+- **STOPPED sessions** that should be active are restarted
+- **Missing sessions** (after pod restart) are auto-created with full config
+
+## One session per number
+
+Each WhatsApp number can only be linked to one connection at a time. Creating a new connection for a number that's already linked elsewhere will unlink the existing session.
+
+## Chat IDs
+
+WhatsApp uses specific ID formats:
+
+| Type | Format | Example |
+|------|--------|---------|
+| Individual | `{country}{phone}@s.whatsapp.net` | `1234567890@s.whatsapp.net` |
+| Group | `{id}@g.us` | `120363419246216126@g.us` |
+
+Use the [chats endpoint](/docs/api-reference/connections/chats) to discover chat IDs.

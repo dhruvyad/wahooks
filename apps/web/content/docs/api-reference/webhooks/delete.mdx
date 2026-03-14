@@ -1,0 +1,42 @@
+---
+title: "Delete Webhook"
+description: "Delete a webhook configuration."
+---
+
+`DELETE /api/webhooks/{id}`
+
+Permanently deletes the specified webhook configuration. Events will no longer be delivered to the configured URL. This action cannot be undone.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the webhook configuration to delete. |
+
+## Response
+
+```json title="200 OK"
+{
+  "success": true
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Webhook not found"
+}
+```

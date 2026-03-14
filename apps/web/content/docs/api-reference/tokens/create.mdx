@@ -1,0 +1,48 @@
+---
+title: "Create API Token"
+description: "Create a new API token for programmatic access."
+---
+
+`POST /api/tokens`
+
+Creates a new API token for the authenticated user. The response includes the full `token` value, which is only displayed once and cannot be retrieved again. Store it securely.
+
+API tokens can be used as an alternative to Supabase JWT tokens for authenticating API requests. Pass the token in the `Authorization` header as `Bearer <token>`.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Body Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | A human-readable name for the token to help you identify its purpose (e.g., "Production Bot", "CI/CD Pipeline"). |
+
+## Response
+
+```json title="201 Created"
+{
+  "id": "tok-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "name": "Production Bot",
+  "token": "wh_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",
+  "tokenPrefix": "wh_live_abc1...yz",
+  "createdAt": "2026-03-14T10:00:00.000Z"
+}
+```
+
+```json title="400 Bad Request"
+{
+  "statusCode": 400,
+  "message": "name is required"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```

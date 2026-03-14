@@ -1,0 +1,176 @@
+---
+title: Receive Webhooks
+description: "Get real-time notifications when messages arrive"
+---
+
+WAHooks delivers events to your webhook URL in real-time via HTTP POST with HMAC-SHA256 signatures.
+
+## Create a webhook
+
+<Tabs items={["TypeScript", "Python", "CLI"]}>
+  <Tab value="TypeScript">
+```typescript
+const webhook = await client.createWebhook(
+  connectionId,
+  'https://your-server.com/webhook',
+  ['message', 'message.any']  // or ['*'] for all events
+);
+
+// Save the signing secret for verification
+console.log(webhook.signingSecret);
+```
+  </Tab>
+  <Tab value="Python">
+```python
+webhook = client.create_webhook(
+    connection_id,
+    url="https://your-server.com/webhook",
+    events=["message", "message.any"],
+)
+
+print(webhook["signingSecret"])
+```
+  </Tab>
+  <Tab value="CLI">
+```bash
+wahooks webhooks create CONNECTION_ID https://your-server.com/webhook
+```
+  </Tab>
+</Tabs>
+
+## Handle incoming webhooks
+
+When a WhatsApp event occurs, WAHooks sends a POST request to your URL:
+
+```json
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "false_1234567890@s.whatsapp.net_3A...",
+    "timestamp": 1710000000,
+    "from": "1234567890@s.whatsapp.net",
+    "body": "Hello!",
+    "hasMedia": false
+  }
+}
+```
+
+### Headers
+
+| Header | Description |
+|--------|-------------|
+| `X-WAHooks-Event` | Event type (e.g. `message`, `message.any`) |
+| `X-WAHooks-Signature` | HMAC-SHA256 signature: `sha256=<hex>` |
+| `X-WAHooks-Timestamp` | Unix timestamp (seconds) when the signature was generated |
+| `Content-Type` | `application/json` |
+
+### Example server
+
+<Tabs items={["Express", "Flask"]}>
+  <Tab value="Express">
+```typescript
+import express from 'express';
+import { createHmac } from 'crypto';
+
+const app = express();
+app.use(express.json());
+
+const SIGNING_SECRET = 'your-signing-secret';
+
+app.post('/webhook', (req, res) => {
+  // Verify signature
+  const signature = req.headers['x-wahooks-signature'] as string;
+  const timestamp = req.headers['x-wahooks-timestamp'] as string;
+  const body = JSON.stringify(req.body);
+
+  const expected = 'sha256=' + createHmac('sha256', SIGNING_SECRET)
+    .update(`${timestamp}.${body}`)
+    .digest('hex');
+
+  if (signature !== expected) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  // Process the event
+  const { event, payload } = req.body;
+  console.log(`Received ${event}:`, payload.body);
+
+  res.sendStatus(200);
+});
+
+app.listen(3000);
+```
+  </Tab>
+  <Tab value="Flask">
+```python
+import hmac
+import hashlib
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+SIGNING_SECRET = "your-signing-secret"
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    # Verify signature
+    signature = request.headers.get("X-WAHooks-Signature", "")
+    timestamp = request.headers.get("X-WAHooks-Timestamp", "")
+    body = request.get_data(as_text=True)
+
+    expected = "sha256=" + hmac.new(
+        SIGNING_SECRET.encode(),
+        f"{timestamp}.{body}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected):
+        return "Invalid signature", 401
+
+    # Process the event
+    data = request.get_json()
+    print(f"Received {data['event']}: {data.get('payload', {}).get('body')}")
+
+    return jsonify({"ok": True})
+```
+  </Tab>
+</Tabs>
+
+## Event types
+
+| Event | Description |
+|-------|-------------|
+| `message` | New incoming message |
+| `message.any` | Any message (incoming and outgoing) |
+| `message.ack` | Message delivery/read receipt |
+| `session.status` | Session status change (WORKING, FAILED, etc.) |
+| `presence.update` | Contact online/typing status |
+| `*` | All events (wildcard) |
+
+## Delivery guarantees
+
+- Webhooks are delivered with **exponential backoff** (5 attempts: 5s, 10s, 20s, 40s, 80s)
+- Failed deliveries are retained as a dead-letter queue (last 1000)
+- Check delivery status via the [webhook logs](/docs/api-reference/webhooks/logs) endpoint
+
+## Test your webhook
+
+Send a test event without needing a real WhatsApp message:
+
+<Tabs items={["TypeScript", "Python", "CLI"]}>
+  <Tab value="TypeScript">
+```typescript
+await client.testWebhook(webhookId);
+```
+  </Tab>
+  <Tab value="Python">
+```python
+client.test_webhook(webhook_id)
+```
+  </Tab>
+  <Tab value="CLI">
+```bash
+wahooks webhooks test WEBHOOK_ID
+```
+  </Tab>
+</Tabs>

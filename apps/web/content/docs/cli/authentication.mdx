@@ -1,0 +1,57 @@
+---
+title: Authentication
+description: "Log in to the WAHooks CLI"
+---
+
+## Browser login (default)
+
+```bash
+wahooks login
+```
+
+This opens your browser to `wahooks.com` where you can sign in with Google or email/password. If you're already logged into the dashboard, just click **Authorize CLI**.
+
+The CLI receives your session tokens automatically — no copy-pasting needed.
+
+## Email/password login
+
+```bash
+wahooks login --no-browser
+```
+
+Or provide credentials directly:
+
+```bash
+wahooks login user@example.com -p your-password
+```
+
+## Token refresh
+
+The CLI automatically refreshes expired tokens. Supabase access tokens expire after 1 hour, but the CLI uses the refresh token to get a new one transparently.
+
+## Check auth status
+
+```bash
+wahooks status
+```
+
+```
+  API URL: https://api.wahooks.com
+  Auth: authenticated
+```
+
+## Config file
+
+Authentication state is stored in `~/.wahooks.json`:
+
+```json
+{
+  "api_url": "https://api.wahooks.com",
+  "token": "eyJhbG...",
+  "refresh_token": "beo254..."
+}
+```
+
+<Callout type="warn">
+  The config file contains your auth tokens. Keep it secure and don't commit it to version control.
+</Callout>

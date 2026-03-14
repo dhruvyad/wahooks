@@ -1,0 +1,43 @@
+---
+title: "Get Profile"
+description: "Retrieve the WhatsApp profile information for a connection."
+---
+
+`GET /api/connections/{id}/me`
+
+Returns the WhatsApp profile information (phone number ID and display name) for the linked account on this connection. The connection must be in `online` status.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the connection. |
+
+## Response
+
+```json title="200 OK"
+{
+  "id": "1234567890@c.us",
+  "pushName": "John Doe"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```

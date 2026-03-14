@@ -1,0 +1,111 @@
+---
+title: Create a Connection
+description: "Connect a WhatsApp number to WAHooks"
+---
+
+A connection links a WhatsApp account to WAHooks. Each connection gets its own WAHA session running in the cloud.
+
+## Create the connection
+
+<Tabs items={["TypeScript", "Python", "CLI", "cURL"]}>
+  <Tab value="TypeScript">
+```typescript
+import { WAHooks } from '@wahooks/sdk';
+
+const client = new WAHooks({ apiKey: 'wh_...' });
+const connection = await client.createConnection();
+
+console.log(connection.id);     // "d7e5f208-..."
+console.log(connection.status); // "pending" or "scan_qr"
+```
+  </Tab>
+  <Tab value="Python">
+```python
+from wahooks import WAHooks
+
+client = WAHooks(api_key="wh_...")
+connection = client.create_connection()
+
+print(connection["id"])     # "d7e5f208-..."
+print(connection["status"]) # "pending" or "scan_qr"
+```
+  </Tab>
+  <Tab value="CLI">
+```bash
+wahooks connections create
+```
+  </Tab>
+  <Tab value="cURL">
+```bash
+curl -X POST https://api.wahooks.com/api/connections \
+  -H "Authorization: Bearer wh_..."
+```
+  </Tab>
+</Tabs>
+
+The connection starts in `pending` status while a worker is provisioned (usually a few seconds).
+
+## Scan the QR code
+
+Once the connection is ready, fetch the QR code and scan it with WhatsApp.
+
+<Tabs items={["TypeScript", "Python", "CLI"]}>
+  <Tab value="TypeScript">
+```typescript
+const qr = await client.getQR(connection.id);
+// qr.value contains a base64-encoded PNG
+```
+  </Tab>
+  <Tab value="Python">
+```python
+qr = client.get_qr(connection["id"])
+# qr["value"] contains a base64-encoded PNG
+```
+  </Tab>
+  <Tab value="CLI">
+```bash
+wahooks connections qr CONNECTION_ID --poll
+```
+  </Tab>
+</Tabs>
+
+Open WhatsApp on your phone → **Settings** → **Linked Devices** → **Link a Device** → scan the QR code.
+
+## Check connection status
+
+After scanning, the status transitions to `working`:
+
+<Tabs items={["TypeScript", "Python", "CLI"]}>
+  <Tab value="TypeScript">
+```typescript
+const conn = await client.getConnection(connection.id);
+console.log(conn.status); // "working"
+```
+  </Tab>
+  <Tab value="Python">
+```python
+conn = client.get_connection(connection["id"])
+print(conn["status"]) # "working"
+```
+  </Tab>
+  <Tab value="CLI">
+```bash
+wahooks connections get CONNECTION_ID
+```
+  </Tab>
+</Tabs>
+
+## Connection lifecycle
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Worker is being provisioned |
+| `scan_qr` | Ready for QR code scanning |
+| `working` | Connected and operational |
+| `failed` | Session failed (auto-recovery will attempt restart) |
+| `stopped` | Deleted by user |
+
+<Callout type="info">
+  Failed connections are automatically recovered by the health monitoring system,
+  which polls every minute and restarts failed sessions.
+</Callout>

@@ -1,0 +1,63 @@
+---
+title: "Create Webhook"
+description: "Create a new webhook configuration for a connection."
+---
+
+`POST /api/connections/{connectionId}/webhooks`
+
+Creates a new webhook configuration for the specified connection. A signing secret is automatically generated and returned in the response. Use this secret to verify the `X-WAHooks-Signature` HMAC-SHA256 header on incoming webhook deliveries.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `connectionId` | string | Yes | The unique identifier of the connection. |
+
+## Body Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | The HTTPS URL where webhook events will be delivered via POST requests. |
+| `events` | string[] | Yes | An array of event types to subscribe to. Common events include `message`, `message.ack`, `session.status`, `message.any`, `message.reaction`, `group.join`, `group.leave`, `presence.update`, and `poll.vote`. |
+
+## Response
+
+```json title="201 Created"
+{
+  "id": "wh-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "url": "https://example.com/webhook",
+  "events": ["message", "message.ack"],
+  "signingSecret": "whsec_k7x9m2p4q8r1t5v3w6y0z...",
+  "active": true,
+  "createdAt": "2026-03-14T10:00:00.000Z",
+  "updatedAt": "2026-03-14T10:00:00.000Z"
+}
+```
+
+```json title="400 Bad Request"
+{
+  "statusCode": 400,
+  "message": "url and events are required"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```

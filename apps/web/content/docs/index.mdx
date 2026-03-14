@@ -1,0 +1,71 @@
+---
+title: Introduction
+description: "Cloud-hosted WhatsApp API with managed webhooks"
+---
+
+WAHooks lets you connect WhatsApp numbers to your application through a simple API. Send and receive messages, get real-time webhook notifications, and manage everything through the dashboard, CLI, or SDKs.
+
+## How it works
+
+<Steps>
+  <Step>
+    ### Connect a WhatsApp number
+    Create a connection and scan a QR code to link your WhatsApp account.
+  </Step>
+  <Step>
+    ### Configure webhooks
+    Set up webhook URLs to receive real-time events when messages arrive.
+  </Step>
+  <Step>
+    ### Send and receive messages
+    Use the API, SDK, or CLI to send messages and process incoming webhooks.
+  </Step>
+</Steps>
+
+## Key features
+
+<Cards>
+  <Card title="Managed Infrastructure">
+    No need to host WAHA yourself. WAHooks handles provisioning, scaling, and health monitoring.
+  </Card>
+  <Card title="Webhook Delivery">
+    Reliable webhook delivery with HMAC-SHA256 signatures, exponential backoff, and delivery logs.
+  </Card>
+  <Card title="SDKs">
+    Official Python and TypeScript SDKs with full API coverage.
+  </Card>
+  <Card title="CLI">
+    Full-featured CLI for managing connections, webhooks, and API tokens.
+  </Card>
+</Cards>
+
+## Quick install
+
+<Tabs items={["npm", "pip", "CLI"]}>
+  <Tab value="npm">
+```bash
+npm install @wahooks/sdk
+```
+  </Tab>
+  <Tab value="pip">
+```bash
+pip install wahooks
+```
+  </Tab>
+  <Tab value="CLI">
+```bash
+curl -fsSL https://raw.githubusercontent.com/dhruvyad/wahooks/main/cli/install.sh | bash
+```
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<Cards>
+  <Card title="Quick Start" href="/docs/quickstart">
+    Get up and running in 5 minutes.
+  </Card>
+  <Card title="API Reference" href="/docs/api-reference">
+    Explore the full REST API.
+  </Card>
+</Cards>

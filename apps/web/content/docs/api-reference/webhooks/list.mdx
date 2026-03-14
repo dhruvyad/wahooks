@@ -1,0 +1,51 @@
+---
+title: "List Webhooks"
+description: "List all webhook configurations for a connection."
+---
+
+`GET /api/connections/{connectionId}/webhooks`
+
+Returns all webhook configurations associated with the specified connection. Each webhook config defines a URL and the set of WhatsApp events that will be delivered to it.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `connectionId` | string | Yes | The unique identifier of the connection. |
+
+## Response
+
+```json title="200 OK"
+[
+  {
+    "id": "wh-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "sessionId": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+    "url": "https://example.com/webhook",
+    "events": ["message", "message.ack", "session.status"],
+    "signingSecret": "whsec_abc123...",
+    "active": true,
+    "createdAt": "2026-03-14T10:00:00.000Z",
+    "updatedAt": "2026-03-14T10:00:00.000Z"
+  }
+]
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```

@@ -1,0 +1,57 @@
+---
+title: "Send Message"
+description: "Send a text message through a WhatsApp connection."
+---
+
+`POST /api/connections/{id}/send`
+
+Sends a text message to a specified chat through the WhatsApp connection. The connection must be in `online` status. The endpoint simulates natural typing behavior (marking the chat as seen, showing typing indicator) before sending the message to reduce spam detection risk.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the connection. |
+
+## Body Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chatId` | string | Yes | The WhatsApp chat ID to send the message to. Individual chats use the format `1234567890@c.us`, group chats use `1234567890-group@g.us`. |
+| `text` | string | Yes | The text content of the message to send. |
+
+## Response
+
+```json title="200 OK"
+{
+  "id": "true_1234567890@c.us_3EB0A0B1C2D3E4F5",
+  "timestamp": 1710410700
+}
+```
+
+```json title="400 Bad Request"
+{
+  "statusCode": 400,
+  "message": "chatId and text are required"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```

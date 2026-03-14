@@ -1,0 +1,50 @@
+---
+title: "Delete Connection"
+description: "Stop and remove a WhatsApp connection."
+---
+
+`DELETE /api/connections/{id}`
+
+Stops the WAHA session and soft-deletes the connection by setting its status to `stopped`. The connection will no longer appear in list results. The worker slot is freed for reuse.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the connection to delete. |
+
+## Response
+
+```json title="200 OK"
+{
+  "id": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "userId": "a80ffc98-6f8b-4f96-a633-f756124c16af",
+  "workerId": "w9a8b7c6-d5e4-3f21-0fed-cba987654321",
+  "sessionName": "u_a80ffc98_s_c1a2b3c4",
+  "phoneNumber": "+1234567890",
+  "status": "stopped",
+  "engine": "NOWEB",
+  "createdAt": "2026-03-14T10:00:00.000Z",
+  "updatedAt": "2026-03-14T12:00:00.000Z"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Connection not found"
+}
+```

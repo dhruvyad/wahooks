@@ -1,0 +1,42 @@
+---
+title: "Revoke API Token"
+description: "Revoke and permanently delete an API token."
+---
+
+`DELETE /api/tokens/{id}`
+
+Permanently revokes the specified API token. Any requests using this token will immediately begin returning `401 Unauthorized`. This action cannot be undone.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the API token to revoke. |
+
+## Response
+
+```json title="200 OK"
+{
+  "success": true
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Token not found"
+}
+```

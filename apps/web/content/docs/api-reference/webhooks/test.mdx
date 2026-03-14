@@ -1,0 +1,45 @@
+---
+title: "Test Webhook"
+description: "Send a test event to a webhook endpoint."
+---
+
+`POST /api/webhooks/{id}/test`
+
+Sends a test event to the webhook's configured URL. This is useful for verifying that your endpoint is reachable and correctly processing webhook deliveries. The test event will appear in the webhook's delivery logs.
+
+No request body is required. A synthetic test event will be generated and delivered to the webhook URL with the same HMAC-SHA256 signature as production events.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the webhook configuration to test. |
+
+## Response
+
+```json title="200 OK"
+{
+  "success": true,
+  "logId": "log-t1e2s3t4-a5b6-7890-cdef-012345678901"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Webhook not found"
+}
+```

@@ -1,0 +1,57 @@
+---
+title: "Update Webhook"
+description: "Update an existing webhook configuration."
+---
+
+`PUT /api/webhooks/{id}`
+
+Updates the specified webhook configuration. All body fields are optional -- only the fields you include will be updated. You can change the delivery URL, the subscribed events, or toggle the webhook on/off.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | The unique identifier of the webhook configuration to update. |
+
+## Body Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | No | The new HTTPS URL where webhook events will be delivered. |
+| `events` | string[] | No | An updated array of event types to subscribe to. |
+| `active` | boolean | No | Set to `false` to pause webhook deliveries without deleting the configuration. Set to `true` to resume. |
+
+## Response
+
+```json title="200 OK"
+{
+  "id": "wh-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "url": "https://example.com/webhook/v2",
+  "events": ["message", "message.ack", "session.status"],
+  "signingSecret": "whsec_k7x9m2p4q8r1t5v3w6y0z...",
+  "active": true,
+  "createdAt": "2026-03-14T10:00:00.000Z",
+  "updatedAt": "2026-03-14T12:00:00.000Z"
+}
+```
+
+```json title="401 Unauthorized"
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+```json title="404 Not Found"
+{
+  "statusCode": 404,
+  "message": "Webhook not found"
+}
+```

@@ -1,0 +1,78 @@
+---
+title: Webhook Signatures
+description: "Verify that webhooks are from WAHooks"
+---
+
+Every webhook delivery includes an HMAC-SHA256 signature so you can verify it came from WAHooks and wasn't tampered with.
+
+## How it works
+
+Each webhook config has a unique `signingSecret` (generated at creation time). WAHooks signs every delivery with:
+
+```
+signature = HMAC-SHA256(signingSecret, "{timestamp}.{body}")
+```
+
+The signature and timestamp are sent as HTTP headers:
+
+| Header | Value |
+|--------|-------|
+| `X-WAHooks-Signature` | `sha256={hex}` |
+| `X-WAHooks-Timestamp` | Unix timestamp in seconds |
+
+## Verification
+
+<Tabs items={["Node.js", "Python"]}>
+  <Tab value="Node.js">
+```typescript
+import { createHmac } from 'crypto';
+
+function verifyWebhook(body: string, headers: Record<string, string>, secret: string): boolean {
+  const signature = headers['x-wahooks-signature'];
+  const timestamp = headers['x-wahooks-timestamp'];
+
+  // Reject old timestamps (prevent replay attacks)
+  const age = Math.floor(Date.now() / 1000) - parseInt(timestamp);
+  if (age > 300) return false; // 5 minute tolerance
+
+  const expected = 'sha256=' + createHmac('sha256', secret)
+    .update(`${timestamp}.${body}`)
+    .digest('hex');
+
+  return signature === expected;
+}
+```
+  </Tab>
+  <Tab value="Python">
+```python
+import hmac
+import hashlib
+import time
+
+def verify_webhook(body: str, headers: dict, secret: str) -> bool:
+    signature = headers.get("X-WAHooks-Signature", "")
+    timestamp = headers.get("X-WAHooks-Timestamp", "")
+
+    # Reject old timestamps (prevent replay attacks)
+    age = int(time.time()) - int(timestamp)
+    if age > 300:  # 5 minute tolerance
+        return False
+
+    expected = "sha256=" + hmac.new(
+        secret.encode(),
+        f"{timestamp}.{body}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, expected)
+```
+  </Tab>
+</Tabs>
+
+## Why timestamp is included
+
+The timestamp is included in the signed payload to prevent **replay attacks**. Without it, an attacker who intercepts a webhook could resend it indefinitely. By checking that the timestamp is recent (e.g., within 5 minutes), you can reject replayed webhooks.
+
+## Rotating secrets
+
+To rotate a signing secret, create a new webhook config with the same URL and delete the old one. During the transition, you may receive events on both webhooks — your application should handle duplicates gracefully.

@@ -1,0 +1,143 @@
+---
+title: Quick Start
+description: "Get up and running with WAHooks in 5 minutes"
+---
+
+This guide walks you through connecting a WhatsApp number, receiving webhooks, and sending your first message.
+
+## Prerequisites
+
+- A WAHooks account ([sign up](https://wahooks.com/signup))
+- A WhatsApp account on your phone
+- An API token (create one in the dashboard or via CLI)
+
+## 1. Install an SDK
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+```bash
+npm install @wahooks/sdk
+```
+  </Tab>
+  <Tab value="Python">
+```bash
+pip install wahooks
+```
+  </Tab>
+</Tabs>
+
+## 2. Create an API token
+
+<Tabs items={["CLI", "cURL"]}>
+  <Tab value="CLI">
+```bash
+wahooks login
+wahooks tokens create my-app
+```
+  </Tab>
+  <Tab value="cURL">
+```bash
+# Use your Supabase JWT from the dashboard
+curl -X POST https://api.wahooks.com/api/tokens \
+  -H "Authorization: Bearer YOUR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app"}'
+```
+  </Tab>
+</Tabs>
+
+Save the token — it's shown only once. It looks like `wh_a1b2c3...`.
+
+## 3. Create a connection and scan QR
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+```typescript
+import { WAHooks } from '@wahooks/sdk';
+
+const client = new WAHooks({ apiKey: 'wh_...' });
+
+const connection = await client.createConnection();
+console.log('Connection ID:', connection.id);
+
+// Get QR code to scan with WhatsApp
+const qr = await client.getQR(connection.id);
+console.log('Scan this QR:', qr.value);
+```
+  </Tab>
+  <Tab value="Python">
+```python
+from wahooks import WAHooks
+
+client = WAHooks(api_key="wh_...")
+
+connection = client.create_connection()
+print("Connection ID:", connection["id"])
+
+# Get QR code to scan with WhatsApp
+qr = client.get_qr(connection["id"])
+print("Scan this QR:", qr["value"])
+```
+  </Tab>
+</Tabs>
+
+Open the QR code in WhatsApp: **Settings → Linked Devices → Link a Device**.
+
+## 4. Set up a webhook
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+```typescript
+const webhook = await client.createWebhook(
+  connection.id,
+  'https://your-server.com/webhook',
+);
+console.log('Webhook created:', webhook.id);
+console.log('Signing secret:', webhook.signingSecret);
+```
+  </Tab>
+  <Tab value="Python">
+```python
+webhook = client.create_webhook(
+    connection["id"],
+    url="https://your-server.com/webhook",
+)
+print("Webhook created:", webhook["id"])
+print("Signing secret:", webhook["signingSecret"])
+```
+  </Tab>
+</Tabs>
+
+## 5. Send a message
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+```typescript
+await client.sendMessage(
+  connection.id,
+  '1234567890@s.whatsapp.net',
+  'Hello from WAHooks!'
+);
+```
+  </Tab>
+  <Tab value="Python">
+```python
+client.send_message(
+    connection["id"],
+    chat_id="1234567890@s.whatsapp.net",
+    text="Hello from WAHooks!",
+)
+```
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+  Chat IDs use the format `{phone}@s.whatsapp.net` for individual chats
+  and `{id}@g.us` for group chats.
+</Callout>
+
+## Next steps
+
+- [Receive webhooks](/docs/quickstart/receive-webhooks) — handle incoming messages
+- [Webhook signatures](/docs/concepts/webhook-signatures) — verify webhook authenticity
+- [API Reference](/docs/api-reference) — explore all endpoints

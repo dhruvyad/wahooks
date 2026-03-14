@@ -1,0 +1,50 @@
+---
+title: Webhooks
+description: "Real-time event delivery to your application"
+---
+
+Webhooks notify your application when events occur on a WhatsApp connection — incoming messages, delivery receipts, status changes, and more.
+
+## How it works
+
+```
+WhatsApp → WAHA Pod → WAHooks API → BullMQ Queue → Your Webhook URL
+```
+
+1. A WhatsApp event occurs (message received, status change, etc.)
+2. WAHA forwards it to the WAHooks API
+3. The API matches the event to your webhook configs
+4. The event is enqueued for reliable delivery via BullMQ
+5. The delivery processor sends an HTTP POST to your URL
+
+## Event filtering
+
+Each webhook config has an `events` array that controls which events are delivered:
+
+- `["*"]` — receive all events (default)
+- `["message"]` — only incoming messages
+- `["message", "message.any"]` — incoming + outgoing messages
+- `["session.status"]` — only session status changes
+
+## Delivery guarantees
+
+| Property | Value |
+|----------|-------|
+| Retry attempts | 5 |
+| Backoff | Exponential: 5s, 10s, 20s, 40s, 80s |
+| Timeout | 15 seconds per attempt |
+| Dead letter queue | Last 1000 failed deliveries retained |
+
+Your endpoint must return a 2xx status code within 15 seconds, otherwise the delivery is retried.
+
+## Multiple webhooks
+
+You can create multiple webhook configs per connection. Each receives events independently — useful for sending different event types to different services.
+
+## Delivery logs
+
+Every webhook delivery is logged with status, attempt count, and the full payload. Use the [logs endpoint](/docs/api-reference/webhooks/logs) or CLI to inspect deliveries:
+
+```bash
+wahooks webhooks logs WEBHOOK_ID
+```

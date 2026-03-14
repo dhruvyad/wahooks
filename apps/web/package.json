@@ -12,7 +12,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
+    "@types/mdx": "^2.0.13",
     "@wahooks/shared-types": "workspace:*",
+    "fumadocs-core": "^15.8.5",
+    "fumadocs-mdx": "^14.2.10",
+    "fumadocs-ui": "^15.8.5",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
