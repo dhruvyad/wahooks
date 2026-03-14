@@ -1,12 +1,21 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
+
+func encodeJSON(v interface{}) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
 
 var webhooksCmd = &cobra.Command{
 	Use:     "webhooks",
@@ -158,6 +167,8 @@ var whLogsCmd = &cobra.Command{
 	Short: "Get delivery logs for a webhook",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		verbose, _ := cmd.Flags().GetBool("verbose")
+
 		resp, err := client.Do("GET", "/api/webhooks/"+args[0]+"/logs", nil)
 		if err != nil {
 			return err
@@ -194,6 +205,20 @@ var whLogsCmd = &cobra.Command{
 			fmt.Printf("%-36s  %-20s  ", id, eventType)
 			statusColor.Printf("%-10s", status)
 			fmt.Printf("  %-5s  %s\n", attempts, createdAt)
+
+			// Show message body if available
+			if payload, ok := l["payload"].(map[string]interface{}); ok {
+				if inner, ok := payload["payload"].(map[string]interface{}); ok {
+					if body, ok := inner["body"].(string); ok && body != "" {
+						color.New(color.Faint).Printf("  └─ %s\n", body)
+					}
+				}
+				if verbose {
+					if encoded, err := encodeJSON(payload); err == nil {
+						color.New(color.Faint).Printf("  └─ payload: %s\n", encoded)
+					}
+				}
+			}
 		}
 
 		color.New(color.Faint).Printf("\n%d log(s)\n", len(logs))
@@ -229,6 +254,7 @@ func init() {
 	whUpdateCmd.Flags().String("url", "", "New webhook URL")
 	whUpdateCmd.Flags().String("events", "", "Comma-separated event types")
 	whUpdateCmd.Flags().Bool("active", true, "Enable/disable webhook")
+	whLogsCmd.Flags().BoolP("verbose", "v", false, "Show full payload JSON")
 
 	webhooksCmd.AddCommand(whListCmd)
 	webhooksCmd.AddCommand(whCreateCmd)

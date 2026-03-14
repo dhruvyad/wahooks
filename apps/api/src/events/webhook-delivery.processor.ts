@@ -28,12 +28,13 @@ export class WebhookDeliveryProcessor extends WorkerHost {
     const { url, signingSecret, eventType, payload, logId } = job.data;
     const body = JSON.stringify(payload);
 
-    // Generate HMAC-SHA256 signature
+    // Generate HMAC-SHA256 signature over "timestamp.body" to prevent replay attacks
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signedPayload = `${timestamp}.${body}`;
     const signature = createHmac('sha256', signingSecret)
-      .update(body)
+      .update(signedPayload)
       .digest('hex');
 
-    const timestamp = Date.now().toString();
     const signatureHeader = `sha256=${signature}`;
 
     try {

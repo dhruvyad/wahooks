@@ -79,20 +79,26 @@ describe('WebhookDeliveryProcessor', () => {
       expect(options.headers['X-WAHooks-Timestamp']).toBeDefined();
     });
 
-    it('should generate correct HMAC-SHA256 signature', async () => {
+    it('should generate correct HMAC-SHA256 signature over timestamp.body', async () => {
       const job = createJob();
       const bodyStr = JSON.stringify(job.data.payload);
-      const expectedSignature = createHmac('sha256', 'my-secret-key')
-        .update(bodyStr)
-        .digest('hex');
 
       fetchSpy.mockResolvedValueOnce(mockFetchResponse());
 
       await processor.process(job as any);
 
       const [, options] = fetchSpy.mock.calls[0];
+      const timestamp = options.headers['X-WAHooks-Timestamp'];
+      const signedPayload = `${timestamp}.${bodyStr}`;
+      const expectedSignature = createHmac('sha256', 'my-secret-key')
+        .update(signedPayload)
+        .digest('hex');
+
       expect(options.headers['X-WAHooks-Signature']).toBe(`sha256=${expectedSignature}`);
       expect(options.body).toBe(bodyStr);
+      // Timestamp should be unix seconds (not milliseconds)
+      expect(Number(timestamp)).toBeGreaterThan(1700000000);
+      expect(Number(timestamp)).toBeLessThan(2000000000);
     });
 
     it('should mark as delivered on success', async () => {
