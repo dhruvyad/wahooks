@@ -11,10 +11,15 @@ import (
 	"github.com/fatih/color"
 )
 
+// TokenRefresher is called when a 401 is received. It should return new access+refresh tokens.
+type TokenRefresher func() (accessToken, refreshToken string, err error)
+
 type Client struct {
-	BaseURL    string
-	Token      string
-	HTTPClient *http.Client
+	BaseURL        string
+	Token          string
+	HTTPClient     *http.Client
+	TokenRefresher TokenRefresher
+	OnTokenRefresh func(accessToken, refreshToken string)
 }
 
 type Response struct {
@@ -34,6 +39,28 @@ func NewClient(baseURL, token string) *Client {
 }
 
 func (c *Client) Do(method, path string, body interface{}) (*Response, error) {
+	resp, err := c.doRequest(method, path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Auto-refresh on 401 if we have a refresher
+	if resp.StatusCode == 401 && c.TokenRefresher != nil {
+		accessToken, refreshToken, refreshErr := c.TokenRefresher()
+		if refreshErr == nil {
+			c.Token = accessToken
+			if c.OnTokenRefresh != nil {
+				c.OnTokenRefresh(accessToken, refreshToken)
+			}
+			// Retry the original request with the new token
+			return c.doRequest(method, path, body)
+		}
+	}
+
+	return resp, nil
+}
+
+func (c *Client) doRequest(method, path string, body interface{}) (*Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)

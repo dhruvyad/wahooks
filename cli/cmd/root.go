@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/dhruvyad/wahooks/cli/internal/api"
+	"github.com/dhruvyad/wahooks/cli/internal/auth"
 	"github.com/dhruvyad/wahooks/cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +27,24 @@ var rootCmd = &cobra.Command{
 		}
 
 		client = api.NewClient(cfg.APIURL, cfg.Token)
+
+		// Auto-refresh tokens on 401
+		if cfg.RefreshToken != "" {
+			refreshToken := cfg.RefreshToken
+			client.TokenRefresher = func() (string, string, error) {
+				result, err := auth.Refresh(refreshToken)
+				if err != nil {
+					return "", "", err
+				}
+				refreshToken = result.RefreshToken
+				return result.AccessToken, result.RefreshToken, nil
+			}
+			client.OnTokenRefresh = func(accessToken, newRefreshToken string) {
+				cfg.Token = accessToken
+				cfg.RefreshToken = newRefreshToken
+				_ = cfg.Save()
+			}
+		}
 	},
 }
 

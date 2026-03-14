@@ -45,6 +45,7 @@ var loginCmd = &cobra.Command{
 		}
 
 		cfg.Token = result.AccessToken
+		cfg.RefreshToken = result.RefreshToken
 		if err := cfg.Save(); err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
