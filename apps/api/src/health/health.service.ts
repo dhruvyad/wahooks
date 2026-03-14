@@ -35,6 +35,8 @@ export class HealthService {
     for (const worker of activeWorkers) {
       try {
         await this.checkWorkerSessions(worker);
+        // Reconcile counter after each worker check to fix any drift
+        await this.workersService.reconcileWorkerCounter(worker.id);
       } catch (error) {
         this.logger.error(
           `Health check failed for worker ${worker.id}: ${error instanceof Error ? error.message : String(error)}`,
