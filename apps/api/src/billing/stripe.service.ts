@@ -16,12 +16,11 @@ export class StripeService {
       { apiVersion: '2025-04-30.basil' as any },
     );
     this.usdPriceId = this.configService.get<string>(
-      'STRIPE_USD_PRICE_ID',
-      'price_1TAtV21NPzR4qyVq9NP7qO5O',
-    );
+      'STRIPE_USD_PRICE_ID', '',
+    ) || 'price_1TAtV21NPzR4qyVq9NP7qO5O';
     this.inrPriceId = this.configService.get<string>(
-      'STRIPE_INR_PRICE_ID',
-      'price_1TAtV31NPzR4qyVqSDNOfSNx',
+      'STRIPE_INR_PRICE_ID', '',
+    ) || 'price_1TAtV31NPzR4qyVqSDNOfSNx';
     );
     if (!key) {
       this.logger.warn('STRIPE_SECRET_KEY not set — billing calls will fail');
