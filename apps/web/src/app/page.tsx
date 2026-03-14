@@ -276,7 +276,7 @@ export default function Home() {
           <p className="mx-auto mt-4 max-w-2xl text-center text-text-secondary">
             No subscriptions. No hidden fees. Pay for what you use.
           </p>
-          <div className="mx-auto mt-16 max-w-md rounded-xl border border-border-secondary bg-bg-secondary/60 p-8 text-center backdrop-blur-sm">
+          <div className="mx-auto mt-16 max-w-sm rounded-xl border border-border-secondary bg-bg-secondary/60 p-8 text-center backdrop-blur-sm">
             <p className="text-5xl font-bold text-wa-green">$0.99</p>
             <p className="mt-2 text-text-secondary">per connection / month</p>
             <ul className="mx-auto mt-8 w-fit space-y-3 text-left text-sm text-text-secondary">
