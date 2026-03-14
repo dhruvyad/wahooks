@@ -36,6 +36,72 @@ interface WaProfile {
   pushName: string;
 }
 
+// Module-level cache for avatar URLs (persists across re-renders)
+const avatarCache = new Map<string, string | null>();
+
+function ChatAvatar({
+  connectionId,
+  chatId,
+  name,
+  size = "h-9 w-9",
+}: {
+  connectionId: string;
+  chatId: string;
+  name?: string;
+  size?: string;
+}) {
+  const cacheKey = `${connectionId}:${chatId}`;
+  const [url, setUrl] = useState<string | null | undefined>(
+    avatarCache.has(cacheKey) ? avatarCache.get(cacheKey)! : undefined
+  );
+
+  useEffect(() => {
+    if (avatarCache.has(cacheKey)) {
+      setUrl(avatarCache.get(cacheKey)!);
+      return;
+    }
+    let cancelled = false;
+    apiFetch(
+      `/api/connections/${connectionId}/contacts/${encodeURIComponent(chatId)}/picture`
+    )
+      .then((data: { profilePictureUrl: string | null }) => {
+        if (!cancelled) {
+          avatarCache.set(cacheKey, data.profilePictureUrl);
+          setUrl(data.profilePictureUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          avatarCache.set(cacheKey, null);
+          setUrl(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, chatId, cacheKey]);
+
+  const letter = (name?.[0] || chatId[0] || "?").toUpperCase();
+
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name || chatId}
+        className={`${size} shrink-0 rounded-full object-cover`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-bg-elevated text-sm font-medium text-text-secondary`}
+    >
+      {letter}
+    </div>
+  );
+}
+
 function getStoredName(connectionId: string): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -99,6 +165,15 @@ export default function ConnectionDetailPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fullscreen mode
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // Media sending mode
+  const [mediaMode, setMediaMode] = useState<null | "image" | "file" | "voice">(null);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaCaption, setMediaCaption] = useState("");
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   const connectionRef = useRef<Connection | null>(null);
   connectionRef.current = connection;
@@ -212,6 +287,16 @@ export default function ConnectionDetailPage() {
     fetchConnectedData();
   }, [connection?.status, id]);
 
+  // ESC key handler for fullscreen
+  useEffect(() => {
+    if (!fullscreen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setFullscreen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fullscreen]);
+
   async function handleRestart() {
     setRestarting(true);
     mutateConnection((prev: Connection | null) =>
@@ -318,6 +403,44 @@ export default function ConnectionDetailPage() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleSendMedia(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sendChatId.trim() || !mediaUrl.trim() || !mediaMode) return;
+
+    setSending(true);
+    try {
+      await apiFetch(`/api/connections/${id}/send-media`, {
+        method: "POST",
+        body: JSON.stringify({
+          chatId: sendChatId.trim(),
+          type: mediaMode,
+          mediaUrl: mediaUrl.trim(),
+          ...(mediaMode !== "voice" && mediaCaption.trim()
+            ? { caption: mediaCaption.trim() }
+            : {}),
+        }),
+      });
+      toast("Media sent", "success");
+      setMediaMode(null);
+      setMediaUrl("");
+      setMediaCaption("");
+    } catch (err) {
+      toast(
+        err instanceof Error ? err.message : "Failed to send media",
+        "error"
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function exitMediaMode() {
+    setMediaMode(null);
+    setMediaUrl("");
+    setMediaCaption("");
+    setShowAttachMenu(false);
   }
 
   const filteredChats = sendChatId
@@ -508,8 +631,33 @@ export default function ConnectionDetailPage() {
 
           {/* Mini Chat Viewer */}
           {chats.length > 0 && (
-            <div className="overflow-hidden rounded-xl border border-border-secondary bg-bg-secondary">
-              <div className="flex h-[500px]">
+            <div
+              className={`overflow-hidden bg-bg-secondary ${
+                fullscreen
+                  ? "fixed inset-0 z-50"
+                  : "rounded-xl border border-border-secondary"
+              }`}
+            >
+              {/* Fullscreen toggle button */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setFullscreen((f) => !f)}
+                  className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
+                  title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {fullscreen ? (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v4m0-4h4m6 6l5 5m0 0v-4m0 4h-4M9 15l-5 5m0 0h4m-4 0v-4m11-6l5-5m0 0h-4m4 0v4" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <div className={`flex ${fullscreen ? "h-full" : "h-[500px]"}`}>
                 {/* Left panel: Chat list */}
                 <div className="flex w-72 shrink-0 flex-col border-r border-border-primary">
                   <div className="border-b border-border-primary px-4 py-3">
@@ -535,13 +683,11 @@ export default function ConnectionDetailPage() {
                               : "border-l-2 border-l-transparent"
                           }`}
                         >
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-elevated text-sm font-medium text-text-secondary">
-                            {(
-                              chat.name?.[0] ||
-                              chat.id[0] ||
-                              "?"
-                            ).toUpperCase()}
-                          </div>
+                          <ChatAvatar
+                            connectionId={id}
+                            chatId={chat.id}
+                            name={chat.name}
+                          />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-text-primary">
                               {chat.name ||
@@ -578,13 +724,11 @@ export default function ConnectionDetailPage() {
                     <>
                       {/* Chat header */}
                       <div className="flex items-center gap-3 border-b border-border-primary px-5 py-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-elevated text-sm font-medium text-text-secondary">
-                          {(
-                            selectedChat.name?.[0] ||
-                            selectedChat.id[0] ||
-                            "?"
-                          ).toUpperCase()}
-                        </div>
+                        <ChatAvatar
+                          connectionId={id}
+                          chatId={selectedChat.id}
+                          name={selectedChat.name}
+                        />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-text-primary">
                             {selectedChat.name ||
@@ -648,61 +792,155 @@ export default function ConnectionDetailPage() {
                         )}
                       </div>
 
-                      {/* Send message input */}
-                      <form
-                        onSubmit={handleSendMessage}
-                        className="flex items-center gap-2 border-t border-border-primary bg-bg-secondary px-4 py-3"
-                      >
-                        <input
-                          type="text"
-                          value={sendText}
-                          onChange={(e) => setSendText(e.target.value)}
-                          placeholder="Type a message..."
-                          disabled={sending}
-                          className="flex-1 rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green disabled:opacity-50"
-                        />
-                        <button
-                          type="submit"
-                          disabled={sending || !sendText.trim()}
-                          className="rounded-lg bg-wa-green p-2 text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
+                      {/* Send message / media input */}
+                      {mediaMode ? (
+                        <form
+                          onSubmit={handleSendMedia}
+                          className="border-t border-border-primary bg-bg-secondary px-4 py-3 space-y-2"
                         >
-                          {sending ? (
-                            <svg
-                              className="h-5 w-5 animate-spin"
-                              fill="none"
-                              viewBox="0 0 24 24"
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={exitMediaMode}
+                              className="rounded-md p-1 text-text-tertiary transition-colors duration-150 hover:text-text-primary"
+                              title="Back to text"
                             >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="h-5 w-5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                              />
-                            </svg>
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                              </svg>
+                            </button>
+                            <span className="text-xs font-semibold uppercase text-wa-green">
+                              {mediaMode === "image" ? "Image" : mediaMode === "file" ? "File" : "Voice"} (URL)
+                            </span>
+                          </div>
+                          <input
+                            type="url"
+                            value={mediaUrl}
+                            onChange={(e) => setMediaUrl(e.target.value)}
+                            placeholder="https://example.com/media-file"
+                            disabled={sending}
+                            required
+                            className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green disabled:opacity-50"
+                          />
+                          {mediaMode !== "voice" && (
+                            <input
+                              type="text"
+                              value={mediaCaption}
+                              onChange={(e) => setMediaCaption(e.target.value)}
+                              placeholder="Caption (optional)"
+                              disabled={sending}
+                              className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green disabled:opacity-50"
+                            />
                           )}
-                        </button>
-                      </form>
+                          <button
+                            type="submit"
+                            disabled={sending || !mediaUrl.trim()}
+                            className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
+                          >
+                            {sending ? "Sending..." : "Send"}
+                          </button>
+                        </form>
+                      ) : (
+                        <form
+                          onSubmit={handleSendMessage}
+                          className="flex items-center gap-2 border-t border-border-primary bg-bg-secondary px-4 py-3"
+                        >
+                          {/* Attachment button */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowAttachMenu((v) => !v)}
+                              className="rounded-md p-1.5 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
+                              title="Attach media"
+                            >
+                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                              </svg>
+                            </button>
+                            {showAttachMenu && (
+                              <div className="absolute bottom-full left-0 mb-2 w-36 rounded-lg border border-border-secondary bg-bg-elevated shadow-lg">
+                                {(["image", "file", "voice"] as const).map((type) => (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => {
+                                      setMediaMode(type);
+                                      setShowAttachMenu(false);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors duration-150 first:rounded-t-lg last:rounded-b-lg hover:bg-bg-hover"
+                                  >
+                                    <span className="text-text-tertiary">
+                                      {type === "image" ? (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                      ) : type === "file" ? (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                      ) : (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                        </svg>
+                                      )}
+                                    </span>
+                                    {type === "image" ? "Image (URL)" : type === "file" ? "File (URL)" : "Voice (URL)"}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            value={sendText}
+                            onChange={(e) => setSendText(e.target.value)}
+                            placeholder="Type a message..."
+                            disabled={sending}
+                            className="flex-1 rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green disabled:opacity-50"
+                          />
+                          <button
+                            type="submit"
+                            disabled={sending || !sendText.trim()}
+                            className="rounded-lg bg-wa-green p-2 text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
+                          >
+                            {sending ? (
+                              <svg
+                                className="h-5 w-5 animate-spin"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </form>
+                      )}
                     </>
                   ) : (
                     <div className="flex flex-1 items-center justify-center">
