@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wahooks-mcp"
+version = "0.1.0"
+description = "WAHooks MCP server — manage WhatsApp connections from AI assistants"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["wahooks", "whatsapp", "mcp", "model-context-protocol", "ai"]
+dependencies = ["fastmcp>=2.0.0", "httpx>=0.24.0"]
+
+[project.scripts]
+wahooks-mcp = "wahooks_mcp.server:main"
+
+[project.urls]
+Repository = "https://github.com/dhruvyad/wahooks"
