@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 import { StatusBadge } from "@/components/status-badge";
 import { ConnectionListSkeleton } from "@/components/skeletons";
+import { getPricing, formatTotal } from "@/lib/pricing";
 
 interface BillingSlots {
   paid: number;
@@ -36,6 +37,7 @@ function getStoredName(connectionId: string): string | null {
 /* ------------------------------------------------------------------ */
 
 function QrUpgradePrompt() {
+  const pricing = getPricing();
   const [quantity, setQuantity] = useState(1);
   const [redirecting, setRedirecting] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -52,7 +54,7 @@ function QrUpgradePrompt() {
     try {
       const data = await apiFetch("/api/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ quantity, currency: "usd" }),
+        body: JSON.stringify({ quantity, currency: pricing.currency }),
       });
       if (data.url) {
         window.location.href = data.url;
@@ -87,7 +89,7 @@ function QrUpgradePrompt() {
               You need a connection slot
             </p>
             <p className="mt-1 text-xs text-text-secondary">
-              Each WhatsApp connection costs $0.99/month.
+              Each WhatsApp connection costs {pricing.label}/month.
             </p>
 
             <div className="mt-4 flex items-center justify-center gap-2">
@@ -111,7 +113,7 @@ function QrUpgradePrompt() {
                 </button>
               </div>
               <span className="text-xs text-text-tertiary">
-                slot{quantity !== 1 ? "s" : ""} &middot; ${(quantity * 0.99).toFixed(2)}/mo
+                slot{quantity !== 1 ? "s" : ""} &middot; {formatTotal(quantity, pricing)}/mo
               </span>
             </div>
 

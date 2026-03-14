@@ -64,5 +64,15 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Set country cookie from Vercel's geo header (used for regional pricing)
+  const country = request.headers.get("x-vercel-ip-country") || "";
+  if (country) {
+    supabaseResponse.cookies.set("country", country, {
+      path: "/",
+      maxAge: 86400,
+      sameSite: "lax",
+    });
+  }
+
   return supabaseResponse;
 }

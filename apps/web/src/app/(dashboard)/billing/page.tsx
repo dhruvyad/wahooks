@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 import { BillingSkeleton } from "@/components/skeletons";
+import { getPricing, formatTotal } from "@/lib/pricing";
 
 interface BillingStatus {
   subscription: {
@@ -24,6 +25,7 @@ interface BillingStatus {
 
 function BillingContent() {
   const searchParams = useSearchParams();
+  const pricing = getPricing();
   const [redirecting, setRedirecting] = useState(false);
   const [buyQuantity, setBuyQuantity] = useState(1);
 
@@ -44,7 +46,7 @@ function BillingContent() {
     try {
       const data = await apiFetch("/api/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ quantity: buyQuantity, currency: "usd" }),
+        body: JSON.stringify({ quantity: buyQuantity, currency: pricing.currency }),
       });
       if (data.url) {
         window.location.href = data.url;
@@ -163,7 +165,7 @@ function BillingContent() {
               <h2 className="text-sm font-semibold text-text-primary">No Active Subscription</h2>
               <p className="mt-1 text-sm text-text-secondary">
                 Buy connection slots to start using WAHooks.
-                Each slot is $0.99/month.
+                Each slot is {pricing.label}/month.
               </p>
             </div>
           )}
@@ -194,7 +196,7 @@ function BillingContent() {
                 </button>
               </div>
               <span className="text-sm text-text-tertiary">
-                × $0.99/mo = ${(buyQuantity * 0.99).toFixed(2)}/mo
+                × {pricing.label}/mo = {formatTotal(buyQuantity, pricing)}/mo
               </span>
               <button
                 onClick={handleCheckout}

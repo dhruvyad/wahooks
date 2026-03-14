@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { getPricing } from "@/lib/pricing";
 
 function CopySnippet({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -30,6 +31,7 @@ function CopySnippet({ text }: { text: string }) {
 }
 
 export default function Home() {
+  const pricing = getPricing();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -242,7 +244,7 @@ export default function Home() {
               {
                 title: "Usage-Based Pricing",
                 description:
-                  "$0.99 per connection per month. Simple monthly billing, no minimums.",
+                  `${pricing.label} per connection per month. Simple monthly billing, no minimums.`,
               },
               {
                 title: "Secure by Default",
@@ -279,7 +281,7 @@ export default function Home() {
             No subscriptions. No hidden fees. Pay for what you use.
           </p>
           <div className="mx-auto mt-16 max-w-sm rounded-xl border border-border-secondary bg-bg-secondary/60 p-8 text-center backdrop-blur-sm">
-            <p className="text-5xl font-bold text-wa-green">$0.99</p>
+            <p className="text-5xl font-bold text-wa-green">{pricing.label}</p>
             <p className="mt-2 text-text-secondary">per connection / month</p>
             <ul className="mx-auto mt-8 w-fit space-y-3 text-left text-sm text-text-secondary">
               {[
