@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -36,9 +36,7 @@ var connListCmd = &cobra.Command{
 			return nil
 		}
 
-		// Table output
-		fmt.Printf("%-36s  %-10s  %-30s  %s\n", "ID", "STATUS", "SESSION", "PHONE")
-		fmt.Println("────────────────────────────────────  ──────────  ──────────────────────────────  ──────────────")
+		table := style.NewTable("ID", "STATUS", "SESSION", "PHONE")
 		for _, c := range connections {
 			id, _ := c["id"].(string)
 			status, _ := c["status"].(string)
@@ -51,19 +49,14 @@ var connListCmd = &cobra.Command{
 				phone, _ = c["phoneNumber"].(string)
 			}
 
-			statusColor := color.New(color.FgYellow)
-			if status == "working" {
-				statusColor = color.New(color.FgGreen)
-			} else if status == "stopped" || status == "failed" {
-				statusColor = color.New(color.FgRed)
-			}
-
-			fmt.Printf("%-36s  ", id)
-			statusColor.Printf("%-10s", status)
-			fmt.Printf("  %-30s  %s\n", session, phone)
+			statusColor := style.StatusColor(status)
+			table.AddColoredRow(
+				[]string{id, status, session, phone},
+				[]*color.Color{nil, statusColor, nil, nil},
+			)
 		}
-
-		color.New(color.Faint).Printf("\n%d connection(s)\n", len(connections))
+		table.Print()
+		style.Count(len(connections), "connection")
 		return nil
 	},
 }
@@ -81,7 +74,7 @@ var connCreateCmd = &cobra.Command{
 		if err := resp.JSON(&conn); err == nil {
 			if id, ok := conn["id"].(string); ok {
 				status, _ := conn["status"].(string)
-				color.Green("Created connection %s (status: %s)", id, status)
+				style.Success("Created connection %s (status: %s)", id, status)
 				return nil
 			}
 		}
@@ -116,18 +109,29 @@ var connQRCmd = &cobra.Command{
 			maxAttempts = 1
 		}
 
+		var stop func()
+		if poll {
+			stop = style.Spinner("Waiting for QR code...")
+		}
+
 		for i := 1; i <= maxAttempts; i++ {
 			resp, err := client.Do("GET", "/api/connections/"+args[0]+"/qr", nil)
 			if err != nil {
+				if stop != nil {
+					stop()
+				}
 				return err
 			}
 
 			if resp.StatusCode == 200 {
+				if stop != nil {
+					stop()
+				}
 				var data map[string]interface{}
 				if err := resp.JSON(&data); err == nil {
 					// Already connected
 					if connected, ok := data["connected"].(bool); ok && connected {
-						color.Green("Already connected!")
+						style.Success("Already connected!")
 						return nil
 					}
 
@@ -137,7 +141,7 @@ var connQRCmd = &cobra.Command{
 						if err == nil {
 							path := "/tmp/wahooks-qr.png"
 							os.WriteFile(path, imgData, 0644)
-							color.Green("QR saved to %s", path)
+							style.Success("QR saved to %s", path)
 
 							// Try to open
 							if runtime.GOOS == "darwin" {
@@ -146,7 +150,7 @@ var connQRCmd = &cobra.Command{
 								exec.Command("xdg-open", path).Start()
 							}
 
-							color.Yellow("Scan the QR code with WhatsApp")
+							style.Warn("Scan the QR code with WhatsApp")
 							return nil
 						}
 					}
@@ -157,13 +161,18 @@ var connQRCmd = &cobra.Command{
 			}
 
 			if poll && i < maxAttempts {
-				color.New(color.Faint).Printf("Attempt %d/%d: QR not ready (HTTP %d), retrying...\n", i, maxAttempts, resp.StatusCode)
 				time.Sleep(3 * time.Second)
 			} else {
+				if stop != nil {
+					stop()
+				}
 				resp.Print()
 			}
 		}
 
+		if stop != nil {
+			stop()
+		}
 		return fmt.Errorf("could not get QR code after %d attempts", maxAttempts)
 	},
 }
@@ -203,9 +212,10 @@ var connChatsCmd = &cobra.Command{
 			limit = 20
 		}
 
+		fmt.Println()
 		for i, chat := range chats {
 			if i >= limit {
-				color.New(color.Faint).Printf("  ... and %d more\n", len(chats)-limit)
+				style.Dim("  ... and %d more", len(chats)-limit)
 				break
 			}
 			name, _ := chat["name"].(string)
@@ -227,14 +237,15 @@ var connChatsCmd = &cobra.Command{
 				}
 			}
 
-			fmt.Printf("  • %s", name)
+			fmt.Printf("  %s %s", color.New(color.FgCyan).Sprint("\u2022"), name)
 			if lastMsg != "" {
-				color.New(color.Faint).Printf(" — %s", lastMsg)
+				color.New(color.Faint).Printf(" \u2014 %s", lastMsg)
 			}
 			fmt.Println()
 		}
 
-		color.New(color.Faint).Printf("\n%d chat(s)\n", len(chats))
+		fmt.Println()
+		style.Count(len(chats), "chat")
 		return nil
 	},
 }
@@ -264,7 +275,7 @@ var connSendCmd = &cobra.Command{
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			color.Green("Message sent to %s", phone)
+			style.Success("Message sent to %s", phone)
 			return nil
 		}
 
@@ -301,7 +312,7 @@ var connDeleteCmd = &cobra.Command{
 		var result map[string]interface{}
 		if err := resp.JSON(&result); err == nil {
 			if status, ok := result["status"].(string); ok && status == "stopped" {
-				color.Green("Connection deleted")
+				style.Success("Connection deleted")
 				return nil
 			}
 		}
@@ -311,142 +322,9 @@ var connDeleteCmd = &cobra.Command{
 	},
 }
 
-// e2e runs a full end-to-end test cycle
-var connE2ECmd = &cobra.Command{
-	Use:   "e2e",
-	Short: "Run end-to-end test: create → qr → restart → delete",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		noScan, _ := cmd.Flags().GetBool("no-scan")
-		bold := color.New(color.Bold)
-		pass, fail := 0, 0
-
-		ok := func(msg string) { color.Green("  ✓ %s", msg); pass++ }
-		bad := func(msg string) { color.Red("  ✗ %s", msg); fail++ }
-
-		// Health
-		bold.Println("Health check...")
-		resp, err := client.Do("GET", "/api", nil)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode == 200 {
-			ok(fmt.Sprintf("GET /api (%dms)", resp.Duration.Milliseconds()))
-		} else {
-			bad(fmt.Sprintf("GET /api: HTTP %d", resp.StatusCode))
-			return fmt.Errorf("health check failed")
-		}
-
-		// Auth guard
-		bold.Println("Auth guard...")
-		noAuthClient := *client
-		noAuthClient.Token = ""
-		resp, _ = noAuthClient.Do("GET", "/api/connections", nil)
-		if resp.StatusCode == 401 {
-			ok("401 without token")
-		} else {
-			bad(fmt.Sprintf("expected 401, got %d", resp.StatusCode))
-		}
-
-		// List connections
-		bold.Println("List connections...")
-		resp, _ = client.Do("GET", "/api/connections", nil)
-		var conns []json.RawMessage
-		resp.JSON(&conns)
-		ok(fmt.Sprintf("%d existing connections (%dms)", len(conns), resp.Duration.Milliseconds()))
-
-		// Create
-		bold.Println("Create connection...")
-		resp, err = client.Do("POST", "/api/connections", nil)
-		if err != nil {
-			return err
-		}
-		var created map[string]interface{}
-		resp.JSON(&created)
-		connID, _ := created["id"].(string)
-		connStatus, _ := created["status"].(string)
-		if connID != "" {
-			ok(fmt.Sprintf("created %s (status: %s, %dms)", connID, connStatus, resp.Duration.Milliseconds()))
-		} else {
-			bad("failed to create connection")
-			resp.Print()
-			return fmt.Errorf("create failed")
-		}
-
-		// QR
-		bold.Println("Fetch QR code...")
-		qrObtained := false
-		for i := 1; i <= 20; i++ {
-			resp, err = client.Do("GET", "/api/connections/"+connID+"/qr", nil)
-			if err != nil || resp == nil {
-				color.New(color.Faint).Printf("  attempt %d/20: request failed, retrying...\n", i)
-				time.Sleep(3 * time.Second)
-				continue
-			}
-			if resp.StatusCode == 200 {
-				var qr map[string]interface{}
-				resp.JSON(&qr)
-				if connected, _ := qr["connected"].(bool); connected {
-					ok("already connected")
-				} else if _, hasValue := qr["value"]; hasValue {
-					ok(fmt.Sprintf("QR obtained (%dms)", resp.Duration.Milliseconds()))
-					if !noScan {
-						imgData, _ := base64.StdEncoding.DecodeString(qr["value"].(string))
-						os.WriteFile("/tmp/wahooks-qr.png", imgData, 0644)
-						exec.Command("open", "/tmp/wahooks-qr.png").Start()
-						color.Yellow("  ▶ Scan QR with WhatsApp")
-					}
-				}
-				qrObtained = true
-				break
-			}
-			color.New(color.Faint).Printf("  attempt %d/20: HTTP %d, retrying...\n", i, resp.StatusCode)
-			time.Sleep(3 * time.Second)
-		}
-		if !qrObtained {
-			bad("QR not available after 20 attempts")
-		}
-
-		// Me
-		bold.Println("Profile...")
-		resp, _ = client.Do("GET", "/api/connections/"+connID+"/me", nil)
-		ok(fmt.Sprintf("GET /me: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
-
-		// Chats
-		bold.Println("Chats...")
-		resp, _ = client.Do("GET", "/api/connections/"+connID+"/chats", nil)
-		ok(fmt.Sprintf("GET /chats: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
-
-		// Restart
-		bold.Println("Restart...")
-		resp, _ = client.Do("POST", "/api/connections/"+connID+"/restart", nil)
-		ok(fmt.Sprintf("POST /restart: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
-
-		// Delete
-		bold.Println("Delete...")
-		resp, _ = client.Do("DELETE", "/api/connections/"+connID, nil)
-		ok(fmt.Sprintf("DELETE: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
-
-		// Verify
-		resp, _ = client.Do("GET", "/api/connections", nil)
-		resp.JSON(&conns)
-		ok(fmt.Sprintf("connections after cleanup: %d", len(conns)))
-
-		fmt.Println()
-		color.Green("═══════════════════════════════════════")
-		color.Green("  E2E Complete!  ✓ %d passed  ✗ %d failed", pass, fail)
-		color.Green("═══════════════════════════════════════")
-
-		if fail > 0 {
-			os.Exit(1)
-		}
-		return nil
-	},
-}
-
 func init() {
 	connQRCmd.Flags().Bool("poll", false, "Poll until QR is available")
 	connChatsCmd.Flags().Int("limit", 20, "Max chats to display")
-	connE2ECmd.Flags().Bool("no-scan", true, "Skip QR scan (default: true)")
 
 	connectionsCmd.AddCommand(connListCmd)
 	connectionsCmd.AddCommand(connCreateCmd)
@@ -457,7 +335,6 @@ func init() {
 	connectionsCmd.AddCommand(connSendCmd)
 	connectionsCmd.AddCommand(connRestartCmd)
 	connectionsCmd.AddCommand(connDeleteCmd)
-	connectionsCmd.AddCommand(connE2ECmd)
 
 	rootCmd.AddCommand(connectionsCmd)
 }

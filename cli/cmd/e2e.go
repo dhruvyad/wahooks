@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dhruvyad/wahooks/cli/internal/api"
-	"github.com/fatih/color"
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -31,18 +31,16 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	webhookURL, _ := cmd.Flags().GetString("webhook-url")
 	phone, _ := cmd.Flags().GetString("phone")
 
-	bold := color.New(color.Bold)
-	faint := color.New(color.Faint)
 	pass, fail, skipped := 0, 0, 0
 
-	ok := func(msg string) { color.Green("  ✓ %s", msg); pass++ }
-	bad := func(msg string) { color.Red("  ✗ %s", msg); fail++ }
-	skip := func(msg string) { faint.Printf("  - %s (skipped)\n", msg); skipped++ }
+	ok := func(msg string) { style.TestPass("%s", msg); pass++ }
+	bad := func(msg string) { style.TestFail("%s", msg); fail++ }
+	skip := func(msg string) { style.TestSkip("%s", msg); skipped++ }
 
 	// ───────────────────────────────────────────────────────
 	// 1. Health check
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n1. Health check")
+	style.TestSection("1. Health check")
 	resp, err := client.Do("GET", "/api", nil)
 	if err != nil {
 		return fmt.Errorf("health check failed: %w", err)
@@ -51,13 +49,13 @@ func runE2E(cmd *cobra.Command, args []string) error {
 		ok(fmt.Sprintf("GET /api (%dms)", resp.Duration.Milliseconds()))
 	} else {
 		bad(fmt.Sprintf("GET /api: HTTP %d", resp.StatusCode))
-		return fmt.Errorf("health check failed — aborting")
+		return fmt.Errorf("health check failed \u2014 aborting")
 	}
 
 	// ───────────────────────────────────────────────────────
 	// 2. Auth guard
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n2. Auth guard")
+	style.TestSection("2. Auth guard")
 	noAuthClient := api.NewClient(client.BaseURL, "")
 	resp, _ = noAuthClient.Do("GET", "/api/connections", nil)
 	if resp != nil && resp.StatusCode == 401 {
@@ -73,7 +71,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 3. List connections (baseline)
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n3. List connections (baseline)")
+	style.TestSection("3. List connections (baseline)")
 	resp, _ = client.Do("GET", "/api/connections", nil)
 	var baselineConns []json.RawMessage
 	if resp != nil {
@@ -84,7 +82,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 4. Create connection
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n4. Create connection")
+	style.TestSection("4. Create connection")
 	resp, err = client.Do("POST", "/api/connections", nil)
 	if err != nil {
 		return fmt.Errorf("create connection failed: %w", err)
@@ -98,13 +96,13 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	} else {
 		bad("failed to create connection")
 		resp.Print()
-		return fmt.Errorf("create failed — aborting")
+		return fmt.Errorf("create failed \u2014 aborting")
 	}
 
 	// ───────────────────────────────────────────────────────
 	// 5. Get connection detail
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n5. Get connection detail")
+	style.TestSection("5. Get connection detail")
 	resp, _ = client.Do("GET", "/api/connections/"+connID, nil)
 	if resp != nil && resp.StatusCode == 200 {
 		ok(fmt.Sprintf("GET /connections/%s (%dms)", connID[:8], resp.Duration.Milliseconds()))
@@ -115,17 +113,18 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 6. Fetch QR code
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n6. Fetch QR code")
+	style.TestSection("6. Fetch QR code")
 	qrObtained := false
 	isConnected := false
+	stopSpinner := style.Spinner("Polling for QR code...")
 	for i := 1; i <= 20; i++ {
 		resp, err = client.Do("GET", "/api/connections/"+connID+"/qr", nil)
 		if err != nil || resp == nil {
-			faint.Printf("  attempt %d/20: request failed, retrying...\n", i)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 		if resp.StatusCode == 200 {
+			stopSpinner()
 			var qr map[string]interface{}
 			resp.JSON(&qr)
 			if connected, _ := qr["connected"].(bool); connected {
@@ -137,10 +136,10 @@ func runE2E(cmd *cobra.Command, args []string) error {
 			qrObtained = true
 			break
 		}
-		faint.Printf("  attempt %d/20: HTTP %d, retrying...\n", i, resp.StatusCode)
 		time.Sleep(3 * time.Second)
 	}
 	if !qrObtained {
+		stopSpinner()
 		bad("QR not available after 20 attempts")
 	}
 
@@ -148,13 +147,13 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// 7. Interactive QR scan
 	// ───────────────────────────────────────────────────────
 	if interactive && qrObtained && !isConnected {
-		bold.Println("\n7. Interactive QR scan")
+		style.TestSection("7. Interactive QR scan")
 		// Save and open QR
 		resp, _ = client.Do("GET", "/api/connections/"+connID+"/qr", nil)
 		if resp != nil && resp.StatusCode == 200 {
 			var qr map[string]interface{}
 			resp.JSON(&qr)
-			if value, ok := qr["value"].(string); ok {
+			if value, vOk := qr["value"].(string); vOk {
 				imgData, _ := base64.StdEncoding.DecodeString(value)
 				path := "/tmp/wahooks-qr.png"
 				os.WriteFile(path, imgData, 0644)
@@ -163,11 +162,12 @@ func runE2E(cmd *cobra.Command, args []string) error {
 				} else if runtime.GOOS == "linux" {
 					exec.Command("xdg-open", path).Start()
 				}
-				color.Yellow("  Scan the QR code with WhatsApp...")
+				style.Warn("Scan the QR code with WhatsApp...")
 			}
 		}
 
 		// Poll until connected (up to 2 minutes)
+		scanSpinner := style.Spinner("Waiting for QR scan...")
 		for i := 1; i <= 40; i++ {
 			time.Sleep(3 * time.Second)
 			resp, _ = client.Do("GET", "/api/connections/"+connID+"/qr", nil)
@@ -175,16 +175,15 @@ func runE2E(cmd *cobra.Command, args []string) error {
 				var qr map[string]interface{}
 				resp.JSON(&qr)
 				if connected, _ := qr["connected"].(bool); connected {
+					scanSpinner()
 					ok("WhatsApp connected!")
 					isConnected = true
 					break
 				}
 			}
-			if i%5 == 0 {
-				faint.Printf("  waiting for scan... (%ds)\n", i*3)
-			}
 		}
 		if !isConnected {
+			scanSpinner()
 			bad("QR not scanned within timeout")
 		}
 	} else if interactive {
@@ -198,7 +197,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 8. Profile and chats
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n8. Profile and chats")
+	style.TestSection("8. Profile and chats")
 	resp, _ = client.Do("GET", "/api/connections/"+connID+"/me", nil)
 	if resp != nil {
 		ok(fmt.Sprintf("GET /me: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
@@ -216,7 +215,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 9. Create webhook
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n9. Create webhook")
+	style.TestSection("9. Create webhook")
 	whBody := map[string]interface{}{
 		"url":    webhookURL,
 		"events": []string{"*"},
@@ -240,7 +239,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 10. List webhooks
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n10. List webhooks")
+	style.TestSection("10. List webhooks")
 	resp, _ = client.Do("GET", "/api/connections/"+connID+"/webhooks", nil)
 	var webhooks []map[string]interface{}
 	if resp != nil {
@@ -264,7 +263,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 11. Test webhook delivery
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n11. Test webhook delivery")
+	style.TestSection("11. Test webhook delivery")
 	testLogID := ""
 	if webhookID != "" {
 		resp, _ = client.Do("POST", "/api/webhooks/"+webhookID+"/test", nil)
@@ -290,7 +289,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 12. Webhook delivery logs
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n12. Webhook delivery logs")
+	style.TestSection("12. Webhook delivery logs")
 	if webhookID != "" {
 		// Poll a few times to let delivery complete
 		logFound := false
@@ -305,13 +304,13 @@ func runE2E(cmd *cobra.Command, args []string) error {
 			}
 			if len(logs) > 0 {
 				latest := logs[0]
-				status, _ := latest["status"].(string)
+				logStatus, _ := latest["status"].(string)
 				eventType, _ := latest["event_type"].(string)
 				if eventType == "" {
 					eventType, _ = latest["eventType"].(string)
 				}
-				if status != "pending" {
-					ok(fmt.Sprintf("%d log(s), latest: %s/%s", len(logs), eventType, status))
+				if logStatus != "pending" {
+					ok(fmt.Sprintf("%d log(s), latest: %s/%s", len(logs), eventType, logStatus))
 					logFound = true
 					break
 				}
@@ -338,7 +337,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// 13. Send test message (interactive only)
 	// ───────────────────────────────────────────────────────
 	if interactive && isConnected && phone != "" {
-		bold.Println("\n13. Send test message")
+		style.TestSection("13. Send test message")
 		chatId := phone
 		if !strings.Contains(chatId, "@") {
 			chatId = chatId + "@c.us"
@@ -353,7 +352,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 
 			// Wait for webhook delivery
 			if webhookID != "" {
-				faint.Println("  waiting 5s for webhook delivery...")
+				style.Dim("  waiting 5s for webhook delivery...")
 				time.Sleep(5 * time.Second)
 				resp, _ = client.Do("GET", "/api/webhooks/"+webhookID+"/logs", nil)
 				var logs []map[string]interface{}
@@ -369,13 +368,13 @@ func runE2E(cmd *cobra.Command, args []string) error {
 					}
 					if et != "test" {
 						messageDelivered = true
-						status, _ := l["status"].(string)
-						ok(fmt.Sprintf("webhook received %s event (status: %s)", et, status))
+						logStatus, _ := l["status"].(string)
+						ok(fmt.Sprintf("webhook received %s event (status: %s)", et, logStatus))
 						break
 					}
 				}
 				if !messageDelivered {
-					faint.Println("  no message webhook delivered yet (may take longer)")
+					style.Dim("  no message webhook delivered yet (may take longer)")
 				}
 			}
 		} else {
@@ -393,7 +392,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 14. Update webhook
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n14. Update webhook")
+	style.TestSection("14. Update webhook")
 	if webhookID != "" {
 		// Disable
 		resp, _ = client.Do("PUT", "/api/webhooks/"+webhookID, map[string]interface{}{"active": false})
@@ -431,7 +430,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 15. Delete webhook
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n15. Delete webhook")
+	style.TestSection("15. Delete webhook")
 	if webhookID != "" {
 		resp, _ = client.Do("DELETE", "/api/webhooks/"+webhookID, nil)
 		if resp != nil && resp.StatusCode == 200 {
@@ -465,13 +464,13 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 16. Billing
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n16. Billing")
+	style.TestSection("16. Billing")
 	resp, _ = client.Do("GET", "/api/billing/status", nil)
 	if resp != nil && resp.StatusCode == 200 {
 		ok(fmt.Sprintf("GET /billing/status: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
 	} else if resp != nil {
-		// Billing may fail if Stripe not configured — treat as warning
-		color.Yellow("  ! GET /billing/status: HTTP %d (Stripe may not be configured)", resp.StatusCode)
+		// Billing may fail if Stripe not configured -- treat as warning
+		style.Warn("GET /billing/status: HTTP %d (Stripe may not be configured)", resp.StatusCode)
 	} else {
 		bad("GET /billing/status failed")
 	}
@@ -480,7 +479,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	if resp != nil && resp.StatusCode == 200 {
 		ok(fmt.Sprintf("GET /billing/usage: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
 	} else if resp != nil {
-		color.Yellow("  ! GET /billing/usage: HTTP %d (Stripe may not be configured)", resp.StatusCode)
+		style.Warn("GET /billing/usage: HTTP %d (Stripe may not be configured)", resp.StatusCode)
 	} else {
 		bad("GET /billing/usage failed")
 	}
@@ -488,7 +487,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 17. Restart connection
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n17. Restart connection")
+	style.TestSection("17. Restart connection")
 	resp, _ = client.Do("POST", "/api/connections/"+connID+"/restart", nil)
 	if resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		ok(fmt.Sprintf("POST /restart: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
@@ -499,7 +498,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 18. Delete connection
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n18. Delete connection")
+	style.TestSection("18. Delete connection")
 	resp, _ = client.Do("DELETE", "/api/connections/"+connID, nil)
 	if resp != nil && resp.StatusCode == 200 {
 		ok(fmt.Sprintf("DELETE: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
@@ -510,7 +509,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// 19. Verify cleanup
 	// ───────────────────────────────────────────────────────
-	bold.Println("\n19. Verify cleanup")
+	style.TestSection("19. Verify cleanup")
 	resp, _ = client.Do("GET", "/api/connections", nil)
 	var finalConns []json.RawMessage
 	if resp != nil {
@@ -525,10 +524,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// ───────────────────────────────────────────────────────
 	// Summary
 	// ───────────────────────────────────────────────────────
-	fmt.Println()
-	color.Green("═══════════════════════════════════════════════════")
-	color.Green("  E2E Complete!  ✓ %d passed  ✗ %d failed  - %d skipped", pass, fail, skipped)
-	color.Green("═══════════════════════════════════════════════════")
+	style.TestSummary(pass, fail, skipped)
 
 	if fail > 0 {
 		os.Exit(1)

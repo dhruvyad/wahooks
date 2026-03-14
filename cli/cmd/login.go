@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/dhruvyad/wahooks/cli/internal/auth"
-	"github.com/fatih/color"
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -96,11 +96,12 @@ func browserLogin() error {
 
 	authURL := fmt.Sprintf("%s/cli/auth?port=%d", dashboardURL, port)
 
-	fmt.Printf("Opening browser to authorize...\n")
+	style.Info("Opening browser to authorize...")
 	if err := openBrowser(authURL); err != nil {
-		fmt.Printf("Could not open browser. Please visit:\n  %s\n", authURL)
+		fmt.Printf("  Could not open browser. Please visit:\n  %s\n", authURL)
 	}
-	color.New(color.Faint).Printf("Waiting for authorization (press Ctrl+C to cancel)...\n")
+
+	stop := style.Spinner("Waiting for authorization...")
 
 	// Wait for callback or timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -108,18 +109,21 @@ func browserLogin() error {
 
 	select {
 	case tokens := <-tokensCh:
+		stop()
 		server.Shutdown(context.Background())
 		cfg.Token = tokens.AccessToken
 		cfg.RefreshToken = tokens.RefreshToken
 		if err := cfg.Save(); err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
-		color.Green("Logged in successfully")
+		style.Success("Logged in successfully")
 		return nil
 	case err := <-errCh:
+		stop()
 		server.Shutdown(context.Background())
 		return fmt.Errorf("server error: %w", err)
 	case <-ctx.Done():
+		stop()
 		server.Shutdown(context.Background())
 		return fmt.Errorf("timed out waiting for authorization")
 	}
@@ -159,7 +163,7 @@ func passwordLogin(args []string, cmd *cobra.Command) error {
 		return fmt.Errorf("save config: %w", err)
 	}
 
-	color.Green("Logged in as %s (%s)", result.User.Email, result.User.ID)
+	style.Success("Logged in as %s (%s)", result.User.Email, result.User.ID)
 	return nil
 }
 
@@ -192,7 +196,7 @@ var configSetCmd = &cobra.Command{
 		if err := cfg.Save(); err != nil {
 			return err
 		}
-		color.Green("Set %s = %s", args[0], args[1])
+		style.Success("Set %s = %s", args[0], args[1])
 		return nil
 	},
 }
@@ -201,12 +205,14 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show current config and auth state",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("  API URL: %s\n", cfg.APIURL)
+		authStatus := "not authenticated (run 'wahooks login')"
 		if cfg.Token != "" {
-			color.Green("  Auth: authenticated")
-		} else {
-			color.Yellow("  Auth: not authenticated (run 'wahooks login')")
+			authStatus = "authenticated"
 		}
+		style.KeyValue(
+			"API URL", cfg.APIURL,
+			"Auth", authStatus,
+		)
 	},
 }
 

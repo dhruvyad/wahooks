@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -34,33 +34,28 @@ var billingStatusCmd = &cobra.Command{
 		sub, _ := status["subscription"].(map[string]interface{})
 		slots, _ := status["slots"].(map[string]interface{})
 
-		fmt.Println()
-
+		// Build subscription info
 		active, _ := sub["active"].(bool)
+		subStatus := "inactive"
+		costStr := "--"
 		if active {
-			subStatus, _ := sub["status"].(string)
+			subStatus, _ = sub["status"].(string)
 			amount, _ := sub["monthlyAmount"].(float64)
 			currency, _ := sub["currency"].(string)
-			color.Green("  Subscription: %s", subStatus)
-			fmt.Printf("  Monthly cost: %s %.2f\n", strings.ToUpper(currency), amount)
-		} else {
-			color.Yellow("  Subscription: inactive")
-			fmt.Println("  Run 'wahooks billing checkout' to set up billing")
+			costStr = fmt.Sprintf("%s %.2f", strings.ToUpper(currency), amount)
 		}
 
-		fmt.Println()
-
+		// Build slots info
 		paid, _ := slots["paid"].(float64)
 		used, _ := slots["used"].(float64)
 		available, _ := slots["available"].(float64)
+		slotsStr := fmt.Sprintf("%.0f paid, %.0f used, %.0f available", paid, used, available)
 
-		fmt.Printf("  Slots: %.0f paid, %.0f used, ", paid, used)
-		if available > 0 {
-			color.New(color.FgGreen).Printf("%.0f available\n", available)
+		if active {
+			style.Panel("Subscription", fmt.Sprintf("Status:       %s\nMonthly cost: %s\nSlots:        %s", subStatus, costStr, slotsStr))
 		} else {
-			color.New(color.FgRed).Println("0 available")
+			style.WarnPanel("Subscription", fmt.Sprintf("Status: %s\nSlots:  %s\n\nRun 'wahooks billing checkout' to set up billing.", subStatus, slotsStr))
 		}
-		fmt.Println()
 
 		return nil
 	},
@@ -98,13 +93,13 @@ var billingCheckoutCmd = &cobra.Command{
 
 		url, _ := result["url"].(string)
 		if url == "" || url == "https://wahooks.com/billing?success=true" {
-			color.Green("Slots added to existing subscription!")
+			style.Success("Slots added to existing subscription!")
 			return nil
 		}
 
-		fmt.Println("Opening checkout...")
+		style.Info("Opening checkout in browser...")
 		openBrowserURL(url)
-		color.New(color.Faint).Println("Complete payment in your browser")
+		style.Dim("  Complete payment in your browser")
 		return nil
 	},
 }
@@ -126,7 +121,7 @@ var billingPortalCmd = &cobra.Command{
 
 		url, _ := result["url"].(string)
 		if url != "" {
-			fmt.Println("Opening billing portal...")
+			style.Info("Opening billing portal in browser...")
 			openBrowserURL(url)
 		}
 		return nil

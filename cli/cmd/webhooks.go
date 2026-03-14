@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -40,8 +41,7 @@ var whListCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("%-36s  %-8s  %-40s  %s\n", "ID", "ACTIVE", "URL", "EVENTS")
-		fmt.Println("────────────────────────────────────  ────────  ────────────────────────────────────────  ──────────")
+		table := style.NewTable("ID", "ACTIVE", "URL", "EVENTS")
 		for _, wh := range webhooks {
 			id, _ := wh["id"].(string)
 			url, _ := wh["url"].(string)
@@ -54,15 +54,20 @@ var whListCmd = &cobra.Command{
 				}
 			}
 
-			activeStr := color.RedString("false")
+			activeStr := "false"
+			activeColor := style.Red()
 			if active {
-				activeStr = color.GreenString("true")
+				activeStr = "true"
+				activeColor = style.Green()
 			}
 
-			fmt.Printf("%-36s  %-8s  %-40s  %s\n", id, activeStr, url, strings.Join(events, ","))
+			table.AddColoredRow(
+				[]string{id, activeStr, url, strings.Join(events, ", ")},
+				[]*color.Color{nil, activeColor, nil, nil},
+			)
 		}
-
-		color.New(color.Faint).Printf("\n%d webhook(s)\n", len(webhooks))
+		table.Print()
+		style.Count(len(webhooks), "webhook")
 		return nil
 	},
 }
@@ -92,11 +97,16 @@ var whCreateCmd = &cobra.Command{
 		var created map[string]interface{}
 		if err := resp.JSON(&created); err == nil {
 			if id, ok := created["id"].(string); ok {
-				color.Green("Created webhook %s", id)
-				if secret, ok := created["signing_secret"].(string); ok {
-					fmt.Printf("  Signing secret: %s\n", secret)
-				} else if secret, ok := created["signingSecret"].(string); ok {
-					fmt.Printf("  Signing secret: %s\n", secret)
+				style.Success("Created webhook %s", id)
+
+				secret := ""
+				if s, ok := created["signing_secret"].(string); ok {
+					secret = s
+				} else if s, ok := created["signingSecret"].(string); ok {
+					secret = s
+				}
+				if secret != "" {
+					style.WarnPanel("Signing Secret", fmt.Sprintf("%s\n\nSave this secret \u2014 it won't be shown again.", secret))
 				}
 				return nil
 			}
@@ -152,7 +162,7 @@ var whDeleteCmd = &cobra.Command{
 		var result map[string]interface{}
 		if err := resp.JSON(&result); err == nil {
 			if success, _ := result["success"].(bool); success {
-				color.Green("Webhook deleted")
+				style.Success("Webhook deleted")
 				return nil
 			}
 		}
@@ -180,8 +190,7 @@ var whLogsCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("%-36s  %-20s  %-10s  %-5s  %s\n", "ID", "EVENT", "STATUS", "TRIES", "CREATED")
-		fmt.Println("────────────────────────────────────  ────────────────────  ──────────  ─────  ────────────────────")
+		table := style.NewTable("ID", "EVENT", "STATUS", "TRIES", "CREATED")
 		for _, l := range logs {
 			id, _ := l["id"].(string)
 			eventType, _ := l["event_type"].(string)
@@ -195,33 +204,28 @@ var whLogsCmd = &cobra.Command{
 				createdAt, _ = l["createdAt"].(string)
 			}
 
-			statusColor := color.New(color.FgYellow)
-			if status == "delivered" {
-				statusColor = color.New(color.FgGreen)
-			} else if status == "failed" {
-				statusColor = color.New(color.FgRed)
-			}
+			statusColor := style.StatusColor(status)
+			table.AddColoredRow(
+				[]string{id, eventType, status, attempts, createdAt},
+				[]*color.Color{nil, nil, statusColor, nil, nil},
+			)
+		}
+		table.Print()
 
-			fmt.Printf("%-36s  %-20s  ", id, eventType)
-			statusColor.Printf("%-10s", status)
-			fmt.Printf("  %-5s  %s\n", attempts, createdAt)
-
-			// Show message body if available
-			if payload, ok := l["payload"].(map[string]interface{}); ok {
-				if inner, ok := payload["payload"].(map[string]interface{}); ok {
-					if body, ok := inner["body"].(string); ok && body != "" {
-						color.New(color.Faint).Printf("  └─ %s\n", body)
-					}
-				}
-				if verbose {
+		// Show message bodies inline after the table
+		if verbose {
+			for _, l := range logs {
+				if payload, ok := l["payload"].(map[string]interface{}); ok {
+					id, _ := l["id"].(string)
 					if encoded, err := encodeJSON(payload); err == nil {
-						color.New(color.Faint).Printf("  └─ payload: %s\n", encoded)
+						style.Dim("  %s: %s", id[:8], encoded)
 					}
 				}
 			}
+			fmt.Println()
 		}
 
-		color.New(color.Faint).Printf("\n%d log(s)\n", len(logs))
+		style.Count(len(logs), "log")
 		return nil
 	},
 }
@@ -240,7 +244,7 @@ var whTestCmd = &cobra.Command{
 		if err := resp.JSON(&result); err == nil {
 			if success, _ := result["success"].(bool); success {
 				logId, _ := result["logId"].(string)
-				color.Green("Test event enqueued (log: %s)", logId)
+				style.Success("Test event enqueued (log: %s)", logId)
 				return nil
 			}
 		}

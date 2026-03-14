@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/fatih/color"
 )
 
@@ -102,8 +103,8 @@ func (c *Client) doRequest(method, path string, body interface{}) (*Response, er
 
 func (r *Response) Print() {
 	// Status line
-	dim := color.New(color.Faint)
-	dim.Printf("%dms ", r.Duration.Milliseconds())
+	faint := color.New(color.Faint)
+	faint.Printf(" %dms ", r.Duration.Milliseconds())
 
 	if r.StatusCode >= 200 && r.StatusCode < 300 {
 		color.New(color.FgGreen).Printf("HTTP %d\n", r.StatusCode)
@@ -111,10 +112,10 @@ func (r *Response) Print() {
 		color.New(color.FgRed).Printf("HTTP %d\n", r.StatusCode)
 	}
 
-	// Pretty-print body
+	// Pretty-print body with syntax highlighting
 	var pretty bytes.Buffer
 	if err := json.Indent(&pretty, r.Body, "", "  "); err == nil {
-		fmt.Println(pretty.String())
+		fmt.Println(style.ColorizeJSON(pretty.String()))
 	} else {
 		fmt.Println(string(r.Body))
 	}

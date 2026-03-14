@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/fatih/color"
+	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -25,12 +25,11 @@ var tokensListCmd = &cobra.Command{
 
 		var tokens []map[string]interface{}
 		if err := resp.JSON(&tokens); err != nil || len(tokens) == 0 {
-			fmt.Println("No API tokens")
+			style.Dim("  No API tokens")
 			return nil
 		}
 
-		fmt.Printf("%-36s  %-20s  %-15s  %-20s  %s\n", "ID", "NAME", "PREFIX", "LAST USED", "CREATED")
-		fmt.Println("────────────────────────────────────  ────────────────────  ───────────────  ────────────────────  ────────────────────")
+		table := style.NewTable("ID", "NAME", "PREFIX", "LAST USED", "CREATED")
 		for _, t := range tokens {
 			id, _ := t["id"].(string)
 			name, _ := t["name"].(string)
@@ -50,10 +49,10 @@ var tokensListCmd = &cobra.Command{
 				createdAt, _ = t["created_at"].(string)
 			}
 
-			fmt.Printf("%-36s  %-20s  %-15s  %-20s  %s\n", id, name, prefix, lastUsed, createdAt)
+			table.AddRow(id, name, prefix, lastUsed, createdAt)
 		}
-
-		color.New(color.Faint).Printf("\n%d token(s)\n", len(tokens))
+		table.Print()
+		style.Count(len(tokens), "token")
 		return nil
 	},
 }
@@ -75,11 +74,8 @@ var tokensCreateCmd = &cobra.Command{
 		var result map[string]interface{}
 		if err := resp.JSON(&result); err == nil {
 			if token, ok := result["token"].(string); ok {
-				color.Green("Created API token: %s", result["name"])
-				fmt.Println()
-				color.New(color.Bold).Printf("  %s\n", token)
-				fmt.Println()
-				color.Yellow("  Save this token — it won't be shown again.")
+				style.Success("Created API token: %s", result["name"])
+				style.WarnPanel("Save Your Token", fmt.Sprintf("%s\n\nThis token will not be shown again.", token))
 				return nil
 			}
 		}
@@ -103,7 +99,7 @@ var tokensRevokeCmd = &cobra.Command{
 		var result map[string]interface{}
 		if err := resp.JSON(&result); err == nil {
 			if success, _ := result["success"].(bool); success {
-				color.Green("Token revoked")
+				style.Success("Token revoked")
 				return nil
 			}
 		}
