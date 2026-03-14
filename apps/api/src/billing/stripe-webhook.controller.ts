@@ -60,18 +60,21 @@ export class StripeWebhookController {
           `Subscription updated: customer=${customerId} status=${status} quantity=${newQuantity} cancelAtPeriodEnd=${cancelAtPeriodEnd}`,
         );
 
-        if (cancelAtPeriodEnd && status === 'active') {
-          // User clicked "Cancel" — they keep access until period end.
-          // No action needed. Connections stay active.
-          this.logger.log(
-            `Subscription will cancel at period end — no action until then`,
-          );
-        } else if (status === 'canceled' || status === 'unpaid') {
+        if (status === 'canceled' || status === 'unpaid') {
           // Subscription actually expired or payment failed permanently
           await this.enforceSlotLimit(customerId, 0);
         } else if (status === 'active' || status === 'past_due') {
-          // Quantity changed (upgrade/downgrade) — enforce new limit
+          // Always enforce the current quantity limit.
+          // If cancelAtPeriodEnd=true, the user still has access to their
+          // paid slots — they just won't renew. But if they downgraded
+          // the quantity, we enforce the new limit immediately.
           await this.enforceSlotLimit(customerId, newQuantity);
+
+          if (cancelAtPeriodEnd) {
+            this.logger.log(
+              `Subscription will cancel at period end — connections kept within ${newQuantity} slot limit`,
+            );
+          }
         }
         break;
       }
