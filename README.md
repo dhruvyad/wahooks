@@ -1,8 +1,141 @@
-# WAHooks
+# WAHooks — WhatsApp Webhooks, Instant Setup
 
-Open-source platform for deploying cloud-hosted [WAHA](https://waha.devlike.pro/) (WhatsApp HTTP API) instances with managed webhooks and usage-based billing.
+<p align="center">
+  <img src="assets/banner.webp" alt="WAHooks Banner" />
+</p>
 
-Connect a WhatsApp number, configure webhook endpoints, and receive real-time events — without managing infrastructure.
+<p align="center">
+  <strong>Connect WhatsApp numbers, receive real-time webhooks, and send messages — all through a simple API.</strong><br>
+  No infrastructure to manage. Fully open source.
+</p>
+
+<p align="center">
+  <a href="https://wahooks.com"><img src="https://img.shields.io/badge/Website-wahooks.com-25D366" alt="Website"></a>
+  <a href="https://www.npmjs.com/package/wahooks"><img src="https://img.shields.io/npm/v/wahooks.svg" alt="npm version"></a>
+  <a href="https://pypi.org/project/wahooks/"><img src="https://img.shields.io/pypi/v/wahooks.svg" alt="PyPI version"></a>
+  <a href="https://discord.gg/B2XNf97Vby"><img src="https://img.shields.io/discord/1234567890?label=Discord&logo=discord" alt="Discord"></a>
+  <a href="https://x.com/dhruvyad"><img src="https://img.shields.io/twitter/follow/dhruvyad?style=social" alt="Twitter"></a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
+  <a href="https://github.com/dhruvyad/wahooks/actions"><img src="https://img.shields.io/github/actions/workflow/status/dhruvyad/wahooks/deploy-api.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://deepwiki.com/dhruvyad/wahooks"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+</p>
+
+<p align="center">
+  <a href="https://wahooks.com/docs">Documentation</a> &middot;
+  <a href="https://wahooks.com/signup">Get Started</a> &middot;
+  <a href="https://discord.gg/B2XNf97Vby">Discord</a> &middot;
+  <a href="https://x.com/dhruvyad">Twitter</a>
+</p>
+
+---
+
+## Why WAHooks?
+
+Building WhatsApp integrations shouldn't require managing WAHA containers, configuring Kubernetes, or wiring up webhook delivery pipelines. WAHooks handles all of that so you can focus on your application.
+
+- **Zero infrastructure** — we run the WhatsApp sessions, you receive the webhooks
+- **Simple API** — REST API, TypeScript SDK, Python SDK, CLI, and MCP server
+- **$0.99/month per connection** — no minimums, no hidden fees
+- **Open source** — MIT licensed, self-host if you prefer
+
+## Quick Start
+
+### Install the CLI
+
+```bash
+curl -fsSL wahooks.com/install | bash
+```
+
+Or via npm:
+
+```bash
+npm install -g wahooks
+```
+
+### Connect WhatsApp in 30 seconds
+
+```bash
+wahooks login
+wahooks connections create
+wahooks connections qr <id> --poll   # Scan with WhatsApp
+```
+
+### Receive webhooks
+
+```bash
+wahooks webhooks create <connection-id> --url https://your-app.com/webhook
+```
+
+Every WhatsApp message, status change, and event is delivered to your endpoint with HMAC-SHA256 signatures and automatic retries.
+
+### Send messages
+
+```bash
+wahooks send <connection-id> --to 1234567890@s.whatsapp.net --text "Hello from WAHooks"
+```
+
+## SDKs
+
+### TypeScript
+
+```bash
+npm install wahooks
+```
+
+```typescript
+import { WAHooks } from 'wahooks';
+
+const client = new WAHooks({ apiKey: 'wh_...' });
+const connections = await client.connections.list();
+await client.messages.send(connectionId, {
+  chatId: '1234567890@s.whatsapp.net',
+  text: 'Hello!',
+});
+```
+
+### Python
+
+```bash
+pip install wahooks
+```
+
+```python
+from wahooks import WAHooks
+
+client = WAHooks(api_key="wh_...")
+connections = client.connections.list()
+client.messages.send(connection_id, chat_id="1234567890@s.whatsapp.net", text="Hello!")
+```
+
+### MCP Server
+
+Connect WAHooks to Claude, Cursor, Windsurf, and other AI assistants:
+
+```json
+{
+  "mcpServers": {
+    "wahooks": {
+      "type": "http",
+      "url": "https://api.wahooks.com/mcp"
+    }
+  }
+}
+```
+
+## Features
+
+- **Managed WhatsApp Sessions** — Cloud-hosted WAHA containers with automatic scaling and health monitoring
+- **Persistent Sessions** — Auth state persisted in Postgres, survives restarts and node replacements
+- **Webhook Delivery** — HMAC-SHA256 signed payloads, 5 retries with exponential backoff, dead-letter queue
+- **Real-time Events** — Messages, status changes, presence updates, delivered via BullMQ
+- **SDKs & CLI** — TypeScript and Python SDKs, Go CLI, MCP server for AI assistants
+- **Chat Viewer** — Built-in dashboard to view chats, send messages, and manage connections
+- **OAuth & API Tokens** — Supabase Auth with JWT, API tokens with `wh_` prefix for programmatic access
+- **Auto-scaling** — Kubernetes-based scaling with proactive provisioning (buffer at 10 remaining slots)
+- **Open Source** — MIT licensed, self-hostable, fully documented
 
 ## Architecture
 
@@ -16,7 +149,7 @@ Browser ──► Next.js Dashboard (Vercel)
      ▼                      ▼
   Supabase               k3s Cluster (Hetzner Cloud)
   (Postgres + Auth)      ├── WAHA StatefulSet (autoscaled 1–10 nodes)
-                         ├── Redis (BullMQ)
+                         ├── Redis (BullMQ + AOF persistence)
                          └── Cluster Autoscaler
                                 │
                                 ▼
@@ -26,184 +159,132 @@ Browser ──► Next.js Dashboard (Vercel)
 
 | Component | Tech | Hosting |
 |-----------|------|---------|
-| Dashboard | Next.js 15, React 19, Tailwind CSS 4, shadcn/ui | Vercel |
+| Dashboard | Next.js 15, React 19, Tailwind CSS 4 | Vercel |
 | API | NestJS 11, TypeScript | k3s on Hetzner Cloud |
-| WhatsApp Engine | WAHA Plus (NOWEB engine) | k3s StatefulSet, autoscaled |
+| WhatsApp Engine | WAHA Plus (NOWEB, ~50 sessions/pod) | k3s StatefulSet |
 | Database + Auth | Supabase (Postgres + Auth + JWTs) | Supabase Cloud |
-| Message Queue | BullMQ + Redis 7 | k3s Deployment |
-| Billing | Stripe usage-based metering | Stripe |
-| Infrastructure | Terraform + kube-hetzner module | Hetzner Cloud |
+| Message Queue | BullMQ + Redis 7 (AOF persistence) | k3s Deployment |
+| Billing | Stripe prepaid slots ($0.99/connection/month) | Stripe |
+| Infrastructure | Terraform + kube-hetzner | Hetzner Cloud |
 | Monorepo | Turborepo + pnpm workspaces | — |
+
+## API Reference
+
+All routes prefixed with `/api`. Auth via Supabase JWT or API token in `Authorization: Bearer` header.
+
+### Connections
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/connections` | List connections |
+| `POST` | `/api/connections` | Create connection |
+| `GET` | `/api/connections/:id` | Get connection detail |
+| `GET` | `/api/connections/:id/qr` | Get QR code |
+| `GET` | `/api/connections/:id/chats` | Get recent chats |
+| `GET` | `/api/connections/:id/me` | Get WhatsApp profile |
+| `POST` | `/api/connections/:id/restart` | Restart session |
+| `DELETE` | `/api/connections/:id` | Delete connection |
+
+### Webhooks
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/connections/:cid/webhooks` | List webhook configs |
+| `POST` | `/api/connections/:cid/webhooks` | Create webhook |
+| `PUT` | `/api/webhooks/:id` | Update webhook |
+| `DELETE` | `/api/webhooks/:id` | Delete webhook |
+| `GET` | `/api/webhooks/:id/logs` | Delivery logs |
+
+### Billing
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/billing/status` | Subscription status |
+| `POST` | `/api/billing/checkout` | Create checkout session |
+| `POST` | `/api/billing/portal` | Stripe customer portal |
+
+Full API documentation: [wahooks.com/docs](https://wahooks.com/docs)
+
+## Self-Hosting
+
+### Prerequisites
+
+- Node.js 20+, [pnpm](https://pnpm.io/) 9+
+- [Supabase](https://supabase.com/) project (Postgres + Auth)
+- Docker (for local WAHA)
+
+### Local Development
+
+```bash
+git clone https://github.com/dhruvyad/wahooks.git
+cd wahooks
+
+pnpm install
+
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
+# Fill in your Supabase + Stripe credentials
+
+pnpm db:push    # Push schema to DB
+pnpm dev        # Start API (:3001) + Web (:3000)
+```
+
+### Production Deployment
+
+Infrastructure is fully declarative via Terraform using [kube-hetzner](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner):
+
+```bash
+cd terraform/
+cp terraform.tfvars.example terraform.tfvars
+terraform init && terraform apply
+```
+
+This provisions:
+- k3s control plane on Hetzner Cloud
+- Autoscaling 1–10 worker nodes for WAHA pods
+- Redis, RBAC, secrets, and all k8s resources
+
+CI/CD via GitHub Actions: build Docker image → run migrations → rolling deploy.
+
+See [k8s/README.md](k8s/README.md) for full deployment docs.
 
 ## Project Structure
 
 ```
 wahooks/
 ├── apps/
-│   ├── api/              NestJS API server (port 3001)
-│   │   └── src/
-│   │       ├── auth/           Supabase JWT guard + user decorator
-│   │       ├── billing/        Stripe checkout, portal, usage metering
-│   │       ├── connections/    WhatsApp connection CRUD + QR code flow
-│   │       ├── database/       Drizzle ORM provider (global module)
-│   │       ├── events/         WAHA event ingestion + webhook delivery queue
-│   │       ├── health/         Cron-based health polling + scaling checks
-│   │       ├── orchestration/  K8s / Hetzner / Mock orchestrator interface
-│   │       ├── waha/           WAHA REST API client
-│   │       ├── webhooks/       Webhook config CRUD + delivery logs
-│   │       └── workers/        Worker pool management + autoscaling
-│   └── web/              Next.js dashboard (port 3000)
+│   ├── api/              NestJS API server
+│   └── web/              Next.js dashboard + docs (Fumadocs)
 ├── packages/
-│   ├── db/               Drizzle ORM schema + migrations (Supabase Postgres)
+│   ├── db/               Drizzle ORM schema + migrations
 │   ├── shared-types/     TypeScript domain types
 │   └── config/           Shared ESLint + TypeScript configs
-├── terraform/            Declarative k3s cluster provisioning
-│   └── extra-manifests/  K8s manifests (StatefulSet, RBAC, Redis, secrets)
-├── k8s/                  Reference k8s manifests + migration docs
-└── scripts/              E2E test scripts
+├── sdks/
+│   ├── python/           Python SDK (PyPI: wahooks)
+│   ├── typescript/       TypeScript SDK (npm: wahooks)
+│   └── mcp/              MCP server (OAuth via Supabase)
+├── cli/                  Go CLI (Cobra)
+├── terraform/            k3s cluster provisioning
+└── k8s/                  Kubernetes manifests
 ```
 
-## Getting Started
+## Contributing
 
-### Prerequisites
+Contributions welcome! See the [docs](https://wahooks.com/docs) for architecture details.
 
-- Node.js 20+
-- [pnpm](https://pnpm.io/) 9+
-- A [Supabase](https://supabase.com/) project (Postgres + Auth)
-- Docker (for local WAHA testing)
+1. Fork the repo
+2. Create a branch (`git checkout -b feat/my-feature`)
+3. Commit with conventional commits (`feat:`, `fix:`, etc.)
+4. Open a PR
 
-### Local Development
-
-```bash
-# Install dependencies
-pnpm install
-
-# Copy env files and fill in values
-cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
-
-# Push schema to DB (dev only)
-pnpm db:push
-
-# Start all apps (API on :3001, Web on :3000)
-pnpm dev
-```
-
-### Database
-
-```bash
-pnpm db:generate    # Generate migrations after schema changes
-pnpm db:migrate     # Run migrations
-pnpm db:push        # Push schema directly (dev only)
-pnpm db:studio      # Open Drizzle Studio
-```
-
-### Tests
-
-```bash
-# API unit tests
-pnpm test
-
-# E2E test against a running API
-./scripts/e2e-test.sh http://localhost:3001
-./scripts/e2e-test.sh https://api.wahooks.com --no-scan
-```
-
-## Deployment
-
-Infrastructure is fully declarative via Terraform using the [kube-hetzner](https://github.com/kube-hetzner/terraform-hcloud-kube-hetzner) module. One `terraform apply` provisions the k3s cluster, configures the autoscaler, and deploys all application manifests.
-
-```bash
-cd terraform/
-cp terraform.tfvars.example terraform.tfvars
-# Fill in secrets
-
-terraform init
-terraform plan
-terraform apply
-```
-
-The Terraform config provisions:
-- **3-node HA control plane** (CX22) with embedded etcd
-- **Autoscaling 1–10 CX23 worker nodes** for WAHA pods via Kubernetes Cluster Autoscaler
-- **All k8s resources**: WAHA StatefulSet, API Deployment, Redis, RBAC, secrets
-
-See [k8s/README.md](k8s/README.md) for full deployment instructions and prerequisites.
-
-### CI/CD
-
-GitHub Actions (`.github/workflows/deploy-api.yml`):
-1. Build + push API Docker image to GHCR
-2. Run Drizzle migrations against production DB
-3. Rolling update via `kubectl set image`
-
-## API
-
-All routes prefixed with `/api`. Auth via Supabase JWT in `Authorization: Bearer` header.
-
-### Connections
-
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `GET` | `/api/connections` | Yes | List user's connections |
-| `POST` | `/api/connections` | Yes | Create connection (provisions WAHA session) |
-| `GET` | `/api/connections/:id` | Yes | Get connection detail |
-| `GET` | `/api/connections/:id/qr` | Yes | Get QR code for WhatsApp linking |
-| `GET` | `/api/connections/:id/chats` | Yes | Get recent WhatsApp chats |
-| `GET` | `/api/connections/:id/me` | Yes | Get WhatsApp profile info |
-| `POST` | `/api/connections/:id/restart` | Yes | Restart WAHA session |
-| `DELETE` | `/api/connections/:id` | Yes | Stop and remove connection |
-
-### Webhooks
-
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `GET` | `/api/connections/:cid/webhooks` | Yes | List webhook configs |
-| `POST` | `/api/connections/:cid/webhooks` | Yes | Create webhook config |
-| `PUT` | `/api/webhooks/:id` | Yes | Update webhook config |
-| `DELETE` | `/api/webhooks/:id` | Yes | Delete webhook config |
-| `GET` | `/api/webhooks/:id/logs` | Yes | Get delivery logs (last 100) |
-
-### Billing
-
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `GET` | `/api/billing/status` | Yes | Billing status + usage |
-| `POST` | `/api/billing/checkout` | Yes | Stripe Checkout session |
-| `POST` | `/api/billing/portal` | Yes | Stripe Customer Portal |
-
-### Internal
-
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `GET` | `/api` | No | Health check |
-| `POST` | `/api/events/waha` | No | WAHA event ingestion (from workers) |
-| `POST` | `/api/stripe/webhook` | Stripe sig | Stripe webhook receiver |
-
-## Key Design Decisions
-
-- **WAHA Plus with NOWEB engine** — multi-session support, ~50 sessions per node, Postgres session persistence across pod restarts
-- **Kubernetes StatefulSet** — stable pod identity (`waha-0`, `waha-1`, ...) with per-pod DNS via headless Service for sticky session routing
-- **Cluster Autoscaler** — provisions/drains Hetzner worker nodes based on pod scheduling pressure, with 10-minute cooldowns
-- **Scale-down safety** — always drains highest-ordinal pod first (k8s StatefulSet ordering), with session migration before removal
-- **Webhook delivery** — BullMQ with 5 retries, exponential backoff, HMAC-SHA256 signing (`X-WAHooks-Signature`), dead letter queue for failed jobs
-- **Usage-based billing** — $0.25/connection/month, hourly metering via Stripe
-
-## Environment Variables
-
-See [`apps/api/.env.example`](apps/api/.env.example) for the full list. Key variables:
-
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Supabase Postgres connection string |
-| `SUPABASE_URL` | Supabase project URL (JWT verification via JWKS) |
-| `ORCHESTRATOR` | `k8s` (production), `hetzner` (legacy), `mock` (dev) |
-| `WAHA_API_KEY` | Shared WAHA API key for all pods |
-| `REDIS_URL` | Redis connection string for BullMQ |
-| `STRIPE_SECRET_KEY` | Stripe secret API key |
-| `STRIPE_PRICE_ID` | Stripe metered price ID |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+Join our [Discord](https://discord.gg/B2XNf97Vby) to discuss ideas and get help.
 
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">
+  brought to you by <a href="https://x.com/dhruvyad">@dhruvyad</a>
+</p>
