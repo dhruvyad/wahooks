@@ -7,6 +7,12 @@ import { useApiData } from "@/lib/cache";
 import { StatusBadge } from "@/components/status-badge";
 import { ConnectionListSkeleton } from "@/components/skeletons";
 
+interface BillingSlots {
+  paid: number;
+  used: number;
+  available: number;
+}
+
 interface Connection {
   id: string;
   name: string | null;
@@ -33,6 +39,14 @@ export default function ConnectionsPage() {
   );
 
   const list = connections ?? [];
+
+  // Fetch billing slots
+  const [slots, setSlots] = useState<BillingSlots | null>(null);
+  useEffect(() => {
+    apiFetch("/api/billing/status")
+      .then((data: any) => setSlots(data?.slots ?? null))
+      .catch(() => {});
+  }, []);
 
   // Read custom names from localStorage + fetch phone numbers for working connections
   const [customNames, setCustomNames] = useState<Record<string, string>>({});
@@ -67,7 +81,21 @@ export default function ConnectionsPage() {
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">Connections</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Connections</h1>
+          {slots && (
+            <p className="mt-0.5 text-xs text-text-tertiary">
+              {slots.used}/{slots.paid} slots used
+              {slots.available > 0 ? (
+                <span className="text-wa-green"> · {slots.available} available</span>
+              ) : slots.paid > 0 ? (
+                <span className="text-status-error-text"> · 0 available</span>
+              ) : (
+                <span> · <Link href="/billing" className="text-wa-green hover:underline">Set up billing</Link></span>
+              )}
+            </p>
+          )}
+        </div>
         <Link
           href="/connections/new"
           className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark"
