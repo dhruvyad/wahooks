@@ -29,17 +29,19 @@ export function MobileSidebar({ email }: { email: string }) {
 
   return (
     <>
-      {/* Hamburger — mobile only */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed left-4 top-4 z-50 rounded-lg border border-border-primary bg-bg-secondary p-2 text-text-secondary shadow-lg md:hidden"
-        aria-label="Open menu"
-      >
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+      {/* Hamburger — mobile only, hidden when sidebar is open */}
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="fixed left-4 top-4 z-50 rounded-lg border border-border-primary bg-bg-secondary p-2 text-text-secondary shadow-lg md:hidden"
+          aria-label="Open menu"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
 
       {/* Overlay */}
       {open && (
