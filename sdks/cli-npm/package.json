@@ -1,6 +1,6 @@
 {
   "name": "@wahooks/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "WAHooks CLI — manage WhatsApp connections, webhooks, and billing",
   "bin": {
     "wahooks": "bin/wahooks"
