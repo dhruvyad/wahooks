@@ -1,0 +1,82 @@
+name: Deploy MCP Server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'sdks/mcp/**'
+
+concurrency:
+  group: deploy-mcp
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/mcp
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: sdks/mcp
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.DEPLOY_KUBECONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: Deploy MCP server
+        run: |
+          # Create deployment if it doesn't exist
+          kubectl get deployment wahooks-mcp 2>/dev/null || \
+          kubectl create deployment wahooks-mcp \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --port=8000
+
+          # Update image
+          kubectl set image deployment/wahooks-mcp \
+            '*=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
+
+          # Set env vars
+          kubectl set env deployment/wahooks-mcp \
+            WAHOOKS_API_URL=http://wahooks-api:3001 \
+            SUPABASE_URL=https://fvatjlbtyegsqjuwbxxx.supabase.co \
+            MCP_BASE_URL=https://api.wahooks.com
+
+          # Ensure service exists
+          kubectl get service wahooks-mcp 2>/dev/null || \
+          kubectl expose deployment wahooks-mcp --port=8000 --target-port=8000
+
+          # Add image pull secret
+          kubectl patch deployment wahooks-mcp -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ghcr-secret"}]}}}}'
+
+          kubectl rollout status deployment/wahooks-mcp --timeout=120s
