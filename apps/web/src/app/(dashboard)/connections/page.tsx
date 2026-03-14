@@ -29,6 +29,123 @@ function getStoredName(connectionId: string): string | null {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Blurred QR empty state — shown when user has 0 connections AND    */
+/*  no paid slots. Teases the QR scan flow to nudge them to buy.      */
+/* ------------------------------------------------------------------ */
+
+function QrUpgradePrompt() {
+  const [quantity, setQuantity] = useState(1);
+  const [redirecting, setRedirecting] = useState(false);
+
+  async function handleCheckout() {
+    setRedirecting(true);
+    try {
+      const data = await apiFetch("/api/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({ quantity, currency: "usd" }),
+      });
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        // Slots added to existing subscription — reload
+        window.location.reload();
+      }
+    } catch {
+      setRedirecting(false);
+    }
+  }
+
+  return (
+    <div className="mt-10 flex flex-col items-center">
+      {/* Fake QR code — blurred with overlay */}
+      <div className="relative">
+        {/* QR grid (decorative) */}
+        <div className="h-64 w-64 rounded-2xl border border-border-primary bg-white p-4 blur-[6px]">
+          <svg viewBox="0 0 200 200" className="h-full w-full">
+            {/* Generate a fake QR pattern */}
+            {Array.from({ length: 20 }).map((_, row) =>
+              Array.from({ length: 20 }).map((_, col) => {
+                // Deterministic pseudo-random pattern
+                const filled =
+                  (row < 7 && col < 7) ||
+                  (row < 7 && col > 12) ||
+                  (row > 12 && col < 7) ||
+                  ((row * 13 + col * 7 + row * col) % 3 === 0);
+                return filled ? (
+                  <rect
+                    key={`${row}-${col}`}
+                    x={col * 10}
+                    y={row * 10}
+                    width={10}
+                    height={10}
+                    fill="#000"
+                  />
+                ) : null;
+              })
+            )}
+          </svg>
+        </div>
+
+        {/* Overlay card */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-72 rounded-xl border border-border-secondary bg-bg-secondary/95 p-5 text-center shadow-xl backdrop-blur-sm">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-wa-green/10">
+              <svg className="h-5 w-5 text-wa-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-text-primary">
+              Unlock WhatsApp Connection
+            </p>
+            <p className="mt-1 text-xs text-text-secondary">
+              Purchase a slot to scan the QR code and connect your WhatsApp number.
+            </p>
+
+            {/* Quantity picker */}
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <div className="flex items-center rounded-lg border border-border-secondary">
+                <button
+                  type="button"
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="px-2.5 py-1 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  −
+                </button>
+                <span className="min-w-[1.75rem] text-center text-sm font-medium text-text-primary">
+                  {quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="px-2.5 py-1 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              <span className="text-xs text-text-tertiary">
+                slot{quantity !== 1 ? "s" : ""} &middot; ${(quantity * 0.99).toFixed(2)}/mo
+              </span>
+            </div>
+
+            <button
+              onClick={handleCheckout}
+              disabled={redirecting}
+              className="mt-3 w-full rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
+            >
+              {redirecting ? "Redirecting..." : "Continue to Checkout"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-6 text-xs text-text-tertiary">
+        You&apos;re one step away from connecting your WhatsApp number.
+      </p>
+    </div>
+  );
+}
+
 export default function ConnectionsPage() {
   const {
     data: connections,
@@ -78,6 +195,8 @@ export default function ConnectionsPage() {
     });
   }, [list]);
 
+  const needsUpgrade = slots !== null && slots.paid === 0;
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between">
@@ -96,12 +215,14 @@ export default function ConnectionsPage() {
             </p>
           )}
         </div>
-        <Link
-          href="/connections/new"
-          className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark"
-        >
-          New Connection
-        </Link>
+        {!needsUpgrade && (
+          <Link
+            href="/connections/new"
+            className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark"
+          >
+            New Connection
+          </Link>
+        )}
       </div>
 
       {loading && <ConnectionListSkeleton />}
@@ -112,7 +233,13 @@ export default function ConnectionsPage() {
         </div>
       )}
 
-      {!loading && !error && list.length === 0 && (
+      {/* Empty state with blurred QR — user has no connections AND no paid slots */}
+      {!loading && !error && list.length === 0 && needsUpgrade && (
+        <QrUpgradePrompt />
+      )}
+
+      {/* Empty state — user has paid slots but no connections yet */}
+      {!loading && !error && list.length === 0 && !needsUpgrade && (
         <div className="mt-16 flex flex-col items-center text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border-primary bg-bg-secondary">
             <span className="text-3xl">📱</span>
