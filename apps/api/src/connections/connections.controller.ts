@@ -398,6 +398,68 @@ export class ConnectionsController {
     }
   }
 
+  @Get(':id/contacts/:contactId/picture')
+  async getContactPicture(
+    @Param('id') id: string,
+    @Param('contactId') contactId: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userId !== user.sub) throw new ForbiddenException('You do not own this connection');
+
+    const worker = await this.workersService.getWorkerForSession(id);
+    if (!worker) return { profilePictureUrl: null };
+
+    const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
+    return this.wahaService.getProfilePicture(
+      worker.internalIp, worker.apiKeyEnc, wahaName, contactId,
+    );
+  }
+
+  @Post(':id/send-media')
+  async sendMedia(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; type: string; mediaUrl: string; caption?: string; filename?: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userId !== user.sub) throw new ForbiddenException('You do not own this connection');
+
+    const worker = await this.workersService.getWorkerForSession(id);
+    if (!worker) throw new ServiceUnavailableException('No worker assigned');
+
+    const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
+
+    switch (body.type) {
+      case 'image':
+        return this.wahaService.sendImage(
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl, body.caption,
+        );
+      case 'file':
+        return this.wahaService.sendFile(
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl, body.filename, body.caption,
+        );
+      case 'voice':
+        return this.wahaService.sendVoice(
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl,
+        );
+      default:
+        return this.wahaService.sendFile(
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl, body.filename, body.caption,
+        );
+    }
+  }
+
   @Post(':id/send')
   async sendText(
     @Param('id') id: string,

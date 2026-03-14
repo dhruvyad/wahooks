@@ -318,6 +318,76 @@ export class WahaService {
     return this.request<WahaChatResponse[]>('GET', url, headers);
   }
 
+  async getProfilePicture(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    contactId: string,
+  ): Promise<{ profilePictureUrl: string | null }> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/contacts/${encodeURIComponent(contactId)}/profile-picture`,
+    );
+    const headers = this.buildHeaders(apiKey);
+
+    try {
+      return await this.request<{ profilePictureUrl: string | null }>('GET', url, headers);
+    } catch {
+      return { profilePictureUrl: null };
+    }
+  }
+
+  async sendImage(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    mediaUrl: string,
+    caption?: string,
+  ): Promise<any> {
+    const url = this.buildUrl(workerUrl, '/api/sendImage');
+    const headers = this.buildHeaders(apiKey);
+    const body: any = { chatId, session: sessionName, file: { url: mediaUrl } };
+    if (caption) body.caption = caption;
+
+    return this.request<any>('POST', url, headers, body);
+  }
+
+  async sendFile(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    mediaUrl: string,
+    filename?: string,
+    caption?: string,
+  ): Promise<any> {
+    const url = this.buildUrl(workerUrl, '/api/sendFile');
+    const headers = this.buildHeaders(apiKey);
+    const body: any = { chatId, session: sessionName, file: { url: mediaUrl } };
+    if (filename) body.file.filename = filename;
+    if (caption) body.caption = caption;
+
+    return this.request<any>('POST', url, headers, body);
+  }
+
+  async sendVoice(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    mediaUrl: string,
+  ): Promise<any> {
+    const url = this.buildUrl(workerUrl, '/api/sendVoice');
+    const headers = this.buildHeaders(apiKey);
+
+    return this.request<any>('POST', url, headers, {
+      chatId,
+      session: sessionName,
+      file: { url: mediaUrl },
+    });
+  }
+
   async getMessages(
     workerUrl: string,
     apiKey: string,
