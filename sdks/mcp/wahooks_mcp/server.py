@@ -30,7 +30,7 @@ def _build_auth():
     if api_key:
         return None  # Local mode — API key from env
 
-    # Remote mode — OAuth via Supabase
+    # Remote mode — OAuth via Supabase (DCR enabled)
     from fastmcp.server.auth.providers.supabase import SupabaseProvider
 
     base_url = os.environ.get("MCP_BASE_URL", "https://api.wahooks.com")
