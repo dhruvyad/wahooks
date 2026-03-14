@@ -638,32 +638,29 @@ export default function ConnectionDetailPage() {
                   : "rounded-xl border border-border-secondary"
               }`}
             >
-              {/* Fullscreen toggle button */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setFullscreen((f) => !f)}
-                  className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
-                  title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-                >
-                  {fullscreen ? (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v4m0-4h4m6 6l5 5m0 0v-4m0 4h-4M9 15l-5 5m0 0h4m-4 0v-4m11-6l5-5m0 0h-4m4 0v4" />
-                    </svg>
-                  ) : (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
-                    </svg>
-                  )}
-                </button>
-              </div>
               <div className={`flex ${fullscreen ? "h-full" : "h-[500px]"}`}>
                 {/* Left panel: Chat list */}
                 <div className="flex w-72 shrink-0 flex-col border-r border-border-primary">
-                  <div className="border-b border-border-primary px-4 py-3">
+                  <div className="flex items-center justify-between border-b border-border-primary px-4 py-3">
                     <h2 className="text-sm font-semibold text-text-primary">
                       Chats
                     </h2>
+                    <button
+                      type="button"
+                      onClick={() => setFullscreen((f) => !f)}
+                      className="rounded-md p-1 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
+                      title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+                    >
+                      {fullscreen ? (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v4m0-4h4m6 6l5 5m0 0v-4m0 4h-4M9 15l-5 5m0 0h4m-4 0v-4m11-6l5-5m0 0h-4m4 0v4" />
+                        </svg>
+                      ) : (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
                   <div className="flex-1 overflow-y-auto">
                     {chats.map((chat) => {
