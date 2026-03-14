@@ -3,20 +3,14 @@
 import { CopyButton } from "@/components/copy-button";
 import Link from "next/link";
 
-const claudeDesktopConfig = `{
-  "mcpServers": {
-    "wahooks": {
-      "url": "https://api.wahooks.com/mcp"
-    }
-  }
-}`;
-
-const claudeCodeCommand = "claude mcp add wahooks https://api.wahooks.com/mcp";
 const mcpUrl = "https://api.wahooks.com/mcp";
 
-function CodeBlock({ code, copyText }: { code: string; copyText?: string }) {
+function CodeBlock({ code, copyText, lang }: { code: string; copyText?: string; lang?: string }) {
   return (
     <div className="group relative mt-1.5 rounded-md bg-bg-primary/60 border border-border-primary">
+      {lang && (
+        <div className="px-3 pt-1.5 text-[10px] font-mono uppercase text-text-tertiary">{lang}</div>
+      )}
       <pre className="overflow-x-auto px-3 py-2 pr-10 text-[13px] text-text-primary font-mono leading-relaxed whitespace-pre">
         {code}
       </pre>
@@ -27,24 +21,11 @@ function CodeBlock({ code, copyText }: { code: string; copyText?: string }) {
   );
 }
 
-function Card({
-  icon,
-  title,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border-primary bg-bg-secondary p-4 transition-colors duration-150 hover:border-border-secondary">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-bg-elevated text-text-secondary">
-          {icon}
-        </div>
-        <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
-      </div>
-      <div className="mt-2.5">{children}</div>
+    <div id={id} className="scroll-mt-8">
+      <h2 className="text-base font-semibold text-text-primary border-b border-border-primary pb-2 mb-3">{title}</h2>
+      <div className="space-y-2 text-sm text-text-secondary">{children}</div>
     </div>
   );
 }
@@ -54,70 +35,91 @@ export default function McpPage() {
     <div className="animate-fade-in max-w-2xl">
       <h1 className="text-2xl font-bold text-text-primary">MCP Server</h1>
       <p className="mt-1 text-sm text-text-secondary">
-        Connect WAHooks to AI assistants. Just add the server URL and authenticate.
+        Connect WAHooks to Claude Code, Cursor, Windsurf, or any MCP-compatible AI assistant.
+        Your assistant can manage WhatsApp connections, send messages, and configure webhooks.
       </p>
 
-      <div className="mt-4 space-y-2.5">
-        <Card
-          icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          }
-          title="Claude Desktop"
-        >
-          <p className="text-xs text-text-secondary">
-            Add to{" "}
-            <code className="rounded bg-bg-elevated px-1 py-0.5 text-[11px] font-mono text-text-tertiary">
-              ~/.claude/claude_desktop_config.json
-            </code>
+      <div className="mt-6 space-y-6">
+        <Section id="claude-code" title="Claude Code">
+          <p>Add to <code className="rounded bg-bg-elevated px-1 py-0.5 text-xs font-mono text-text-tertiary">.mcp.json</code> in your project root:</p>
+          <CodeBlock lang="json" code={`{
+  "mcpServers": {
+    "wahooks": {
+      "type": "http",
+      "url": "${mcpUrl}"
+    }
+  }
+}`} />
+          <p className="mt-2">Or use the CLI:</p>
+          <CodeBlock lang="bash" code={`claude mcp add --transport http wahooks ${mcpUrl}`} />
+          <p className="mt-2 text-xs text-text-tertiary">
+            On first use, your browser will open to authenticate with your WAHooks account.
           </p>
-          <CodeBlock code={claudeDesktopConfig} />
-        </Card>
+        </Section>
 
-        <Card
-          icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          }
-          title="Claude Code"
-        >
-          <p className="text-xs text-text-secondary">Run in your terminal:</p>
-          <CodeBlock code={claudeCodeCommand} />
-        </Card>
+        <Section id="cursor" title="Cursor">
+          <p>Add to <code className="rounded bg-bg-elevated px-1 py-0.5 text-xs font-mono text-text-tertiary">.cursor/mcp.json</code> in your project root:</p>
+          <CodeBlock lang="json" code={`{
+  "mcpServers": {
+    "wahooks": {
+      "url": "${mcpUrl}"
+    }
+  }
+}`} />
+          <p className="mt-2 text-xs text-text-tertiary">Restart Cursor after saving. A browser window will open for OAuth on first tool use.</p>
+        </Section>
 
-        <Card
-          icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          }
-          title="Cursor"
-        >
-          <p className="text-xs text-text-secondary">
-            Settings → MCP → Add server
+        <Section id="windsurf" title="Windsurf">
+          <p>Add to your Windsurf MCP config:</p>
+          <ul className="text-xs text-text-tertiary list-disc list-inside">
+            <li><strong>macOS/Linux:</strong> <code className="font-mono">~/.codeium/windsurf/mcp_config.json</code></li>
+            <li><strong>Windows:</strong> <code className="font-mono">%USERPROFILE%\.codeium\windsurf\mcp_config.json</code></li>
+          </ul>
+          <CodeBlock lang="json" code={`{
+  "mcpServers": {
+    "wahooks": {
+      "serverUrl": "${mcpUrl}"
+    }
+  }
+}`} />
+          <p className="mt-1.5 text-xs text-status-warning-text">
+            Note: Windsurf uses <code className="font-mono">serverUrl</code> (not <code className="font-mono">url</code>).
           </p>
-          <CodeBlock code={mcpUrl} />
-        </Card>
+        </Section>
 
-        <Card
-          icon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-            </svg>
-          }
-          title="Local Mode (API Key)"
-        >
-          <p className="text-xs text-text-secondary">
-            Run locally with your{" "}
-            <Link href="/tokens" className="text-wa-green hover:underline">
-              API token
-            </Link>
+        <Section id="claude-desktop" title="Claude Desktop">
+          <p>Claude Desktop uses stdio-based servers. Use the <code className="rounded bg-bg-elevated px-1 py-0.5 text-xs font-mono text-text-tertiary">mcp-remote</code> wrapper:</p>
+          <ul className="text-xs text-text-tertiary list-disc list-inside">
+            <li><strong>macOS:</strong> <code className="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+            <li><strong>Windows:</strong> <code className="font-mono">%APPDATA%\Claude\claude_desktop_config.json</code></li>
+          </ul>
+          <CodeBlock lang="json" code={`{
+  "mcpServers": {
+    "wahooks": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "${mcpUrl}"]
+    }
+  }
+}`} />
+          <p className="mt-1.5 text-xs text-text-tertiary">Fully quit and restart Claude Desktop after editing.</p>
+        </Section>
+
+        <Section id="local" title="Local Mode (API Key)">
+          <p>
+            Run the MCP server locally with your{" "}
+            <Link href="/tokens" className="text-wa-green hover:underline">API token</Link>:
           </p>
-          <CodeBlock code="pip install wahooks-mcp" />
-          <CodeBlock code="WAHOOKS_API_KEY=wh_... wahooks-mcp" />
-        </Card>
+          <CodeBlock lang="bash" code="pip install wahooks-mcp" />
+          <CodeBlock lang="bash" code="WAHOOKS_API_KEY=wh_... wahooks-mcp" />
+        </Section>
+
+        <Section id="verify" title="Verify">
+          <p>Ask your AI assistant:</p>
+          <CodeBlock code="List my WAHooks connections" />
+          <p className="mt-1.5 text-xs text-text-tertiary">
+            If tools don&apos;t show up, restart your assistant and check the config file syntax.
+          </p>
+        </Section>
       </div>
     </div>
   );

@@ -1,17 +1,42 @@
 ---
 title: MCP Server
-description: "Use WAHooks from Claude, ChatGPT, Cursor, and other AI assistants"
+description: "Connect WAHooks to Claude, Cursor, Windsurf, and other AI assistants"
 ---
 
-The WAHooks MCP (Model Context Protocol) server lets AI assistants manage WhatsApp connections, send messages, and configure webhooks directly.
+The WAHooks MCP server lets AI assistants manage WhatsApp connections, send messages, and configure webhooks. It uses OAuth 2.1 with PKCE — your browser opens once to authorize, and the token is saved automatically.
 
-## Remote server (recommended)
+## Claude Code
 
-Add the WAHooks MCP server URL to your AI client. OAuth handles authentication — you'll be prompted to log in via your browser.
+Add to `.mcp.json` in your project root:
 
-### Claude Desktop
+```json
+{
+  "mcpServers": {
+    "wahooks": {
+      "type": "http",
+      "url": "https://api.wahooks.com/mcp"
+    }
+  }
+}
+```
 
-Add to `~/.claude/claude_desktop_config.json`:
+Or use the CLI:
+
+```bash
+claude mcp add --transport http wahooks https://api.wahooks.com/mcp
+```
+
+<Callout type="info">
+  Project-scoped config (`.mcp.json`) is recommended so your team can share the same setup via version control.
+</Callout>
+
+On first use, Claude Code will open your browser to authorize with your WAHooks account.
+
+---
+
+## Cursor
+
+Add to `.cursor/mcp.json` in your project root (or globally at `~/.cursor/mcp.json`):
 
 ```json
 {
@@ -23,21 +48,60 @@ Add to `~/.claude/claude_desktop_config.json`:
 }
 ```
 
-### Claude Code
+Restart Cursor after saving. On first tool use, a browser window will open for OAuth authentication.
 
-```bash
-claude mcp add wahooks https://api.wahooks.com/mcp
+---
+
+## Windsurf
+
+Add to your Windsurf MCP config:
+
+- **macOS/Linux**: `~/.codeium/windsurf/mcp_config.json`
+- **Windows**: `%USERPROFILE%\.codeium\windsurf\mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "wahooks": {
+      "serverUrl": "https://api.wahooks.com/mcp"
+    }
+  }
+}
 ```
 
-### Cursor
+<Callout type="warn">
+  Windsurf uses `serverUrl` (not `url`) for remote servers — this differs from other clients.
+</Callout>
 
-Go to **Settings → MCP** and add:
-- **Name**: WAHooks
-- **URL**: `https://api.wahooks.com/mcp`
+Restart Windsurf after saving.
 
-## Local server (API key)
+---
 
-For local or CI usage, run the MCP server with an API key:
+## Claude Desktop
+
+Claude Desktop uses stdio-based servers. Use the `mcp-remote` wrapper:
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "wahooks": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://api.wahooks.com/mcp"]
+    }
+  }
+}
+```
+
+Fully quit and restart Claude Desktop after editing the config.
+
+---
+
+## Local Mode (API Key)
+
+For CI/CD or local development, run the MCP server directly with an API token:
 
 ```bash
 pip install wahooks-mcp
@@ -47,67 +111,39 @@ pip install wahooks-mcp
 WAHOOKS_API_KEY=wh_... wahooks-mcp
 ```
 
-Claude Desktop config for local mode:
+Create an API token on the [Tokens page](/docs/cli/tokens) or via `wahooks tokens create my-token`.
 
-```json
-{
-  "mcpServers": {
-    "wahooks": {
-      "command": "wahooks-mcp",
-      "env": { "WAHOOKS_API_KEY": "wh_..." }
-    }
-  }
-}
+---
+
+## Verify
+
+Ask your AI assistant:
+
+```
+List my WAHooks connections
 ```
 
-## Available tools
+---
+
+## Available Tools
 
 The MCP server exposes 18 tools:
 
-### Connections
+| Category | Tools |
+|----------|-------|
+| Connections | `list_connections`, `create_connection`, `get_connection`, `delete_connection`, `restart_connection`, `get_qr` |
+| Messages | `send_message`, `get_chats`, `get_profile` |
+| Webhooks | `list_webhooks`, `create_webhook`, `update_webhook`, `delete_webhook`, `get_webhook_logs`, `test_webhook` |
+| Tokens | `list_tokens`, `create_token`, `revoke_token` |
 
-| Tool | Description |
-|------|-------------|
-| `list_connections` | List all active WhatsApp connections |
-| `create_connection` | Create a new connection (returns ID for QR scanning) |
-| `get_connection` | Get connection details by ID |
-| `delete_connection` | Stop and remove a connection |
-| `restart_connection` | Restart a connection (requires re-scanning QR) |
-| `get_qr` | Get QR code for linking WhatsApp |
-| `get_chats` | Get recent chats for a connection |
-| `get_profile` | Get WhatsApp profile info |
+---
 
-### Messages
+## Troubleshooting
 
-| Tool | Description |
-|------|-------------|
-| `send_message` | Send a WhatsApp message (connection_id, chat_id, text) |
+**Authentication fails** — Make sure you have a WAHooks account. Check that pop-ups aren't blocked in your browser.
 
-### Webhooks
+**Tools not showing up** — Restart your AI assistant after adding the config. Verify the JSON syntax is valid. In Claude Code, run `claude mcp list` to check.
 
-| Tool | Description |
-|------|-------------|
-| `list_webhooks` | List webhook configs for a connection |
-| `create_webhook` | Create a webhook (connection_id, url, events) |
-| `update_webhook` | Update webhook URL, events, or active status |
-| `delete_webhook` | Delete a webhook |
-| `get_webhook_logs` | Get delivery logs for a webhook |
-| `test_webhook` | Send a test event to a webhook |
+**Windsurf not connecting** — Use `serverUrl` (not `url`) in the config.
 
-### API Tokens
-
-| Tool | Description |
-|------|-------------|
-| `list_tokens` | List active API tokens |
-| `create_token` | Create a new API token |
-| `revoke_token` | Revoke an API token |
-
-## Example conversation
-
-Once connected, you can ask your AI assistant things like:
-
-- *"List my WhatsApp connections"*
-- *"Send 'Hello!' to 1234567890 on my WhatsApp connection"*
-- *"Create a webhook for my connection that sends events to https://example.com/hook"*
-- *"Show me the webhook delivery logs"*
-- *"Create an API token called 'production'"*
+**Connection refused** — Verify `https://api.wahooks.com` is accessible from your network.
