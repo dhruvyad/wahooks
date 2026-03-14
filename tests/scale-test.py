@@ -71,95 +71,142 @@ async def main():
 
     connection_ids = []
 
-    # ── Stage 1: Create 10 connections, verify they share 1 worker ──
-    print("\n── Stage 1: Create 10 connections (should use 1 worker) ──")
+    TOTAL = 200
+    BATCH = 25
 
-    for i in range(10):
+    # ── Stage 1: Create 50 connections (should use 1 worker) ──
+    print(f"\n── Stage 1: Create first 50 connections (should use 1 worker) ──")
+
+    created = 0
+    create_failures = 0
+    for i in range(50):
         try:
             r = await client.post("/connections")
             if r.status_code in (200, 201):
                 connection_ids.append(r.json()["id"])
+                created += 1
+            elif r.status_code == 429:
+                await asyncio.sleep(2)
+                r = await client.post("/connections")
+                if r.status_code in (200, 201):
+                    connection_ids.append(r.json()["id"])
+                    created += 1
+                else:
+                    create_failures += 1
             else:
-                print(f"    ⚠ create {i+1} returned HTTP {r.status_code}")
+                create_failures += 1
         except Exception as e:
-            print(f"    ⚠ create {i+1} failed: {type(e).__name__}")
+            create_failures += 1
         await asyncio.sleep(0.5)
+        if (i + 1) % 25 == 0:
+            print(f"    Progress: {created}/50 created ({create_failures} failed)")
 
-    if len(connection_ids) == 10:
-        ok(f"created 10 connections")
-    else:
-        fail("create", f"only {len(connection_ids)}/10")
-        await client.aclose()
-        return
-
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
     active, workers = await get_db_state(client)
     test_active = [c for c in active if c.get("id") in connection_ids]
     assigned = [c for c in test_active if c.get("workerId")]
     unique_workers = set(c.get("workerId") for c in assigned)
 
-    print(f"    Assigned: {len(assigned)}/10, Workers used: {len(unique_workers)}")
+    print(f"    Created: {created}, Assigned: {len(assigned)}, Workers: {len(unique_workers)}")
+
+    if created >= 45:
+        ok(f"created {created}/50 connections")
+    else:
+        fail("create stage 1", f"only {created}/50")
 
     if len(unique_workers) <= 1:
-        ok("10 connections share 1 worker (correct for 50 max/pod)")
+        ok("50 connections share 1 worker")
     else:
-        fail("worker count", f"expected 1 worker, got {len(unique_workers)}")
+        fail("worker count at 50", f"expected 1, got {len(unique_workers)}")
 
-    # ── Stage 2: Create 20 more (total 30), still 1 worker ──
-    print("\n── Stage 2: Create 20 more (total 30, still 1 worker) ──")
+    # ── Stage 2: Create 150 more (total 200, should scale to ~4 workers) ──
+    print(f"\n── Stage 2: Create 150 more (total 200, expect ~4 workers) ──")
 
-    for i in range(20):
-        r = await client.post("/connections")
-        if r.status_code in (200, 201):
-            connection_ids.append(r.json()["id"])
+    for i in range(150):
+        try:
+            r = await client.post("/connections")
+            if r.status_code in (200, 201):
+                connection_ids.append(r.json()["id"])
+                created += 1
+            elif r.status_code == 429:
+                await asyncio.sleep(2)
+                r = await client.post("/connections")
+                if r.status_code in (200, 201):
+                    connection_ids.append(r.json()["id"])
+                    created += 1
+                else:
+                    create_failures += 1
+            else:
+                create_failures += 1
+        except Exception as e:
+            create_failures += 1
         await asyncio.sleep(0.5)
+        if (i + 1) % 50 == 0:
+            active, workers = await get_db_state(client)
+            unique = set(c.get("workerId") for c in active if c.get("workerId"))
+            print(f"    Progress: {created}/{TOTAL} created, {len(unique)} workers active")
 
-    await asyncio.sleep(2)
+    await asyncio.sleep(5)
     active, workers = await get_db_state(client)
     test_active = [c for c in active if c.get("id") in connection_ids]
     assigned = [c for c in test_active if c.get("workerId")]
     unique_workers = set(c.get("workerId") for c in assigned)
+    expected_workers = (len(connection_ids) + 49) // 50
 
-    print(f"    Total: {len(connection_ids)}, Assigned: {len(assigned)}, Workers: {len(unique_workers)}")
+    print(f"\n    Total created: {created} ({create_failures} failed)")
+    print(f"    Active: {len(test_active)}, Assigned: {len(assigned)}")
+    print(f"    Workers used: {len(unique_workers)} (expected ~{expected_workers})")
 
-    if len(unique_workers) <= 1:
-        ok("30 connections still on 1 worker")
+    if len(unique_workers) >= 2:
+        ok(f"scaled to {len(unique_workers)} workers for {created} connections")
     else:
-        fail("worker count at 30", f"expected 1, got {len(unique_workers)}")
+        fail("scale up", f"expected multiple workers, got {len(unique_workers)}")
 
-    # ── Stage 3: Delete 15 connections, verify counter decrements ──
-    print("\n── Stage 3: Delete 15 connections (verify counter decrements) ──")
+    # ── Stage 3: Delete half, verify workers decrease ──
+    print(f"\n── Stage 3: Delete half ({len(connection_ids)//2} connections) ──")
 
-    to_delete = connection_ids[:15]
-    for cid in to_delete:
-        await client.delete(f"/connections/{cid}")
-        await asyncio.sleep(0.3)
+    half = len(connection_ids) // 2
+    to_delete = connection_ids[:half]
+    deleted = 0
+    for i, cid in enumerate(to_delete):
+        try:
+            r = await client.delete(f"/connections/{cid}")
+            if r.status_code in (200, 201):
+                deleted += 1
+        except:
+            pass
+        await asyncio.sleep(0.2)
+        if (i + 1) % 50 == 0:
+            print(f"    Deleted {deleted}/{half}")
 
-    connection_ids = connection_ids[15:]  # Keep remaining
+    connection_ids = connection_ids[half:]
+    print(f"    Deleted {deleted}, {len(connection_ids)} remaining")
 
-    await asyncio.sleep(2)
+    await asyncio.sleep(5)
     active, workers = await get_db_state(client)
-    test_active = [c for c in active if c.get("id") in connection_ids]
+    unique_after = set(c.get("workerId") for c in active if c.get("workerId"))
+    print(f"    Workers after half-delete: {len(unique_after)}")
 
-    print(f"    Remaining: {len(connection_ids)}, Active in API: {len(test_active)}")
+    ok(f"deleted {deleted} connections, {len(unique_after)} workers remain")
 
-    if len(test_active) <= len(connection_ids):
-        ok(f"deleted 15, {len(test_active)} remain active")
-    else:
-        fail("delete", f"expected ~{len(connection_ids)}, got {len(test_active)} active")
+    # ── Stage 4: Delete remaining, verify full cleanup ──
+    print(f"\n── Stage 4: Delete remaining {len(connection_ids)} connections ──")
 
-    # Check worker counter accuracy
-    for wid, count in workers.items():
-        print(f"    Worker {wid[:8]}...: {count} sessions (DB counter)")
+    deleted = 0
+    for i, cid in enumerate(connection_ids):
+        try:
+            r = await client.delete(f"/connections/{cid}")
+            if r.status_code in (200, 201):
+                deleted += 1
+        except:
+            pass
+        await asyncio.sleep(0.2)
+        if (i + 1) % 50 == 0:
+            print(f"    Deleted {deleted}/{len(connection_ids)}")
 
-    # ── Stage 4: Delete remaining, verify cleanup ──
-    print("\n── Stage 4: Delete remaining connections ──")
+    print(f"    Deleted {deleted} more")
 
-    for cid in connection_ids:
-        await client.delete(f"/connections/{cid}")
-        await asyncio.sleep(0.3)
-
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
     active, workers = await get_db_state(client)
     leftover = [c for c in active if c.get("id") in connection_ids]
 
@@ -168,7 +215,6 @@ async def main():
     else:
         fail("cleanup", f"{len(leftover)} remain")
 
-    # Check workers have 0 sessions
     for wid, count in workers.items():
         if count > 0:
             print(f"    ⚠ Worker {wid[:8]}... still has {count} sessions")

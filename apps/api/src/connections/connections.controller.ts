@@ -67,7 +67,14 @@ export class ConnectionsController {
       .returning();
 
     try {
-      const worker = await this.workersService.findOrProvisionWorker();
+      // Timeout worker provisioning at 15s — if it takes longer,
+      // the connection stays pending and the health service will assign it.
+      const worker = await Promise.race([
+        this.workersService.findOrProvisionWorker(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Worker provisioning timeout')), 15000),
+        ),
+      ]);
       await this.workersService.assignSession(worker.id, created.id);
       const apiUrl = this.configService.get<string>(
         'API_URL',
