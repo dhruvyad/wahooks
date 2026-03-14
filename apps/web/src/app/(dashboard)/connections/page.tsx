@@ -10,8 +10,8 @@ import { ConnectionListSkeleton } from "@/components/skeletons";
 interface Connection {
   id: string;
   name: string | null;
+  phoneNumber: string | null;
   status: string;
-  me: { id: string; pushName?: string } | null;
 }
 
 function getStoredName(connectionId: string): string | null {
@@ -34,8 +34,9 @@ export default function ConnectionsPage() {
 
   const list = connections ?? [];
 
-  // Read custom names from localStorage for all connections
+  // Read custom names from localStorage + fetch phone numbers for working connections
   const [customNames, setCustomNames] = useState<Record<string, string>>({});
+  const [phoneNumbers, setPhoneNumbers] = useState<Record<string, string>>({});
   useEffect(() => {
     if (list.length === 0) return;
     const names: Record<string, string> = {};
@@ -44,6 +45,23 @@ export default function ConnectionsPage() {
       if (stored) names[conn.id] = stored;
     }
     setCustomNames(names);
+
+    // Fetch phone numbers for connected accounts
+    const working = list.filter((c) => c.status === "working");
+    if (working.length === 0) return;
+    Promise.all(
+      working.map((c) =>
+        apiFetch(`/api/connections/${c.id}/me`)
+          .then((me: any) => ({ id: c.id, phone: me?.id?.replace("@c.us", "") || null }))
+          .catch(() => ({ id: c.id, phone: null }))
+      )
+    ).then((results) => {
+      const phones: Record<string, string> = {};
+      for (const r of results) {
+        if (r.phone) phones[r.id] = r.phone;
+      }
+      setPhoneNumbers(phones);
+    });
   }, [list]);
 
   return (
@@ -99,9 +117,13 @@ export default function ConnectionsPage() {
                   {customNames[conn.id] || conn.name || "Unnamed Connection"}
                 </p>
                 <p className="mt-0.5 text-xs text-text-tertiary">
-                  {conn.me?.id
-                    ? conn.me.id.replace("@c.us", "")
-                    : "No phone linked"}
+                  {phoneNumbers[conn.id]
+                    ? `+${phoneNumbers[conn.id]}`
+                    : conn.phoneNumber
+                      ? conn.phoneNumber
+                      : conn.status === "working"
+                        ? "Loading..."
+                        : "No phone linked"}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-3 ml-3">
