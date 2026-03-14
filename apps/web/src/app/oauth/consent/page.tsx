@@ -5,54 +5,139 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
+interface AuthorizationDetails {
+  authorization_id: string;
+  redirect_uri: string;
+  client: {
+    id: string;
+    name: string;
+    uri?: string;
+    logo_uri?: string;
+  };
+  user: {
+    id: string;
+    email: string;
+  };
+  scope: string;
+}
+
 function ConsentContent() {
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState<string | null>(null);
+  const authorizationId = searchParams.get("authorization_id");
+  const [details, setDetails] = useState<AuthorizationDetails | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Supabase passes these params for the consent flow
-  const clientName = searchParams.get("client_name") || "MCP Client";
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!authorizationId) {
+      setError("Missing authorization_id");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setEmail(session.user.email ?? session.user.id);
-        setLoading(false);
-      } else {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
         // Not logged in — redirect to login, then back here
         const currentUrl = window.location.href;
         window.location.href = `/login?redirect=${encodeURIComponent(currentUrl)}`;
+        return;
+      }
+
+      try {
+        const resp = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/oauth/authorizations/${authorizationId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+            },
+          }
+        );
+
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          setError(data.error_description || data.message || "Failed to load authorization details");
+          setLoading(false);
+          return;
+        }
+
+        const data = await resp.json();
+        setDetails(data);
+        setLoading(false);
+      } catch (e) {
+        setError("Failed to load authorization details");
+        setLoading(false);
       }
     });
-  }, []);
+  }, [authorizationId]);
 
-  function handleAllow() {
-    // Submit the consent form back to Supabase
-    // The consent page needs to POST/redirect back with approval
-    // Supabase expects us to redirect back to the authorization endpoint with consent=true
-    const params = new URLSearchParams(window.location.search);
-    params.set("consent", "true");
-    window.location.href = `https://fvatjlbtyegsqjuwbxxx.supabase.co/auth/v1/oauth/authorize?${params.toString()}`;
-  }
+  async function handleConsent(action: "approve" | "deny") {
+    if (!authorizationId) return;
+    setSubmitting(true);
 
-  function handleDeny() {
-    // Redirect back with denial
-    const redirectUri = searchParams.get("redirect_uri");
-    if (redirectUri) {
-      window.location.href = `${redirectUri}?error=access_denied&error_description=User+denied+the+request`;
-    } else {
-      window.location.href = "/";
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setError("Session expired");
+      return;
+    }
+
+    try {
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/oauth/authorizations/${authorizationId}/consent`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action }),
+        }
+      );
+
+      const data = await resp.json();
+
+      if (data.redirect_url) {
+        window.location.href = data.redirect_url;
+      } else {
+        setError("No redirect URL returned");
+        setSubmitting(false);
+      }
+    } catch (e) {
+      setError("Failed to submit consent");
+      setSubmitting(false);
     }
   }
 
   if (loading) {
     return (
       <div className="w-full max-w-md rounded-2xl border border-border-primary bg-bg-secondary p-8 text-center">
-        <p className="text-text-secondary">Checking authentication...</p>
+        <p className="text-text-secondary">Loading authorization details...</p>
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="w-full max-w-md rounded-2xl border border-border-primary bg-bg-secondary p-8 text-center">
+        <h2 className="text-lg font-semibold text-status-error-text">
+          Authorization Error
+        </h2>
+        <p className="mt-2 text-sm text-text-tertiary">{error}</p>
+        <Link
+          href="/"
+          className="mt-4 inline-block text-sm text-wa-green hover:underline"
+        >
+          Go to homepage
+        </Link>
+      </div>
+    );
+  }
+
+  if (!details) return null;
 
   return (
     <div className="w-full max-w-md rounded-2xl border border-border-primary bg-bg-secondary p-8">
@@ -70,15 +155,35 @@ function ConsentContent() {
 
       <div className="rounded-lg border border-border-secondary bg-bg-elevated p-4 mb-4">
         <p className="text-sm text-text-secondary">
-          <span className="font-medium text-text-primary">{clientName}</span>
+          <span className="font-medium text-text-primary">
+            {details.client.name || "An application"}
+          </span>
           {" "}wants to access your WAHooks account.
         </p>
       </div>
 
-      <div className="rounded-lg border border-border-secondary bg-bg-elevated p-4 mb-6">
-        <p className="text-xs text-text-tertiary mb-2">Signed in as</p>
-        <p className="text-sm font-medium text-text-primary">{email}</p>
+      <div className="rounded-lg border border-border-secondary bg-bg-elevated p-4 mb-4">
+        <p className="text-xs text-text-tertiary mb-1">Signed in as</p>
+        <p className="text-sm font-medium text-text-primary">
+          {details.user.email}
+        </p>
       </div>
+
+      {details.scope && (
+        <div className="rounded-lg border border-border-secondary bg-bg-elevated p-4 mb-4">
+          <p className="text-xs text-text-tertiary mb-2">Requested permissions</p>
+          <div className="flex flex-wrap gap-1.5">
+            {details.scope.split(" ").map((scope) => (
+              <span
+                key={scope}
+                className="rounded-full bg-wa-green-muted px-2.5 py-0.5 text-xs font-medium text-wa-green"
+              >
+                {scope}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="text-xs text-text-tertiary mb-4">
         This will allow the application to manage your WhatsApp connections,
@@ -87,16 +192,18 @@ function ConsentContent() {
 
       <div className="flex gap-3">
         <button
-          onClick={handleDeny}
-          className="flex-1 rounded-lg border border-border-secondary px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
+          onClick={() => handleConsent("deny")}
+          disabled={submitting}
+          className="flex-1 rounded-lg border border-border-secondary px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-50"
         >
           Deny
         </button>
         <button
-          onClick={handleAllow}
-          className="flex-1 rounded-lg bg-wa-green px-4 py-2.5 text-sm font-semibold text-text-inverse hover:bg-wa-green-dark transition-colors"
+          onClick={() => handleConsent("approve")}
+          disabled={submitting}
+          className="flex-1 rounded-lg bg-wa-green px-4 py-2.5 text-sm font-semibold text-text-inverse hover:bg-wa-green-dark transition-colors disabled:opacity-50"
         >
-          Allow
+          {submitting ? "Authorizing..." : "Allow"}
         </button>
       </div>
     </div>
