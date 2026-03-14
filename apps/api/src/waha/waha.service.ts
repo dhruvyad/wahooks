@@ -337,17 +337,31 @@ export class WahaService {
     }
   }
 
+  private buildFilePayload(opts: { mediaUrl?: string; mediaData?: string; mimetype?: string; filename?: string }): any {
+    if (opts.mediaData) {
+      const file: any = { data: opts.mediaData };
+      if (opts.mimetype) file.mimetype = opts.mimetype;
+      if (opts.filename) file.filename = opts.filename;
+      return file;
+    }
+    const file: any = { url: opts.mediaUrl };
+    if (opts.filename) file.filename = opts.filename;
+    return file;
+  }
+
   async sendImage(
     workerUrl: string,
     apiKey: string,
     sessionName: string,
     chatId: string,
-    mediaUrl: string,
+    mediaUrl?: string,
     caption?: string,
+    mediaData?: string,
+    mimetype?: string,
   ): Promise<any> {
     const url = this.buildUrl(workerUrl, '/api/sendImage');
     const headers = this.buildHeaders(apiKey);
-    const body: any = { chatId, session: sessionName, file: { url: mediaUrl } };
+    const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }) };
     if (caption) body.caption = caption;
 
     return this.request<any>('POST', url, headers, body);
@@ -358,14 +372,15 @@ export class WahaService {
     apiKey: string,
     sessionName: string,
     chatId: string,
-    mediaUrl: string,
+    mediaUrl?: string,
     filename?: string,
     caption?: string,
+    mediaData?: string,
+    mimetype?: string,
   ): Promise<any> {
     const url = this.buildUrl(workerUrl, '/api/sendFile');
     const headers = this.buildHeaders(apiKey);
-    const body: any = { chatId, session: sessionName, file: { url: mediaUrl } };
-    if (filename) body.file.filename = filename;
+    const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype, filename }) };
     if (caption) body.caption = caption;
 
     return this.request<any>('POST', url, headers, body);
@@ -376,7 +391,9 @@ export class WahaService {
     apiKey: string,
     sessionName: string,
     chatId: string,
-    mediaUrl: string,
+    mediaUrl?: string,
+    mediaData?: string,
+    mimetype?: string,
   ): Promise<any> {
     const url = this.buildUrl(workerUrl, '/api/sendVoice');
     const headers = this.buildHeaders(apiKey);
@@ -384,7 +401,7 @@ export class WahaService {
     return this.request<any>('POST', url, headers, {
       chatId,
       session: sessionName,
-      file: { url: mediaUrl },
+      file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }),
     });
   }
 

@@ -424,7 +424,7 @@ export class ConnectionsController {
   @Post(':id/send-media')
   async sendMedia(
     @Param('id') id: string,
-    @Body() body: { chatId: string; type: string; mediaUrl: string; caption?: string; filename?: string },
+    @Body() body: { chatId: string; type: string; mediaUrl?: string; mediaData?: string; mimetype?: string; caption?: string; filename?: string },
     @CurrentUser() user: { sub: string },
   ) {
     const [connection] = await this.db
@@ -443,19 +443,23 @@ export class ConnectionsController {
     switch (body.type) {
       case 'image':
         return this.wahaService.sendImage(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl, body.caption,
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
+          body.mediaUrl, body.caption, body.mediaData, body.mimetype,
         );
       case 'file':
         return this.wahaService.sendFile(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl, body.filename, body.caption,
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
+          body.mediaUrl, body.filename, body.caption, body.mediaData, body.mimetype,
         );
       case 'voice':
         return this.wahaService.sendVoice(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl,
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
+          body.mediaUrl, body.mediaData, body.mimetype,
         );
       default:
         return this.wahaService.sendFile(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId, body.mediaUrl, body.filename, body.caption,
+          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
+          body.mediaUrl, body.filename, body.caption, body.mediaData, body.mimetype,
         );
     }
   }

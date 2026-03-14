@@ -173,7 +173,9 @@ export default function ConnectionDetailPage() {
   const [mediaMode, setMediaMode] = useState<null | "image" | "file" | "voice">(null);
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaCaption, setMediaCaption] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const connectionRef = useRef<Connection | null>(null);
   connectionRef.current = connection;
@@ -407,25 +409,39 @@ export default function ConnectionDetailPage() {
 
   async function handleSendMedia(e: React.FormEvent) {
     e.preventDefault();
-    if (!sendChatId.trim() || !mediaUrl.trim() || !mediaMode) return;
+    if (!sendChatId.trim() || !mediaMode) return;
+    if (!mediaFile && !mediaUrl.trim()) return;
 
     setSending(true);
     try {
+      const payload: any = {
+        chatId: sendChatId.trim(),
+        type: mediaMode,
+      };
+
+      if (mediaFile) {
+        // Convert file to base64
+        const arrayBuffer = await mediaFile.arrayBuffer();
+        const base64 = btoa(
+          new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
+        );
+        payload.mediaData = base64;
+        payload.mimetype = mediaFile.type;
+        payload.filename = mediaFile.name;
+      } else {
+        payload.mediaUrl = mediaUrl.trim();
+      }
+
+      if (mediaMode !== "voice" && mediaCaption.trim()) {
+        payload.caption = mediaCaption.trim();
+      }
+
       await apiFetch(`/api/connections/${id}/send-media`, {
         method: "POST",
-        body: JSON.stringify({
-          chatId: sendChatId.trim(),
-          type: mediaMode,
-          mediaUrl: mediaUrl.trim(),
-          ...(mediaMode !== "voice" && mediaCaption.trim()
-            ? { caption: mediaCaption.trim() }
-            : {}),
-        }),
+        body: JSON.stringify(payload),
       });
       toast("Media sent", "success");
-      setMediaMode(null);
-      setMediaUrl("");
-      setMediaCaption("");
+      exitMediaMode();
     } catch (err) {
       toast(
         err instanceof Error ? err.message : "Failed to send media",
@@ -440,7 +456,9 @@ export default function ConnectionDetailPage() {
     setMediaMode(null);
     setMediaUrl("");
     setMediaCaption("");
+    setMediaFile(null);
     setShowAttachMenu(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   const filteredChats = sendChatId
@@ -807,18 +825,41 @@ export default function ConnectionDetailPage() {
                               </svg>
                             </button>
                             <span className="text-xs font-semibold uppercase text-wa-green">
-                              {mediaMode === "image" ? "Image" : mediaMode === "file" ? "File" : "Voice"} (URL)
+                              {mediaMode === "image" ? "Image" : mediaMode === "file" ? "File" : "Voice"}
                             </span>
                           </div>
-                          <input
-                            type="url"
-                            value={mediaUrl}
-                            onChange={(e) => setMediaUrl(e.target.value)}
-                            placeholder="https://example.com/media-file"
-                            disabled={sending}
-                            required
-                            className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green disabled:opacity-50"
-                          />
+                          {/* File upload or URL */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="shrink-0 rounded-lg border border-border-secondary bg-bg-elevated px-3 py-2 text-xs font-medium text-text-secondary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
+                            >
+                              {mediaFile ? mediaFile.name.slice(0, 20) + (mediaFile.name.length > 20 ? "..." : "") : "Choose file"}
+                            </button>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept={mediaMode === "image" ? "image/*" : mediaMode === "voice" ? "audio/*" : "*/*"}
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) {
+                                  setMediaFile(f);
+                                  setMediaUrl("");
+                                }
+                              }}
+                            />
+                            <span className="text-xs text-text-tertiary">or</span>
+                            <input
+                              type="url"
+                              value={mediaUrl}
+                              onChange={(e) => { setMediaUrl(e.target.value); setMediaFile(null); }}
+                              placeholder="Paste URL"
+                              disabled={sending || !!mediaFile}
+                              className="flex-1 rounded-lg border border-border-secondary bg-bg-elevated px-3 py-2 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green disabled:opacity-50"
+                            />
+                          </div>
                           {mediaMode !== "voice" && (
                             <input
                               type="text"
@@ -881,7 +922,7 @@ export default function ConnectionDetailPage() {
                                         </svg>
                                       )}
                                     </span>
-                                    {type === "image" ? "Image (URL)" : type === "file" ? "File (URL)" : "Voice (URL)"}
+                                    {type === "image" ? "Image" : type === "file" ? "File" : "Voice"}
                                   </button>
                                 ))}
                               </div>
