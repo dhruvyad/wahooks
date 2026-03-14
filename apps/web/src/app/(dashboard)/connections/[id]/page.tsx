@@ -666,16 +666,16 @@ export default function ConnectionDetailPage() {
                     <button
                       type="button"
                       onClick={() => setFullscreen((f) => !f)}
-                      className="rounded-md p-1 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
+                      className="rounded-md p-1.5 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
                       title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
                     >
                       {fullscreen ? (
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v4m0-4h4m6 6l5 5m0 0v-4m0 4h-4M9 15l-5 5m0 0h4m-4 0v-4m11-6l5-5m0 0h-4m4 0v4" />
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       ) : (
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4m12 0h-4v0M4 16v4h4m8 0h4v-4" />
                         </svg>
                       )}
                     </button>
