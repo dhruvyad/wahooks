@@ -63,6 +63,10 @@ wahooks connections create
 wahooks connections qr <id> --poll   # Scan with WhatsApp
 ```
 
+<p align="center">
+  <img src="assets/qrcode.webp" alt="Scan QR code to connect WhatsApp" width="600" />
+</p>
+
 ### Receive webhooks
 
 ```bash

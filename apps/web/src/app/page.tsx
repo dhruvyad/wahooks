@@ -157,7 +157,7 @@ export default function Home() {
 
       {/* Demo Video */}
       <section className="relative z-10 px-6 pb-20">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-6xl">
           <div className="overflow-hidden rounded-xl border border-border-primary shadow-2xl shadow-black/20">
             <video
               autoPlay
