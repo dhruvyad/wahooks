@@ -81,22 +81,46 @@ export class HealthService {
       wahaSessions_.map((s) => [s.name, s.status]),
     );
 
+    // Build set of expected WAHA session names from active DB sessions
+    const expectedWahaNames = new Set<string>();
+
     for (const dbSession of dbSessions) {
-      // Look up by resolved WAHA name (e.g. 'default' for Core)
       const wahaName = this.wahaService.resolveSessionName(
         dbSession.sessionName,
       );
       const wahaStatus = wahaSessionMap.get(wahaName);
 
+      // Skip stopped/failed sessions — don't auto-create
+      if (dbSession.status === 'stopped' || dbSession.status === 'failed') {
+        continue;
+      }
+
+      expectedWahaNames.add(wahaName);
+
       if (!wahaStatus) {
-        if (dbSession.status === 'stopped' || dbSession.status === 'failed') {
-          continue;
-        }
         await this.tryAutoCreateSession(worker, dbSession);
         continue;
       }
 
       await this.reconcileSessionStatus(worker, dbSession, wahaStatus);
+    }
+
+    // Clean up orphan WAHA sessions that have no matching active DB record
+    for (const [wahaName] of wahaSessionMap) {
+      if (!expectedWahaNames.has(wahaName)) {
+        this.logger.warn(
+          `Orphan WAHA session "${wahaName}" on worker ${worker.id} — stopping`,
+        );
+        try {
+          await this.wahaService.stopSession(
+            worker.internalIp,
+            worker.apiKeyEnc,
+            wahaName,
+          );
+        } catch {
+          // Ignore — session may already be stopped
+        }
+      }
     }
   }
 
