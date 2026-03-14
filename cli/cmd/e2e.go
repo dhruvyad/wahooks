@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dhruvyad/wahooks/cli/internal/api"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -57,8 +58,7 @@ func runE2E(cmd *cobra.Command, args []string) error {
 	// 2. Auth guard
 	// ───────────────────────────────────────────────────────
 	bold.Println("\n2. Auth guard")
-	noAuthClient := *client
-	noAuthClient.Token = ""
+	noAuthClient := api.NewClient(client.BaseURL, "")
 	resp, _ = noAuthClient.Do("GET", "/api/connections", nil)
 	if resp != nil && resp.StatusCode == 401 {
 		ok("401 without token")
