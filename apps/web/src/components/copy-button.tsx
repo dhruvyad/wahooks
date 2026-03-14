@@ -32,13 +32,13 @@ export function CopyButton({
   return (
     <button
       onClick={handleCopy}
-      className={`inline-flex items-center justify-center rounded-md p-1 text-text-tertiary transition-colors duration-150 hover:text-wa-green ${className ?? ""}`}
+      className={`inline-flex items-center justify-center rounded-md p-1.5 text-text-tertiary transition-colors duration-150 hover:bg-bg-hover hover:text-wa-green ${className ?? ""}`}
       title={copied ? "Copied!" : "Copy to clipboard"}
       type="button"
     >
       {copied ? (
         <svg
-          className="h-3.5 w-3.5 text-wa-green"
+          className="h-4 w-4 text-wa-green"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -52,7 +52,7 @@ export function CopyButton({
         </svg>
       ) : (
         <svg
-          className="h-3.5 w-3.5"
+          className="h-4 w-4"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

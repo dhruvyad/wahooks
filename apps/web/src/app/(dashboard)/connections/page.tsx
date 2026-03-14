@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
@@ -13,6 +14,15 @@ interface Connection {
   me: { id: string; pushName?: string } | null;
 }
 
+function getStoredName(connectionId: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(`wahooks-conn-name-${connectionId}`);
+  } catch {
+    return null;
+  }
+}
+
 export default function ConnectionsPage() {
   const {
     data: connections,
@@ -23,6 +33,18 @@ export default function ConnectionsPage() {
   );
 
   const list = connections ?? [];
+
+  // Read custom names from localStorage for all connections
+  const [customNames, setCustomNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (list.length === 0) return;
+    const names: Record<string, string> = {};
+    for (const conn of list) {
+      const stored = getStoredName(conn.id);
+      if (stored) names[conn.id] = stored;
+    }
+    setCustomNames(names);
+  }, [list]);
 
   return (
     <div className="animate-fade-in">
@@ -70,34 +92,34 @@ export default function ConnectionsPage() {
             <Link
               key={conn.id}
               href={`/connections/${conn.id}`}
-              className="group flex items-center justify-between rounded-xl border border-border-primary bg-bg-secondary px-5 py-4 transition-all duration-150 hover:border-border-secondary hover:bg-bg-elevated"
+              className="group relative flex items-center justify-between rounded-xl border border-border-primary bg-bg-secondary px-5 py-4 transition-all duration-150 hover:border-border-secondary hover:bg-bg-elevated"
             >
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-text-primary">
-                    {conn.name || "Unnamed Connection"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-text-tertiary">
-                    {conn.me?.id
-                      ? conn.me.id.replace("@c.us", "")
-                      : "No phone linked"}
-                  </p>
-                </div>
-                <StatusBadge status={conn.status} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-text-primary">
+                  {customNames[conn.id] || conn.name || "Unnamed Connection"}
+                </p>
+                <p className="mt-0.5 text-xs text-text-tertiary">
+                  {conn.me?.id
+                    ? conn.me.id.replace("@c.us", "")
+                    : "No phone linked"}
+                </p>
               </div>
-              <svg
-                className="h-4 w-4 shrink-0 text-text-tertiary transition-colors duration-150 group-hover:text-text-secondary"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
+              <div className="flex shrink-0 items-center gap-3 ml-3">
+                <StatusBadge status={conn.status} />
+                <svg
+                  className="h-4 w-4 text-text-tertiary transition-colors duration-150 group-hover:text-text-secondary"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </div>
             </Link>
           ))}
         </div>

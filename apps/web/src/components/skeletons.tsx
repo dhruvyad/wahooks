@@ -46,10 +46,45 @@ export function ConnectionDetailSkeleton() {
         </div>
         <Pulse className="h-8 w-16 rounded-lg" />
       </div>
-      <div className="mt-8 rounded-xl border border-border-primary bg-bg-secondary p-6">
-        <Pulse className="h-5 w-32" />
-        <Pulse className="mt-3 h-4 w-64" />
-        <Pulse className="mt-4 h-48 w-full" />
+      {/* Chat viewer skeleton */}
+      <div className="mt-8 h-[500px] overflow-hidden rounded-xl border border-border-primary bg-bg-secondary">
+        <div className="flex h-full">
+          {/* Left panel */}
+          <div className="flex w-72 shrink-0 flex-col border-r border-border-primary">
+            <div className="border-b border-border-primary px-4 py-3">
+              <Pulse className="h-4 w-16" />
+            </div>
+            <div className="flex-1 space-y-0">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 border-b border-border-primary/50 px-4 py-3"
+                >
+                  <Pulse className="h-9 w-9 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <Pulse className="h-3.5 w-24" />
+                    <Pulse className="mt-1.5 h-3 w-32" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Right panel */}
+          <div className="flex flex-1 flex-col">
+            <div className="flex items-center gap-3 border-b border-border-primary px-5 py-3">
+              <Pulse className="h-9 w-9 shrink-0 rounded-full" />
+              <div>
+                <Pulse className="h-3.5 w-28" />
+                <Pulse className="mt-1.5 h-3 w-40" />
+              </div>
+            </div>
+            <div className="flex-1" />
+            <div className="flex items-center gap-2 border-t border-border-primary px-4 py-3">
+              <Pulse className="h-9 flex-1 rounded-lg" />
+              <Pulse className="h-9 w-9 rounded-lg" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
