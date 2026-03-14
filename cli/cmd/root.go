@@ -81,8 +81,15 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
+	rootCmd.TraverseChildren = true
 	if err := rootCmd.Execute(); err != nil {
-		renderErrorPanel(err.Error())
+		// Find the command that failed to show its usage
+		target, _, _ := rootCmd.Find(os.Args[1:])
+		hint := ""
+		if target != nil && target != rootCmd {
+			hint = "Usage: " + target.UseLine()
+		}
+		renderErrorPanel(err.Error(), hint)
 		os.Exit(1)
 	}
 }
@@ -290,15 +297,20 @@ func renderFlagsBox(cmd *cobra.Command) {
 	}
 }
 
-func renderErrorPanel(msg string) {
+func renderErrorPanel(msg string, hint string) {
 	titleStyled := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true).Render("Error")
+
+	content := " " + msg
+	if hint != "" {
+		content += "\n\n " + faint.Render(hint)
+	}
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("1")).
 		Padding(0, 1).
 		Width(74).
-		Render(" " + msg)
+		Render(content)
 
 	boxLines := strings.Split(box, "\n")
 	if len(boxLines) > 0 {
