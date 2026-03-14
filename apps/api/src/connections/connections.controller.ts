@@ -261,24 +261,14 @@ export class ConnectionsController {
     );
     const webhookUrl = `${apiUrl}/api/events/waha`;
 
-    try {
-      await this.wahaService.restartSession(
-        worker.internalIp,
-        worker.apiKeyEnc,
-        wahaName,
-      );
-    } catch (error) {
-      // If restart fails, do a full reset to clear corrupted state
-      this.logger.warn(
-        `Restart failed for ${wahaName}, doing full reset: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      await this.wahaService.resetSession(
-        worker.internalIp,
-        worker.apiKeyEnc,
-        wahaName,
-        webhookUrl,
-      );
-    }
+    // Always do a full reset to ensure webhook URL and store config are preserved.
+    // restartSession doesn't re-apply config, so webhooks silently break after pod restarts.
+    await this.wahaService.resetSession(
+      worker.internalIp,
+      worker.apiKeyEnc,
+      wahaName,
+      webhookUrl,
+    );
 
     const [updated] = await this.db
       .update(wahaSessions)
