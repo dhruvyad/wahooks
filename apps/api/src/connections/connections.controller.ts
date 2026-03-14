@@ -318,6 +318,47 @@ export class ConnectionsController {
     }
   }
 
+  @Get(':id/chats/:chatId/messages')
+  async getMessages(
+    @Param('id') id: string,
+    @Param('chatId') chatId: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+
+    if (connection.userId !== user.sub) {
+      throw new ForbiddenException('You do not own this connection');
+    }
+
+    const worker = await this.workersService.getWorkerForSession(id);
+
+    if (!worker) {
+      return [];
+    }
+
+    const wahaName = this.wahaService.resolveSessionName(
+      connection.sessionName,
+    );
+
+    try {
+      return await this.wahaService.getMessages(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+        chatId,
+      );
+    } catch {
+      return [];
+    }
+  }
+
   @Get(':id/me')
   async getMe(
     @Param('id') id: string,

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { useApiData } from "@/lib/cache";
+import { BillingSkeleton } from "@/components/skeletons";
 
 interface BillingStatus {
   hasPaymentMethod: boolean;
@@ -49,28 +51,19 @@ function SubscriptionBadge({ status }: { status: string }) {
 
 export default function BillingPage() {
   const searchParams = useSearchParams();
-  const [billing, setBilling] = useState<BillingStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const {
+    data: billing,
+    loading,
+    error,
+  } = useApiData<BillingStatus>("billing", () =>
+    apiFetch("/api/billing/status")
+  );
 
   const success = searchParams.get("success") === "true";
   const canceled = searchParams.get("canceled") === "true";
-
-  useEffect(() => {
-    apiFetch("/api/billing/status")
-      .then((data) => {
-        setBilling(data);
-      })
-      .catch((err) => {
-        setError(
-          err instanceof Error ? err.message : "Failed to load billing status"
-        );
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []);
 
   async function handleSetupPayment() {
     setRedirecting(true);
@@ -78,7 +71,7 @@ export default function BillingPage() {
       const data = await apiFetch("/api/billing/checkout", { method: "POST" });
       window.location.href = data.url;
     } catch (err) {
-      setError(
+      setActionError(
         err instanceof Error ? err.message : "Failed to start checkout"
       );
       setRedirecting(false);
@@ -91,15 +84,17 @@ export default function BillingPage() {
       const data = await apiFetch("/api/billing/portal", { method: "POST" });
       window.location.href = data.url;
     } catch (err) {
-      setError(
+      setActionError(
         err instanceof Error ? err.message : "Failed to open billing portal"
       );
       setRedirecting(false);
     }
   }
 
+  const displayError = error || actionError;
+
   return (
-    <div>
+    <div className="animate-fade-in">
       <h1 className="text-2xl font-bold text-text-primary">Billing</h1>
       <p className="mt-1 text-sm text-text-secondary">
         Manage your subscription and view usage.
@@ -117,22 +112,18 @@ export default function BillingPage() {
         </div>
       )}
 
-      {loading && (
-        <div className="mt-12 text-center">
-          <p className="text-text-secondary">Loading billing information...</p>
-        </div>
-      )}
+      {loading && <BillingSkeleton />}
 
-      {error && (
+      {displayError && (
         <div className="mt-6 rounded-lg border border-status-error-border bg-status-error-bg p-4 text-sm text-status-error-text">
-          {error}
+          {displayError}
         </div>
       )}
 
       {!loading && !error && billing && (
         <div className="mt-6 space-y-4">
           {/* Subscription status card */}
-          <div className="rounded-xl border border-border-primary bg-bg-secondary p-6">
+          <div className="rounded-xl border border-border-primary bg-bg-secondary p-6 transition-colors duration-150 hover:border-border-secondary">
             <h2 className="text-base font-semibold text-text-primary">
               Subscription
             </h2>
@@ -151,7 +142,7 @@ export default function BillingPage() {
                 <button
                   onClick={handleSetupPayment}
                   disabled={redirecting}
-                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
+                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
                 >
                   {redirecting ? "Redirecting..." : "Set Up Payment"}
                 </button>
@@ -165,7 +156,7 @@ export default function BillingPage() {
                 <button
                   onClick={handleManageBilling}
                   disabled={redirecting}
-                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
+                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
                 >
                   {redirecting ? "Redirecting..." : "Manage Billing"}
                 </button>
@@ -183,7 +174,7 @@ export default function BillingPage() {
                 <button
                   onClick={handleManageBilling}
                   disabled={redirecting}
-                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
+                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
                 >
                   {redirecting ? "Redirecting..." : "Update Payment"}
                 </button>
@@ -197,7 +188,7 @@ export default function BillingPage() {
                 <button
                   onClick={handleManageBilling}
                   disabled={redirecting}
-                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
+                  className="mt-4 rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
                 >
                   {redirecting ? "Redirecting..." : "Manage Billing"}
                 </button>
@@ -206,7 +197,7 @@ export default function BillingPage() {
           </div>
 
           {/* Usage summary card */}
-          <div className="rounded-xl border border-border-primary bg-bg-secondary p-6">
+          <div className="rounded-xl border border-border-primary bg-bg-secondary p-6 transition-colors duration-150 hover:border-border-secondary">
             <h2 className="text-base font-semibold text-text-primary">
               Current Month Usage
             </h2>
@@ -242,7 +233,7 @@ export default function BillingPage() {
           </div>
 
           {/* Pricing explanation */}
-          <div className="rounded-xl border border-border-primary bg-bg-tertiary p-6">
+          <div className="rounded-xl border border-border-primary bg-bg-tertiary p-6 transition-colors duration-150 hover:border-border-secondary">
             <h2 className="text-base font-semibold text-text-primary">
               How Pricing Works
             </h2>

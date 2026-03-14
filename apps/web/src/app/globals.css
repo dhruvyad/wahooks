@@ -49,6 +49,8 @@
   --color-status-neutral-bg: rgba(156, 163, 175, 0.12);
   --color-status-neutral-text: #9ca3af;
   --color-status-neutral-border: rgba(156, 163, 175, 0.25);
+
+  --animate-fade-in: fade-in 0.3s ease-out;
 }
 
 html {
@@ -63,6 +65,17 @@ body {
 ::selection {
   background: rgba(37, 211, 102, 0.2);
   color: var(--color-text-primary);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Fumadocs dark theme — green accent overrides */

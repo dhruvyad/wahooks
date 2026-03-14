@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { href: "/connections", label: "Connections" },
+  { href: "/tokens", label: "API Tokens" },
+  { href: "/mcp", label: "MCP" },
   { href: "/billing", label: "Billing" },
 ];
 
@@ -20,7 +22,7 @@ export function NavLinks() {
           <Link
             key={item.href}
             href={item.href}
-            className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ${
               isActive
                 ? "bg-wa-green/10 text-wa-green"
                 : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"

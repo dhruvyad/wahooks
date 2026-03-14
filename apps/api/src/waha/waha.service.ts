@@ -318,6 +318,22 @@ export class WahaService {
     return this.request<WahaChatResponse[]>('GET', url, headers);
   }
 
+  async getMessages(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    limit: number = 50,
+  ): Promise<any[]> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&downloadMedia=false`,
+    );
+    const headers = this.buildHeaders(apiKey);
+
+    return this.request<any[]>('GET', url, headers);
+  }
+
   async getMe(
     workerUrl: string,
     apiKey: string,

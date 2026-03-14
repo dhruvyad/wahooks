@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { EventLog } from "@/components/event-log";
+import { CopyButton } from "@/components/copy-button";
+import { WebhookListSkeleton } from "@/components/skeletons";
+import { useToast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm-modal";
 
 interface WebhookConfig {
   id: string;
@@ -27,6 +31,8 @@ const EVENT_TYPES = [
 ];
 
 export function WebhookList({ connectionId }: { connectionId: string }) {
+  const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +49,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
   const [expandedWebhook, setExpandedWebhook] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
 
   const fetchWebhooks = useCallback(async () => {
     try {
@@ -93,6 +100,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
       setFormUrl("");
       setFormEvents([]);
       setShowForm(false);
+      toast("Webhook created", "success");
       await fetchWebhooks();
     } catch (err) {
       setFormError(
@@ -104,16 +112,30 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
   }
 
   async function handleToggleActive(webhook: WebhookConfig) {
+    // Optimistic update
+    const previousWebhooks = webhooks;
+    setWebhooks((prev) =>
+      prev.map((w) =>
+        w.id === webhook.id ? { ...w, active: !w.active } : w
+      )
+    );
     setTogglingIds((prev) => new Set(prev).add(webhook.id));
+
     try {
       await apiFetch(`/api/webhooks/${webhook.id}`, {
         method: "PUT",
         body: JSON.stringify({ active: !webhook.active }),
       });
-      await fetchWebhooks();
+      toast(
+        webhook.active ? "Webhook deactivated" : "Webhook activated",
+        "success"
+      );
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to update webhook"
+      // Rollback
+      setWebhooks(previousWebhooks);
+      toast(
+        err instanceof Error ? err.message : "Failed to update webhook",
+        "error"
       );
     } finally {
       setTogglingIds((prev) => {
@@ -125,24 +147,54 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
   }
 
   async function handleDelete(webhookId: string) {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this webhook? This action cannot be undone."
-    );
+    const confirmed = await confirm({
+      title: "Delete webhook",
+      message:
+        "Are you sure you want to delete this webhook? This action cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
     if (!confirmed) return;
 
+    // Optimistic remove
+    const previousWebhooks = webhooks;
+    setWebhooks((prev) => prev.filter((w) => w.id !== webhookId));
+    if (expandedWebhook === webhookId) {
+      setExpandedWebhook(null);
+    }
     setDeletingIds((prev) => new Set(prev).add(webhookId));
+
     try {
       await apiFetch(`/api/webhooks/${webhookId}`, { method: "DELETE" });
-      if (expandedWebhook === webhookId) {
-        setExpandedWebhook(null);
-      }
-      await fetchWebhooks();
+      toast("Webhook deleted", "success");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to delete webhook"
+      // Rollback
+      setWebhooks(previousWebhooks);
+      toast(
+        err instanceof Error ? err.message : "Failed to delete webhook",
+        "error"
       );
     } finally {
       setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(webhookId);
+        return next;
+      });
+    }
+  }
+
+  async function handleTest(webhookId: string) {
+    setTestingIds((prev) => new Set(prev).add(webhookId));
+    try {
+      await apiFetch(`/api/webhooks/${webhookId}/test`, { method: "POST" });
+      toast("Test event sent", "success");
+    } catch (err) {
+      toast(
+        err instanceof Error ? err.message : "Failed to send test event",
+        "error"
+      );
+    } finally {
+      setTestingIds((prev) => {
         const next = new Set(prev);
         next.delete(webhookId);
         return next;
@@ -180,7 +232,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark"
+            className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark"
           >
             Add Webhook
           </button>
@@ -213,7 +265,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
               value={formUrl}
               onChange={(e) => setFormUrl(e.target.value)}
               placeholder="https://example.com/webhook"
-              className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2.5 text-sm text-text-primary transition-colors placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
+              className="block w-full rounded-lg border border-border-secondary bg-bg-elevated px-3.5 py-2.5 text-sm text-text-primary transition-colors duration-150 placeholder:text-text-tertiary focus:border-wa-green focus:outline-none focus:ring-1 focus:ring-wa-green"
             />
           </div>
 
@@ -225,7 +277,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
               {EVENT_TYPES.map((event) => (
                 <label
                   key={event}
-                  className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-150 ${
                     formEvents.includes(event)
                       ? "border-wa-green bg-wa-green text-text-inverse"
                       : "border-border-secondary bg-bg-elevated text-text-secondary hover:bg-bg-hover"
@@ -251,7 +303,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
             <button
               onClick={handleCreate}
               disabled={formSubmitting}
-              className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-wa-green-dark disabled:opacity-50"
+              className="rounded-lg bg-wa-green px-4 py-2 text-sm font-semibold text-text-inverse transition-colors duration-150 hover:bg-wa-green-dark disabled:opacity-50"
             >
               {formSubmitting ? "Saving..." : "Save Webhook"}
             </button>
@@ -262,7 +314,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                 setFormEvents([]);
                 setFormError(null);
               }}
-              className="rounded-lg border border-border-secondary px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover"
+              className="rounded-lg border border-border-secondary px-4 py-2 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-bg-hover"
             >
               Cancel
             </button>
@@ -271,15 +323,18 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
       )}
 
       {/* Loading state */}
-      {loading && (
-        <p className="mt-4 text-sm text-text-tertiary">Loading webhooks...</p>
-      )}
+      {loading && <WebhookListSkeleton />}
 
       {/* Empty state */}
       {!loading && !error && webhooks.length === 0 && !showForm && (
-        <p className="mt-4 text-sm text-text-secondary">
-          No webhooks configured. Add one to start receiving events.
-        </p>
+        <div className="mt-6 flex flex-col items-center text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-primary bg-bg-secondary">
+            <span className="text-2xl">🔗</span>
+          </div>
+          <p className="mt-3 text-sm text-text-secondary">
+            No webhooks configured. Add one to start receiving events.
+          </p>
+        </div>
       )}
 
       {/* Webhook cards */}
@@ -288,13 +343,13 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
           {webhooks.map((webhook) => (
             <div
               key={webhook.id}
-              className="rounded-xl border border-border-primary bg-bg-secondary p-4"
+              className="rounded-xl border border-border-primary bg-bg-secondary p-4 transition-colors duration-150 hover:border-border-secondary"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <button
                     onClick={() => toggleExpand(webhook.id)}
-                    className="break-all text-left text-sm font-medium text-wa-green hover:underline"
+                    className="break-all text-left text-sm font-medium text-wa-green transition-colors duration-150 hover:underline"
                   >
                     {webhook.url}
                   </button>
@@ -319,24 +374,35 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                     </code>
                     <button
                       onClick={() => toggleSecretReveal(webhook.id)}
-                      className="text-xs text-text-tertiary underline hover:text-wa-green"
+                      className="text-xs text-text-tertiary underline transition-colors duration-150 hover:text-wa-green"
                     >
                       {revealedSecrets.has(webhook.id) ? "Hide" : "Reveal"}
                     </button>
+                    {revealedSecrets.has(webhook.id) && (
+                      <CopyButton text={webhook.signingSecret} />
+                    )}
                   </div>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
                   <button
+                    onClick={() => handleTest(webhook.id)}
+                    disabled={testingIds.has(webhook.id)}
+                    className="rounded-lg border border-border-secondary px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50"
+                  >
+                    {testingIds.has(webhook.id) ? "..." : "Test"}
+                  </button>
+
+                  <button
                     onClick={() => handleToggleActive(webhook)}
                     disabled={togglingIds.has(webhook.id)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-wa-green focus:ring-offset-2 focus:ring-offset-bg-primary disabled:opacity-50 ${
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-wa-green focus:ring-offset-2 focus:ring-offset-bg-primary disabled:opacity-50 ${
                       webhook.active ? "bg-wa-green" : "bg-bg-hover"
                     }`}
                     title={webhook.active ? "Active" : "Inactive"}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-150 ${
                         webhook.active ? "translate-x-6" : "translate-x-1"
                       }`}
                     />
@@ -345,7 +411,7 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                   <button
                     onClick={() => handleDelete(webhook.id)}
                     disabled={deletingIds.has(webhook.id)}
-                    className="rounded-lg border border-status-error-border px-3 py-1.5 text-xs font-medium text-status-error-text transition-colors hover:bg-status-error-bg disabled:opacity-50"
+                    className="rounded-lg border border-status-error-border px-3 py-1.5 text-xs font-medium text-status-error-text transition-colors duration-150 hover:bg-status-error-bg disabled:opacity-50"
                   >
                     {deletingIds.has(webhook.id) ? "..." : "Delete"}
                   </button>
@@ -355,16 +421,8 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
               <EventLog
                 webhookId={webhook.id}
                 expanded={expandedWebhook === webhook.id}
+                onToggle={() => toggleExpand(webhook.id)}
               />
-
-              {expandedWebhook !== webhook.id && (
-                <button
-                  onClick={() => toggleExpand(webhook.id)}
-                  className="mt-2 text-xs text-text-tertiary hover:text-text-secondary"
-                >
-                  View event log
-                </button>
-              )}
             </div>
           ))}
         </div>
