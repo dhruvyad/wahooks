@@ -201,7 +201,7 @@ cd cli && go build -o wahooks .
 
 # Setup
 wahooks config api-url https://api.wahooks.com
-wahooks login e2e-test@wahooks.com -p wahooks-e2e-test-2026
+wahooks login $E2E_TEST_EMAIL -p $E2E_TEST_PASSWORD
 wahooks status
 
 # Connection management
@@ -220,8 +220,7 @@ wahooks connections e2e --no-scan
 ## E2E Testing
 
 ### Test Account
-- Email: `e2e-test@wahooks.com` / Password: `wahooks-e2e-test-2026`
-- User ID: `a80ffc98-6f8b-4f96-a633-f756124c16af`
+- Set `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` env vars (see `.env.secrets`)
 - Created in Supabase Auth, email confirmed
 
 ### What the E2E Tests

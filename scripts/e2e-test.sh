@@ -15,8 +15,8 @@ done
 
 SUPABASE_URL="https://fvatjlbtyegsqjuwbxxx.supabase.co"
 SUPABASE_KEY="sb_publishable_63eVkBc4ZgqIqnq2dNhzKA_0NlUw5Y5"
-TEST_EMAIL="e2e-test@wahooks.com"
-TEST_PASSWORD="wahooks-e2e-test-2026"
+TEST_EMAIL="${E2E_TEST_EMAIL:?Set E2E_TEST_EMAIL env var}"
+TEST_PASSWORD="${E2E_TEST_PASSWORD:?Set E2E_TEST_PASSWORD env var}"
 
 # Colors
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
