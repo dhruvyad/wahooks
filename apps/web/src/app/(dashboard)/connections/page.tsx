@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, startTransition } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { apiFetch } from "@/lib/api";
@@ -160,7 +160,7 @@ export default function ConnectionsPage() {
       const stored = getStoredName(conn.id);
       if (stored) names[conn.id] = stored;
     }
-    setCustomNames(names);
+    startTransition(() => setCustomNames(names));
 
     // Fetch phone numbers for connected accounts
     const working = list.filter((c) => c.status === "working");

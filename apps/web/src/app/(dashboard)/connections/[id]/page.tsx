@@ -56,10 +56,7 @@ function ChatAvatar({
   );
 
   useEffect(() => {
-    if (avatarCache.has(cacheKey)) {
-      setUrl(avatarCache.get(cacheKey)!);
-      return;
-    }
+    if (avatarCache.has(cacheKey)) return;
     let cancelled = false;
     apiFetch(
       `/api/connections/${connectionId}/contacts/${encodeURIComponent(chatId)}/picture`

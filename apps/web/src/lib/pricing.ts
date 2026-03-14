@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
 export interface Pricing {
   currency: "usd" | "inr";
@@ -18,17 +18,15 @@ function getCountry(): string {
   return match?.[1] ?? "";
 }
 
-/** Returns USD on first render (SSR-safe), then updates to INR if in India. */
+function getClientPricing(): Pricing {
+  return getCountry() === "IN" ? INR : USD;
+}
+
+const subscribe = () => () => {}; // cookie doesn't change mid-session
+
+/** Returns USD on server, reads cookie on client. No hydration mismatch. */
 export function usePricing(): Pricing {
-  const [pricing, setPricing] = useState<Pricing>(USD);
-
-  useEffect(() => {
-    if (getCountry() === "IN") {
-      setPricing(INR);
-    }
-  }, []);
-
-  return pricing;
+  return useSyncExternalStore(subscribe, getClientPricing, () => USD);
 }
 
 export function formatTotal(quantity: number, pricing: Pricing): string {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, startTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
@@ -31,8 +31,10 @@ function ConsentContent() {
 
   useEffect(() => {
     if (!authorizationId) {
-      setError("Missing authorization_id");
-      setLoading(false);
+      startTransition(() => {
+        setError("Missing authorization_id");
+        setLoading(false);
+      });
       return;
     }
 

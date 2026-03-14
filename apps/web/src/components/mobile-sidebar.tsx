@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NavLinks } from "@/app/(dashboard)/nav-links";
@@ -9,10 +9,14 @@ import { SignOutButton } from "@/app/(dashboard)/sign-out-button";
 export function MobileSidebar({ email }: { email: string }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const prevPathname = useRef(pathname);
 
   // Close on navigation
   useEffect(() => {
-    setOpen(false);
+    if (prevPathname.current !== pathname) {
+      prevPathname.current = pathname;
+      startTransition(() => setOpen(false));
+    }
   }, [pathname]);
 
   // Prevent body scroll when open
