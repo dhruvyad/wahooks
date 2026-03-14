@@ -4,19 +4,14 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
 
-  // getSession() auto-refreshes expired tokens on the client
-  let {
+  // getSession() auto-refreshes expired tokens via the Supabase client.
+  // The browser client has autoRefreshToken enabled by default.
+  const {
     data: { session },
+    error,
   } = await supabase.auth.getSession();
 
-  // If session is expired or missing, try refreshing explicitly
-  if (!session?.access_token) {
-    const { data } = await supabase.auth.refreshSession();
-    session = data.session;
-  }
-
-  if (!session?.access_token) {
-    // Still no session — redirect to login
+  if (error || !session?.access_token) {
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
@@ -33,14 +28,22 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   });
 
   if (res.status === 401) {
-    // Token rejected by API — try one more refresh
-    const { data } = await supabase.auth.refreshSession();
-    if (data.session?.access_token) {
+    // Token was rejected — force a refresh and redirect if it fails
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw new Error("Session expired");
+    }
+    // Retry once with the refreshed session
+    const { data: { session: newSession } } = await supabase.auth.getSession();
+    if (newSession?.access_token) {
       const retry = await fetch(`${API_URL}${path}`, {
         ...options,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${data.session.access_token}`,
+          Authorization: `Bearer ${newSession.access_token}`,
           ...options.headers,
         },
       });
@@ -57,7 +60,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
+    throw new Error(body || `API error ${res.status}`);
   }
 
   const text = await res.text();

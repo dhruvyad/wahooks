@@ -5,6 +5,7 @@ import { SignOutButton } from "./sign-out-button";
 import { NavLinks } from "./nav-links";
 import { ToastProvider } from "@/components/toast";
 import { ConfirmModalProvider } from "@/components/confirm-modal";
+import { AuthListener } from "@/components/auth-listener";
 
 export default async function DashboardLayout({
   children,
@@ -45,6 +46,7 @@ export default async function DashboardLayout({
             </div>
           </aside>
           <main className="flex-1 overflow-y-auto bg-bg-primary p-8">
+            <AuthListener />
             {children}
           </main>
         </div>
