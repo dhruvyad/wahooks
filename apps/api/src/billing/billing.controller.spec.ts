@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { BillingController } from './billing.controller';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { StripeService } from './stripe.service';
-import { UsageService } from './usage.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 function createMockDb() {
@@ -29,11 +28,12 @@ describe('BillingController', () => {
   let db: ReturnType<typeof createMockDb>;
   let stripeService: {
     createCustomer: jest.Mock;
-    getCustomerSubscriptions: jest.Mock;
     createCheckoutSession: jest.Mock;
     createPortalSession: jest.Mock;
+    getPaidSlots: jest.Mock;
+    getSubscriptionStatus: jest.Mock;
+    constructWebhookEvent: jest.Mock;
   };
-  let usageService: { getUserUsageSummary: jest.Mock };
   let configService: { get: jest.Mock; getOrThrow: jest.Mock };
 
   const user = { sub: 'user-123' };
@@ -43,13 +43,11 @@ describe('BillingController', () => {
 
     stripeService = {
       createCustomer: jest.fn(),
-      getCustomerSubscriptions: jest.fn(),
       createCheckoutSession: jest.fn(),
       createPortalSession: jest.fn(),
-    };
-
-    usageService = {
-      getUserUsageSummary: jest.fn(),
+      getPaidSlots: jest.fn(),
+      getSubscriptionStatus: jest.fn(),
+      constructWebhookEvent: jest.fn(),
     };
 
     configService = {
@@ -62,7 +60,6 @@ describe('BillingController', () => {
       providers: [
         { provide: DRIZZLE_TOKEN, useValue: db },
         { provide: StripeService, useValue: stripeService },
-        { provide: UsageService, useValue: usageService },
         { provide: ConfigService, useValue: configService },
       ],
     })
@@ -74,45 +71,78 @@ describe('BillingController', () => {
   });
 
   describe('getStatus', () => {
-    it('should return subscription status and usage summary when user has existing Stripe customer', async () => {
+    it('should return subscription status and slot info when user has existing Stripe customer', async () => {
       const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: 'cus_existing' };
-      const subscriptions = [
-        { status: 'active', id: 'sub_1' },
-      ];
-      const usageSummary = { totalHours: 10, estimatedCost: 0.03, activeConnections: 2 };
+      const subscriptionStatus = {
+        active: true,
+        slots: 5,
+        status: 'active',
+        currentPeriodEnd: new Date('2026-04-01'),
+        monthlyAmount: 25,
+        currency: 'usd',
+      };
 
+      // First where() for ensureStripeCustomer user lookup
       db.where.mockResolvedValueOnce([dbUser]);
-      stripeService.getCustomerSubscriptions.mockResolvedValue(subscriptions);
-      usageService.getUserUsageSummary.mockResolvedValue(usageSummary);
+      stripeService.getSubscriptionStatus.mockResolvedValue(subscriptionStatus);
+      // Second where() for active connections count
+      db.where.mockResolvedValueOnce([{ id: 'sess-1' }, { id: 'sess-2' }]);
 
       const result = await controller.getStatus(user);
 
       expect(result).toEqual({
-        hasPaymentMethod: true,
-        subscriptionStatus: 'active',
-        usage: usageSummary,
+        subscription: {
+          active: true,
+          status: 'active',
+          currentPeriodEnd: new Date('2026-04-01'),
+          monthlyAmount: 25,
+          currency: 'usd',
+        },
+        slots: {
+          paid: 5,
+          used: 2,
+          available: 3,
+        },
       });
-      expect(stripeService.getCustomerSubscriptions).toHaveBeenCalledWith('cus_existing');
-      expect(usageService.getUserUsageSummary).toHaveBeenCalledWith('user-123');
+      expect(stripeService.getSubscriptionStatus).toHaveBeenCalledWith('cus_existing');
     });
 
     it('should create a Stripe customer if user does not have one', async () => {
       const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: null };
-      const usageSummary = { totalHours: 0, estimatedCost: 0, activeConnections: 0 };
+      const subscriptionStatus = {
+        active: false,
+        slots: 0,
+        status: null,
+        currentPeriodEnd: null,
+        monthlyAmount: 0,
+        currency: 'usd',
+      };
 
       // First where() for ensureStripeCustomer - user lookup
       db.where.mockResolvedValueOnce([dbUser]);
       stripeService.createCustomer.mockResolvedValue('cus_new');
-      stripeService.getCustomerSubscriptions.mockResolvedValue([]);
-      usageService.getUserUsageSummary.mockResolvedValue(usageSummary);
+      // Second where() for db.update().set().where() inside ensureStripeCustomer
+      db.where.mockResolvedValueOnce(undefined);
+      stripeService.getSubscriptionStatus.mockResolvedValue(subscriptionStatus);
+      // Third where() for active connections count
+      db.where.mockResolvedValueOnce([]);
 
       const result = await controller.getStatus(user);
 
       expect(stripeService.createCustomer).toHaveBeenCalledWith('test@example.com', 'user-123');
       expect(result).toEqual({
-        hasPaymentMethod: false,
-        subscriptionStatus: null,
-        usage: usageSummary,
+        subscription: {
+          active: false,
+          status: null,
+          currentPeriodEnd: null,
+          monthlyAmount: 0,
+          currency: 'usd',
+        },
+        slots: {
+          paid: 0,
+          used: 0,
+          available: 0,
+        },
       });
     });
 
@@ -122,54 +152,86 @@ describe('BillingController', () => {
       await expect(controller.getStatus(user)).rejects.toThrow(NotFoundException);
     });
 
-    it('should return null subscriptionStatus when no active subscription exists', async () => {
+    it('should return zero available slots when all slots are used', async () => {
       const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: 'cus_existing' };
-      const subscriptions = [
-        { status: 'canceled', id: 'sub_1' },
-      ];
-      const usageSummary = { totalHours: 5, estimatedCost: 0.02, activeConnections: 1 };
+      const subscriptionStatus = {
+        active: true,
+        slots: 2,
+        status: 'active',
+        currentPeriodEnd: new Date('2026-04-01'),
+        monthlyAmount: 10,
+        currency: 'usd',
+      };
 
       db.where.mockResolvedValueOnce([dbUser]);
-      stripeService.getCustomerSubscriptions.mockResolvedValue(subscriptions);
-      usageService.getUserUsageSummary.mockResolvedValue(usageSummary);
+      stripeService.getSubscriptionStatus.mockResolvedValue(subscriptionStatus);
+      db.where.mockResolvedValueOnce([{ id: 'sess-1' }, { id: 'sess-2' }]);
 
       const result = await controller.getStatus(user);
 
-      expect(result).toEqual({
-        hasPaymentMethod: false,
-        subscriptionStatus: null,
-        usage: usageSummary,
+      expect(result.slots).toEqual({
+        paid: 2,
+        used: 2,
+        available: 0,
       });
     });
 
-    it('should recognize trialing and past_due as active subscription statuses', async () => {
+    it('should clamp available to zero when used exceeds paid', async () => {
       const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: 'cus_existing' };
-      const usageSummary = { totalHours: 0, estimatedCost: 0, activeConnections: 0 };
+      const subscriptionStatus = {
+        active: true,
+        slots: 1,
+        status: 'active',
+        currentPeriodEnd: new Date('2026-04-01'),
+        monthlyAmount: 5,
+        currency: 'usd',
+      };
 
-      // Test trialing
       db.where.mockResolvedValueOnce([dbUser]);
-      stripeService.getCustomerSubscriptions.mockResolvedValue([{ status: 'trialing', id: 'sub_trial' }]);
-      usageService.getUserUsageSummary.mockResolvedValue(usageSummary);
+      stripeService.getSubscriptionStatus.mockResolvedValue(subscriptionStatus);
+      // More active connections than paid slots
+      db.where.mockResolvedValueOnce([{ id: 'sess-1' }, { id: 'sess-2' }, { id: 'sess-3' }]);
 
       const result = await controller.getStatus(user);
-      expect(result.subscriptionStatus).toBe('trialing');
-      expect(result.hasPaymentMethod).toBe(true);
+
+      expect(result.slots.available).toBe(0);
     });
   });
 
   describe('createCheckout', () => {
-    it('should return a Stripe checkout URL', async () => {
+    it('should return a Stripe checkout URL with default quantity and currency', async () => {
       const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: 'cus_existing' };
       const checkoutUrl = 'https://checkout.stripe.com/session_abc';
 
       db.where.mockResolvedValueOnce([dbUser]);
       stripeService.createCheckoutSession.mockResolvedValue(checkoutUrl);
 
-      const result = await controller.createCheckout(user);
+      const result = await controller.createCheckout(user, {});
 
       expect(result).toEqual({ url: checkoutUrl });
       expect(stripeService.createCheckoutSession).toHaveBeenCalledWith(
         'cus_existing',
+        1,
+        'usd',
+        'http://localhost:3000/billing?success=true',
+        'http://localhost:3000/billing?canceled=true',
+      );
+    });
+
+    it('should pass custom quantity and currency to checkout session', async () => {
+      const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: 'cus_existing' };
+      const checkoutUrl = 'https://checkout.stripe.com/session_abc';
+
+      db.where.mockResolvedValueOnce([dbUser]);
+      stripeService.createCheckoutSession.mockResolvedValue(checkoutUrl);
+
+      const result = await controller.createCheckout(user, { quantity: 5, currency: 'inr' });
+
+      expect(result).toEqual({ url: checkoutUrl });
+      expect(stripeService.createCheckoutSession).toHaveBeenCalledWith(
+        'cus_existing',
+        5,
+        'inr',
         'http://localhost:3000/billing?success=true',
         'http://localhost:3000/billing?canceled=true',
       );
@@ -181,9 +243,11 @@ describe('BillingController', () => {
 
       db.where.mockResolvedValueOnce([dbUser]);
       stripeService.createCustomer.mockResolvedValue('cus_new');
+      // where() for db.update().set().where() inside ensureStripeCustomer
+      db.where.mockResolvedValueOnce(undefined);
       stripeService.createCheckoutSession.mockResolvedValue(checkoutUrl);
 
-      const result = await controller.createCheckout(user);
+      const result = await controller.createCheckout(user, {});
 
       expect(stripeService.createCustomer).toHaveBeenCalledWith('test@example.com', 'user-123');
       expect(result).toEqual({ url: checkoutUrl });
@@ -205,18 +269,6 @@ describe('BillingController', () => {
         'cus_existing',
         'http://localhost:3000/billing',
       );
-    });
-  });
-
-  describe('getUsage', () => {
-    it('should return usage summary from UsageService', async () => {
-      const usageSummary = { totalHours: 42.5, estimatedCost: 0.15, activeConnections: 3 };
-      usageService.getUserUsageSummary.mockResolvedValue(usageSummary);
-
-      const result = await controller.getUsage(user);
-
-      expect(result).toEqual(usageSummary);
-      expect(usageService.getUserUsageSummary).toHaveBeenCalledWith('user-123');
     });
   });
 });

@@ -21,6 +21,8 @@ import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WorkersService } from '../workers/workers.service';
 import { WahaService } from '../waha/waha.service';
+import { StripeService } from '../billing/stripe.service';
+import { users } from '@wahooks/db';
 
 @Controller('connections')
 @UseGuards(AuthGuard)
@@ -32,6 +34,7 @@ export class ConnectionsController {
     private readonly workersService: WorkersService,
     private readonly wahaService: WahaService,
     private readonly configService: ConfigService,
+    private readonly stripeService: StripeService,
   ) {}
 
   @Get()
@@ -51,6 +54,31 @@ export class ConnectionsController {
 
   @Post()
   async createConnection(@CurrentUser() user: { sub: string }) {
+    // Check billing: user must have available connection slots
+    const [dbUser] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, user.sub));
+
+    if (dbUser?.stripeCustomerId) {
+      const paidSlots = await this.stripeService.getPaidSlots(dbUser.stripeCustomerId);
+      const activeConns = await this.db
+        .select()
+        .from(wahaSessions)
+        .where(and(eq(wahaSessions.userId, user.sub), ne(wahaSessions.status, 'stopped')));
+
+      if (activeConns.length >= paidSlots) {
+        throw new ForbiddenException(
+          `All ${paidSlots} connection slots in use. Buy more slots at /billing.`,
+        );
+      }
+    } else if (!dbUser?.isAdmin) {
+      // No Stripe customer and not admin — must set up billing first
+      throw new ForbiddenException(
+        'Set up billing before creating connections. Visit /billing to get started.',
+      );
+    }
+
     // WAHA limits session names to 54 chars; use short hex IDs
     const shortUserId = user.sub.replace(/-/g, '').slice(0, 12);
     const shortSessionId = randomBytes(6).toString('hex');

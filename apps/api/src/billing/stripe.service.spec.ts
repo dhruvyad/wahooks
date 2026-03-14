@@ -8,12 +8,8 @@ const mockStripe = {
     create: jest.fn(),
   },
   subscriptions: {
-    create: jest.fn(),
-    retrieve: jest.fn(),
     list: jest.fn(),
-  },
-  subscriptionItems: {
-    createUsageRecord: jest.fn(),
+    update: jest.fn(),
   },
   checkout: {
     sessions: {
@@ -46,7 +42,8 @@ describe('StripeService', () => {
       get: jest.fn().mockImplementation((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           STRIPE_SECRET_KEY: 'sk_test_123',
-          STRIPE_PRICE_ID: 'price_test_456',
+          STRIPE_USD_PRICE_ID: 'price_usd_456',
+          STRIPE_INR_PRICE_ID: 'price_inr_789',
           STRIPE_WEBHOOK_SECRET: 'whsec_test_789',
         };
         return config[key] ?? defaultValue ?? '';
@@ -89,25 +86,181 @@ describe('StripeService', () => {
   });
 
   describe('createCheckoutSession', () => {
-    it('should return the session URL', async () => {
+    it('should create a new checkout session when no active subscription exists', async () => {
+      mockStripe.subscriptions.list.mockResolvedValue({ data: [] });
       mockStripe.checkout.sessions.create.mockResolvedValue({
         url: 'https://checkout.stripe.com/session/test',
       });
 
       const result = await service.createCheckoutSession(
         'cus_123',
+        2,
+        'usd',
         'https://app.example.com/success',
         'https://app.example.com/cancel',
       );
 
+      expect(mockStripe.subscriptions.list).toHaveBeenCalledWith({
+        customer: 'cus_123',
+        status: 'active',
+        limit: 1,
+      });
       expect(mockStripe.checkout.sessions.create).toHaveBeenCalledWith({
         customer: 'cus_123',
         mode: 'subscription',
-        line_items: [{ price: 'price_test_456' }],
+        line_items: [{ price: 'price_usd_456', quantity: 2 }],
         success_url: 'https://app.example.com/success',
         cancel_url: 'https://app.example.com/cancel',
       });
       expect(result).toBe('https://checkout.stripe.com/session/test');
+    });
+
+    it('should use INR price ID when currency is inr', async () => {
+      mockStripe.subscriptions.list.mockResolvedValue({ data: [] });
+      mockStripe.checkout.sessions.create.mockResolvedValue({
+        url: 'https://checkout.stripe.com/session/inr',
+      });
+
+      await service.createCheckoutSession(
+        'cus_123',
+        1,
+        'inr',
+        'https://app.example.com/success',
+        'https://app.example.com/cancel',
+      );
+
+      expect(mockStripe.checkout.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          line_items: [{ price: 'price_inr_789', quantity: 1 }],
+        }),
+      );
+    });
+
+    it('should update existing subscription quantity when active subscription exists', async () => {
+      mockStripe.subscriptions.list.mockResolvedValue({
+        data: [{
+          id: 'sub_existing',
+          items: {
+            data: [{ id: 'si_existing', quantity: 3 }],
+          },
+        }],
+      });
+      mockStripe.subscriptions.update.mockResolvedValue({});
+
+      const result = await service.createCheckoutSession(
+        'cus_123',
+        2,
+        'usd',
+        'https://app.example.com/success',
+        'https://app.example.com/cancel',
+      );
+
+      expect(mockStripe.subscriptions.update).toHaveBeenCalledWith('sub_existing', {
+        items: [{
+          id: 'si_existing',
+          quantity: 5, // 3 + 2
+        }],
+        proration_behavior: 'create_prorations',
+      });
+      // Should return success URL directly (no checkout needed)
+      expect(result).toBe('https://app.example.com/success');
+      expect(mockStripe.checkout.sessions.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPaidSlots', () => {
+    it('should return quantity from active subscription', async () => {
+      mockStripe.subscriptions.list.mockResolvedValue({
+        data: [{
+          id: 'sub_1',
+          items: { data: [{ quantity: 5 }] },
+        }],
+      });
+
+      const result = await service.getPaidSlots('cus_123');
+
+      expect(result).toBe(5);
+      expect(mockStripe.subscriptions.list).toHaveBeenCalledWith({
+        customer: 'cus_123',
+        status: 'active',
+        limit: 1,
+      });
+    });
+
+    it('should return 0 when no active subscription exists', async () => {
+      mockStripe.subscriptions.list.mockResolvedValue({ data: [] });
+
+      const result = await service.getPaidSlots('cus_123');
+
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('getSubscriptionStatus', () => {
+    it('should return subscription details when subscription exists', async () => {
+      const periodEnd = Math.floor(Date.now() / 1000) + 86400;
+      mockStripe.subscriptions.list.mockResolvedValue({
+        data: [{
+          id: 'sub_1',
+          status: 'active',
+          current_period_end: periodEnd,
+          items: {
+            data: [{
+              quantity: 3,
+              price: { unit_amount: 500, currency: 'usd' },
+            }],
+          },
+        }],
+      });
+
+      const result = await service.getSubscriptionStatus('cus_123');
+
+      expect(result).toEqual({
+        active: true,
+        slots: 3,
+        status: 'active',
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        monthlyAmount: 15, // (500 * 3) / 100
+        currency: 'usd',
+      });
+    });
+
+    it('should return inactive status when no subscription exists', async () => {
+      mockStripe.subscriptions.list.mockResolvedValue({ data: [] });
+
+      const result = await service.getSubscriptionStatus('cus_123');
+
+      expect(result).toEqual({
+        active: false,
+        slots: 0,
+        status: null,
+        currentPeriodEnd: null,
+        monthlyAmount: 0,
+        currency: 'usd',
+      });
+    });
+
+    it('should return active=false for non-active subscription statuses', async () => {
+      const periodEnd = Math.floor(Date.now() / 1000) + 86400;
+      mockStripe.subscriptions.list.mockResolvedValue({
+        data: [{
+          id: 'sub_1',
+          status: 'past_due',
+          current_period_end: periodEnd,
+          items: {
+            data: [{
+              quantity: 2,
+              price: { unit_amount: 500, currency: 'usd' },
+            }],
+          },
+        }],
+      });
+
+      const result = await service.getSubscriptionStatus('cus_123');
+
+      expect(result.active).toBe(false);
+      expect(result.status).toBe('past_due');
+      expect(result.slots).toBe(2);
     });
   });
 
@@ -137,41 +290,6 @@ describe('StripeService', () => {
       expect(() =>
         service.constructWebhookEvent(Buffer.from('bad'), 'invalid-sig'),
       ).toThrow('Webhook signature verification failed');
-    });
-  });
-
-  describe('createSubscription', () => {
-    it('should return subscriptionId and subscriptionItemId', async () => {
-      mockStripe.subscriptions.create.mockResolvedValue({
-        id: 'sub_test_123',
-        items: {
-          data: [{ id: 'si_test_456' }],
-        },
-      });
-
-      const result = await service.createSubscription('cus_test');
-
-      expect(result).toEqual({
-        subscriptionId: 'sub_test_123',
-        subscriptionItemId: 'si_test_456',
-      });
-    });
-  });
-
-  describe('reportUsage', () => {
-    it('should call createUsageRecord with correct params', async () => {
-      mockStripe.subscriptionItems.createUsageRecord.mockResolvedValue({});
-
-      await service.reportUsage('si_test', 3.5, 1700000000);
-
-      expect(mockStripe.subscriptionItems.createUsageRecord).toHaveBeenCalledWith(
-        'si_test',
-        {
-          quantity: 4, // Math.ceil(3.5)
-          timestamp: 1700000000,
-          action: 'increment',
-        },
-      );
     });
   });
 
