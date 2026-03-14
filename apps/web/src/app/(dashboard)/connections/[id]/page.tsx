@@ -443,10 +443,12 @@ export default function ConnectionDetailPage() {
       toast("Media sent", "success");
       exitMediaMode();
     } catch (err) {
-      toast(
-        err instanceof Error ? err.message : "Failed to send media",
-        "error"
-      );
+      const msg = err instanceof Error ? err.message : "Failed to send media";
+      if (msg.includes("Plus version") || msg.includes("422")) {
+        toast("Media sending requires WAHA Plus. Text messages work with the free version.", "error");
+      } else {
+        toast(msg, "error");
+      }
     } finally {
       setSending(false);
     }
