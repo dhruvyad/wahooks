@@ -155,6 +155,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Demo Video */}
+      <section className="relative z-10 px-6 pb-20">
+        <div className="mx-auto max-w-4xl">
+          <div className="overflow-hidden rounded-xl border border-border-primary shadow-2xl shadow-black/20">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full"
+            >
+              <source src="/demo.webm" type="video/webm" />
+              <source src="/demo.mp4" type="video/mp4" />
+            </video>
+          </div>
+        </div>
+      </section>
+
       {/* How It Works */}
       <section className="relative z-10 border-t border-border-primary px-6 py-28">
         <div className="mx-auto max-w-6xl">
