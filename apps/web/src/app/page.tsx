@@ -279,7 +279,7 @@ export default function Home() {
           <div className="mx-auto mt-16 max-w-md rounded-xl border border-border-secondary bg-bg-secondary/60 p-8 text-center backdrop-blur-sm">
             <p className="text-5xl font-bold text-wa-green">$0.99</p>
             <p className="mt-2 text-text-secondary">per connection / month</p>
-            <ul className="mt-8 space-y-3 text-left text-sm text-text-secondary">
+            <ul className="mx-auto mt-8 w-fit space-y-3 text-left text-sm text-text-secondary">
               {[
                 "Simple monthly billing per connection",
                 "Unlimited webhooks per connection",
