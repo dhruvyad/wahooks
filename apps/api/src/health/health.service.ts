@@ -18,7 +18,7 @@ export class HealthService {
     private readonly configService: ConfigService,
   ) {}
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron('*/3 * * * *') // Every 3 minutes instead of every minute
   async pollWorkerHealth(): Promise<void> {
     this.logger.log('Starting worker health poll...');
 

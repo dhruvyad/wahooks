@@ -585,11 +585,16 @@ export class ConnectionsController {
         const wahaName = this.wahaService.resolveSessionName(
           connection.sessionName,
         );
-        await this.wahaService.stopSession(
-          worker.internalIp,
-          worker.apiKeyEnc,
-          wahaName,
-        );
+        // Full cleanup: stop → logout → delete (drops WAHA's per-session database)
+        try {
+          await this.wahaService.stopSession(worker.internalIp, worker.apiKeyEnc, wahaName);
+        } catch { /* may already be stopped */ }
+        try {
+          await this.wahaService.logoutSession(worker.internalIp, worker.apiKeyEnc, wahaName);
+        } catch { /* ignore */ }
+        try {
+          await this.wahaService.deleteSession(worker.internalIp, worker.apiKeyEnc, wahaName);
+        } catch { /* ignore */ }
         await this.workersService.unassignSession(worker.id, id);
       }
     } catch (error) {
