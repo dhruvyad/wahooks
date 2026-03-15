@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne, sql } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
@@ -285,6 +285,66 @@ export class HealthService {
           `Session "${sessionName}" has unknown WAHA status: ${wahaStatus}`,
         );
         break;
+    }
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupOrphanedWahaDatabases(): Promise<void> {
+    this.logger.log('Checking for orphaned WAHA databases...');
+    try {
+      // Get all waha_noweb_* databases
+      const dbRows: { datname: string }[] = await this.db.execute(
+        sql`SELECT datname FROM pg_database WHERE datname LIKE 'waha_noweb_%'`,
+      );
+
+      if (dbRows.length === 0) return;
+
+      // Get all non-stopped session names
+      const activeSessions = await this.db
+        .select({ sessionName: wahaSessions.sessionName })
+        .from(wahaSessions)
+        .where(ne(wahaSessions.status, 'stopped'));
+
+      const activeDbNames = new Set(
+        activeSessions.map((s: { sessionName: string }) =>
+          'waha_noweb_' + s.sessionName,
+        ),
+      );
+
+      // Also keep the bare defaults
+      activeDbNames.add('waha_noweb');
+      activeDbNames.add('waha_noweb_default');
+
+      const orphaned = dbRows.filter((r) => !activeDbNames.has(r.datname));
+
+      if (orphaned.length === 0) {
+        this.logger.log(`No orphaned WAHA databases (${dbRows.length} total, all active)`);
+        return;
+      }
+
+      this.logger.warn(
+        `Found ${orphaned.length} orphaned WAHA databases, cleaning up...`,
+      );
+
+      for (const { datname } of orphaned) {
+        try {
+          // Must use unsafe() since DROP DATABASE can't be parameterized
+          await this.db.execute(
+            sql.raw(`DROP DATABASE IF EXISTS "${datname}"`),
+          );
+          this.logger.log(`Dropped orphaned database: ${datname}`);
+        } catch (error) {
+          this.logger.error(
+            `Failed to drop database ${datname}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
+      this.logger.log(`Cleanup complete: dropped ${orphaned.length} orphaned databases`);
+    } catch (error) {
+      this.logger.error(
+        `Orphaned database cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
