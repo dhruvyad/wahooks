@@ -257,12 +257,12 @@ export default function Home() {
               {
                 title: "SDKs & CLI",
                 description:
-                  "TypeScript and Python SDKs, a full CLI, and an MCP server for AI assistants.",
+                  "TypeScript and Python SDKs, a full-featured CLI, and API tokens for programmatic access.",
               },
               {
-                title: "Usage-Based Pricing",
+                title: "MCP Server",
                 description:
-                  `${pricing.label} per connection per month. Simple monthly billing, no minimums.`,
+                  "Connect AI agents to WhatsApp. Works with Claude, Cursor, Windsurf, and any MCP-compatible assistant.",
               },
               {
                 title: "Secure by Default",
