@@ -53,6 +53,10 @@ connections = client.list_connections()
 # Create a new connection
 connection = client.create_connection()
 
+# Get a scannable connection (reuses idle or creates new)
+result = client.get_or_create_scannable_connection()
+# result["id"], result["status"], result["qr"] (base64 PNG)
+
 # Get connection details
 connection = client.get_connection(connection_id)
 

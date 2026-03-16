@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wahooks"
-version = "0.1.0"
+version = "0.2.0"
 description = "Official WAHooks SDK for Python"
 requires-python = ">=3.8"
 license = "MIT"

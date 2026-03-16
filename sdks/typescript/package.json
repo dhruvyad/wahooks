@@ -1,6 +1,6 @@
 {
   "name": "@wahooks/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Official WAHooks SDK for TypeScript/JavaScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -1,0 +1,60 @@
+---
+title: "Get or Create Scannable Connection"
+description: "Get a connection ready to scan, reusing an idle one if available."
+---
+
+`POST /api/connections/get-or-create`
+
+Returns a connection in `scan_qr` state with a fresh QR code. If the user has an existing idle connection (`scan_qr`, `pending`, or `failed`), it restarts that one instead of creating a new one. This avoids wasted connections piling up.
+
+**One call, one response** — no need to list connections, filter, and decide whether to restart or create.
+
+## Authentication
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Authorization` | string | Yes | Bearer token. Format: `Bearer <token>` |
+
+## Response
+
+```json title="200 OK"
+{
+  "id": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "status": "scan_qr",
+  "qr": "iVBORw0KGgoAAAANSUhEUg..."
+}
+```
+
+The `qr` field is a base64-encoded PNG image. It will be `null` if the QR is not ready yet (worker still booting) or if the connection is already linked (`status: "working"`).
+
+```json title="200 OK — already connected"
+{
+  "id": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "status": "working",
+  "qr": null
+}
+```
+
+```json title="200 OK — QR not ready yet"
+{
+  "id": "c1a2b3c4-d5e6-7f89-0abc-def123456789",
+  "status": "pending",
+  "qr": null
+}
+```
+
+## SDK Examples
+
+```typescript title="TypeScript"
+const result = await client.getOrCreateScannableConnection();
+// result.id, result.status, result.qr (base64 PNG or null)
+```
+
+```python title="Python"
+result = client.get_or_create_scannable_connection()
+# result["id"], result["status"], result["qr"]
+```
+
+```bash title="CLI"
+wahooks connections quick
+```

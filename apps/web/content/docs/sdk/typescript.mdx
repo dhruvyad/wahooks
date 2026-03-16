@@ -43,6 +43,10 @@ const connections: Connection[] = await client.listConnections();
 // Create a new connection
 const connection: Connection = await client.createConnection();
 
+// Get a scannable connection (reuses idle or creates new)
+const scannable = await client.getOrCreateScannableConnection();
+// scannable.id, scannable.status, scannable.qr (base64 PNG)
+
 // Get connection details
 const connection: Connection = await client.getConnection(id);
 
@@ -135,6 +139,7 @@ The SDK exports all types for TypeScript users:
 ```typescript
 import type {
   Connection,
+  ScannableConnection,
   WebhookConfig,
   WebhookLog,
   ApiToken,
