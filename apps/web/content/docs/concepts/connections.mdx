@@ -20,15 +20,15 @@ Each connection runs in its own isolated container (WAHA pod) in the WAHooks Kub
 
 ## Session lifecycle
 
-1. **Create** — a WAHA pod is provisioned and a session is created
-2. **QR Scan** — you scan a QR code with WhatsApp to link the account
-3. **Working** — the session is active, messages flow in and out
-4. **Failed** — the session lost connection (auto-recovered within 1 minute)
-5. **Stopped** — you deleted the connection
+1. **Create** (`pending`) — a WAHA pod is provisioned and a session is created
+2. **QR Scan** (`scan_qr`) — you scan a QR code with WhatsApp to link the account
+3. **Connected** (`connected`) — the session is active, messages flow in and out
+4. **Failed** (`failed`) — the session lost connection (auto-recovered within 3 minutes)
+5. **Stopped** (`stopped`) — you deleted the connection
 
 ## Health monitoring
 
-WAHooks polls WAHA sessions every minute:
+WAHooks polls WAHA sessions every 3 minutes:
 
 - **FAILED sessions** are automatically reset and restarted
 - **STOPPED sessions** that should be active are restarted
