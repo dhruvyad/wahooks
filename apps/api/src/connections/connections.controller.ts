@@ -37,6 +37,16 @@ export class ConnectionsController {
     private readonly stripeService: StripeService,
   ) {}
 
+  /** Map internal status names to user-friendly ones */
+  private mapStatus(status: string): string {
+    if (status === 'working') return 'connected';
+    return status;
+  }
+
+  private mapConnection(conn: any): any {
+    return { ...conn, status: this.mapStatus(conn.status) };
+  }
+
   @Get()
   async listConnections(@CurrentUser() user: { sub: string }) {
     const results = await this.db
@@ -49,7 +59,7 @@ export class ConnectionsController {
         ),
       );
 
-    return results;
+    return results.map((c: any) => this.mapConnection(c));
   }
 
   /**
@@ -106,7 +116,7 @@ export class ConnectionsController {
       try {
         const qr = await this.getQrCode(connectionId, user);
         if (qr && 'connected' in qr && qr.connected) {
-          return { id: connectionId, status: 'working', qr: null };
+          return { id: connectionId, status: 'connected', qr: null };
         }
         if (qr && 'value' in qr) {
           return { id: connectionId, status: 'scan_qr', qr: qr.value };
@@ -242,12 +252,12 @@ export class ConnectionsController {
         .where(eq(wahaSessions.id, created.id))
         .returning();
 
-      return updated;
+      return this.mapConnection(updated);
     } catch (error) {
       this.logger.warn(
         `WAHA session deferred for connection ${created.id} (worker may still be booting). Health check will auto-create. Error: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return created;
+      return this.mapConnection(created);
     }
   }
 
@@ -297,9 +307,15 @@ export class ConnectionsController {
           wahaName,
         );
         if (session.status === 'WORKING') {
+          const updates: Record<string, any> = { status: 'working', updatedAt: new Date() };
+          try {
+            const me = await this.wahaService.getMe(worker.internalIp, worker.apiKeyEnc, wahaName);
+            const phone = me?.id?.replace('@c.us', '') || null;
+            if (phone) updates.phoneNumber = phone;
+          } catch { /* non-critical */ }
           await this.db
             .update(wahaSessions)
-            .set({ status: 'working', updatedAt: new Date() })
+            .set(updates)
             .where(eq(wahaSessions.id, id));
           return { connected: true };
         }
@@ -627,7 +643,7 @@ export class ConnectionsController {
       throw new ForbiddenException('You do not own this connection');
     }
 
-    return connection;
+    return this.mapConnection(connection);
   }
 
   @Delete(':id')

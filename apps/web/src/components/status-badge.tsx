@@ -1,4 +1,8 @@
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  connected: {
+    label: "Connected",
+    className: "bg-status-success-bg text-status-success-text",
+  },
   working: {
     label: "Connected",
     className: "bg-status-success-bg text-status-success-text",

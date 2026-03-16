@@ -190,14 +190,32 @@ export class HealthService {
 
     switch (wahaStatus) {
       case 'WORKING':
-        if (dbStatus !== 'working') {
-          this.logger.log(
-            `Session "${sessionName}" is WORKING in WAHA but "${dbStatus}" in DB, updating to "working"`,
-          );
-          await this.db
-            .update(wahaSessions)
-            .set({ status: 'working', updatedAt: new Date() })
-            .where(eq(wahaSessions.id, dbSession.id));
+        if (dbStatus !== 'working' || !dbSession.phoneNumber) {
+          const updates: Record<string, any> = { status: 'working', updatedAt: new Date() };
+
+          // Fetch phone number if we don't have it yet
+          if (!dbSession.phoneNumber) {
+            try {
+              const me = await this.wahaService.getMe(worker.internalIp, worker.apiKeyEnc, wahaName);
+              const phone = me?.id?.replace('@c.us', '') || null;
+              if (phone) {
+                updates.phoneNumber = phone;
+                this.logger.log(`Session "${sessionName}" phone: +${phone}`);
+              }
+            } catch {
+              // Non-critical — will retry next poll
+            }
+          }
+
+          if (dbStatus !== 'working' || updates.phoneNumber) {
+            this.logger.log(
+              `Session "${sessionName}" is WORKING in WAHA but "${dbStatus}" in DB, updating`,
+            );
+            await this.db
+              .update(wahaSessions)
+              .set(updates)
+              .where(eq(wahaSessions.id, dbSession.id));
+          }
         }
         break;
 

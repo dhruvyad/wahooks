@@ -163,7 +163,7 @@ export default function ConnectionsPage() {
     startTransition(() => setCustomNames(names));
 
     // Fetch phone numbers for connected accounts
-    const working = list.filter((c) => c.status === "working");
+    const working = list.filter((c) => c.status === "connected" || c.status === "working");
     if (working.length === 0) return;
     Promise.all(
       working.map((c) =>
@@ -261,7 +261,7 @@ export default function ConnectionsPage() {
                     ? `+${phoneNumbers[conn.id]}`
                     : conn.phoneNumber
                       ? conn.phoneNumber
-                      : conn.status === "working"
+                      : conn.status === "connected" || conn.status === "working"
                         ? "Loading..."
                         : "No phone linked"}
                 </p>
