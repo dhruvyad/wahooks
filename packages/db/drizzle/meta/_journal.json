@@ -29,6 +29,13 @@
       "when": 1773493227740,
       "tag": "0003_exotic_vision",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773854400000,
+      "tag": "0004_add_session_name",
+      "breakpoints": true
     }
   ]
 }
