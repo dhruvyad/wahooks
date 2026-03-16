@@ -60,23 +60,24 @@ export class ConnectionsController {
       .from(users)
       .where(eq(users.id, user.sub));
 
-    if (dbUser?.stripeCustomerId) {
-      const paidSlots = await this.stripeService.getPaidSlots(dbUser.stripeCustomerId);
-      const activeConns = await this.db
-        .select()
-        .from(wahaSessions)
-        .where(and(eq(wahaSessions.userId, user.sub), ne(wahaSessions.status, 'stopped')));
+    if (!dbUser?.isAdmin) {
+      if (dbUser?.stripeCustomerId) {
+        const paidSlots = await this.stripeService.getPaidSlots(dbUser.stripeCustomerId);
+        const activeConns = await this.db
+          .select()
+          .from(wahaSessions)
+          .where(and(eq(wahaSessions.userId, user.sub), ne(wahaSessions.status, 'stopped')));
 
-      if (activeConns.length >= paidSlots) {
+        if (activeConns.length >= paidSlots) {
+          throw new ForbiddenException(
+            `All ${paidSlots} connection slots in use. Buy more slots at /billing.`,
+          );
+        }
+      } else {
         throw new ForbiddenException(
-          `All ${paidSlots} connection slots in use. Buy more slots at /billing.`,
+          'Set up billing before creating connections. Visit /billing to get started.',
         );
       }
-    } else if (!dbUser?.isAdmin) {
-      // No Stripe customer and not admin — must set up billing first
-      throw new ForbiddenException(
-        'Set up billing before creating connections. Visit /billing to get started.',
-      );
     }
 
     // WAHA limits session names to 54 chars; use short hex IDs
