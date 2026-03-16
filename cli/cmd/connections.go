@@ -284,6 +284,115 @@ var connSendCmd = &cobra.Command{
 	},
 }
 
+// Helper to normalize phone to chatId format
+func normalizeChatId(phone string) string {
+	if !strings.Contains(phone, "@") {
+		return phone + "@c.us"
+	}
+	return phone
+}
+
+func mediaSendCmd(use, short, endpoint string, hasCaption, hasFilename bool) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"chatId": normalizeChatId(args[1]),
+				"url":    args[2],
+			}
+			if hasCaption {
+				if c, _ := cmd.Flags().GetString("caption"); c != "" {
+					body["caption"] = c
+				}
+			}
+			if hasFilename {
+				if f, _ := cmd.Flags().GetString("filename"); f != "" {
+					body["filename"] = f
+				}
+			}
+			resp, err := client.Do("POST", "/api/connections/"+args[0]+"/"+endpoint, body)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				style.Success("Sent to %s", args[1])
+				return nil
+			}
+			resp.Print()
+			return nil
+		},
+	}
+	if hasCaption {
+		cmd.Flags().String("caption", "", "Caption text")
+	}
+	if hasFilename {
+		cmd.Flags().String("filename", "", "Filename for the document")
+	}
+	return cmd
+}
+
+var connSendImageCmd = mediaSendCmd("send-image <id> <phone> <url>", "Send an image by URL", "send-image", true, false)
+var connSendDocCmd = mediaSendCmd("send-document <id> <phone> <url>", "Send a document by URL", "send-document", true, true)
+var connSendVideoCmd = mediaSendCmd("send-video <id> <phone> <url>", "Send a video by URL", "send-video", true, false)
+var connSendAudioCmd = mediaSendCmd("send-audio <id> <phone> <url>", "Send audio by URL", "send-audio", false, false)
+
+var connSendLocationCmd = &cobra.Command{
+	Use:   "send-location <id> <phone> <latitude> <longitude>",
+	Short: "Send a location pin",
+	Args:  cobra.ExactArgs(4),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var lat, lng float64
+		fmt.Sscanf(args[2], "%f", &lat)
+		fmt.Sscanf(args[3], "%f", &lng)
+		body := map[string]interface{}{
+			"chatId":    normalizeChatId(args[1]),
+			"latitude":  lat,
+			"longitude": lng,
+		}
+		if n, _ := cmd.Flags().GetString("name"); n != "" {
+			body["name"] = n
+		}
+		if a, _ := cmd.Flags().GetString("address"); a != "" {
+			body["address"] = a
+		}
+		resp, err := client.Do("POST", "/api/connections/"+args[0]+"/send-location", body)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			style.Success("Location sent to %s", args[1])
+			return nil
+		}
+		resp.Print()
+		return nil
+	},
+}
+
+var connSendContactCmd = &cobra.Command{
+	Use:   "send-contact <id> <phone> <contact-name> <contact-phone>",
+	Short: "Send a contact card",
+	Args:  cobra.ExactArgs(4),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		body := map[string]interface{}{
+			"chatId":       normalizeChatId(args[1]),
+			"contactName":  args[2],
+			"contactPhone": args[3],
+		}
+		resp, err := client.Do("POST", "/api/connections/"+args[0]+"/send-contact", body)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			style.Success("Contact sent to %s", args[1])
+			return nil
+		}
+		resp.Print()
+		return nil
+	},
+}
+
 var connRestartCmd = &cobra.Command{
 	Use:   "restart <id>",
 	Short: "Restart a connection",
@@ -386,6 +495,14 @@ func init() {
 	connectionsCmd.AddCommand(connMeCmd)
 	connectionsCmd.AddCommand(connChatsCmd)
 	connectionsCmd.AddCommand(connSendCmd)
+	connectionsCmd.AddCommand(connSendImageCmd)
+	connectionsCmd.AddCommand(connSendDocCmd)
+	connectionsCmd.AddCommand(connSendVideoCmd)
+	connectionsCmd.AddCommand(connSendAudioCmd)
+	connSendLocationCmd.Flags().String("name", "", "Location name")
+	connSendLocationCmd.Flags().String("address", "", "Location address")
+	connectionsCmd.AddCommand(connSendLocationCmd)
+	connectionsCmd.AddCommand(connSendContactCmd)
 	connectionsCmd.AddCommand(connRestartCmd)
 	connectionsCmd.AddCommand(connDeleteCmd)
 	connectionsCmd.AddCommand(connQuickCmd)

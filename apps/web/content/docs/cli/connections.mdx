@@ -74,6 +74,34 @@ Example:
 wahooks connections send d7e5f208-... 1234567890@s.whatsapp.net "Hello from CLI!"
 ```
 
+## Send media
+
+```bash
+# Image (with optional caption)
+wahooks connections send-image CONNECTION_ID CHAT_ID https://example.com/photo.jpg --caption "Check this out"
+
+# Document (with optional filename)
+wahooks connections send-document CONNECTION_ID CHAT_ID https://example.com/report.pdf --filename report.pdf
+
+# Video
+wahooks connections send-video CONNECTION_ID CHAT_ID https://example.com/clip.mp4
+
+# Audio/voice
+wahooks connections send-audio CONNECTION_ID CHAT_ID https://example.com/voice.ogg
+```
+
+## Send location
+
+```bash
+wahooks connections send-location CONNECTION_ID CHAT_ID 37.7749 -122.4194 --name "San Francisco"
+```
+
+## Send contact card
+
+```bash
+wahooks connections send-contact CONNECTION_ID CHAT_ID "John Doe" 1234567890
+```
+
 ## Restart a connection
 
 ```bash

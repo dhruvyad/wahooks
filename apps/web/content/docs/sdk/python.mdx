@@ -78,6 +78,24 @@ profile = client.get_profile(connection_id)
 
 # Send a text message
 result = client.send_message(connection_id, chat_id="1234@s.whatsapp.net", text="Hello!")
+
+# Send an image
+client.send_image(connection_id, chat_id="1234@s.whatsapp.net", url="https://example.com/photo.jpg", caption="Check this out")
+
+# Send a document
+client.send_document(connection_id, chat_id="1234@s.whatsapp.net", url="https://example.com/report.pdf", filename="report.pdf")
+
+# Send a video
+client.send_video(connection_id, chat_id="1234@s.whatsapp.net", url="https://example.com/clip.mp4")
+
+# Send audio
+client.send_audio(connection_id, chat_id="1234@s.whatsapp.net", url="https://example.com/voice.ogg")
+
+# Send a location
+client.send_location(connection_id, chat_id="1234@s.whatsapp.net", latitude=37.7749, longitude=-122.4194, name="San Francisco")
+
+# Send a contact card
+client.send_contact(connection_id, chat_id="1234@s.whatsapp.net", contact_name="John Doe", contact_phone="1234567890")
 ```
 
 ### Webhooks

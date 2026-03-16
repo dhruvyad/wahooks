@@ -68,6 +68,24 @@ const profile: Profile = await client.getProfile(connectionId);
 
 // Send a text message
 const result: SendResult = await client.sendMessage(connectionId, chatId, text);
+
+// Send an image
+await client.sendImage(connectionId, chatId, 'https://example.com/photo.jpg', 'Check this out');
+
+// Send a document
+await client.sendDocument(connectionId, chatId, 'https://example.com/report.pdf', 'report.pdf');
+
+// Send a video
+await client.sendVideo(connectionId, chatId, 'https://example.com/clip.mp4', 'Watch this');
+
+// Send audio
+await client.sendAudio(connectionId, chatId, 'https://example.com/voice.ogg');
+
+// Send a location
+await client.sendLocation(connectionId, chatId, 37.7749, -122.4194, 'San Francisco', '123 Main St');
+
+// Send a contact card
+await client.sendContact(connectionId, chatId, 'John Doe', '1234567890');
 ```
 
 ### Webhooks
