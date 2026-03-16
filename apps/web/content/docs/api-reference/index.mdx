@@ -42,10 +42,57 @@ All responses are JSON. Successful responses return the resource directly. Error
 
 The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'll receive a 429 response.
 
-## Endpoints
+## Connections
 
-| Group | Endpoints |
-|-------|-----------|
-| [Connections](/docs/api-reference/connections) | CRUD, QR codes, chats, profile, send messages |
-| [Webhooks](/docs/api-reference/webhooks) | CRUD, delivery logs, test events |
-| [Tokens](/docs/api-reference/tokens) | Create, list, revoke API tokens |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | [`/connections`](/docs/api-reference/connections/list) | List all connections |
+| `POST` | [`/connections`](/docs/api-reference/connections/create) | Create a new connection |
+| `POST` | [`/connections/get-or-create`](/docs/api-reference/connections/get-or-create) | Get a scannable connection (reuses idle or creates new) |
+| `GET` | [`/connections/:id`](/docs/api-reference/connections/get) | Get connection details |
+| `PATCH` | `/connections/:id` | Update connection (e.g. rename) |
+| `DELETE` | [`/connections/:id`](/docs/api-reference/connections/delete) | Delete a connection |
+| `POST` | [`/connections/:id/restart`](/docs/api-reference/connections/restart) | Restart a connection |
+| `GET` | [`/connections/:id/qr`](/docs/api-reference/connections/qr) | Get QR code for linking |
+| `GET` | [`/connections/:id/chats`](/docs/api-reference/connections/chats) | Get recent chats |
+| `GET` | [`/connections/:id/me`](/docs/api-reference/connections/profile) | Get WhatsApp profile info |
+
+## Messaging
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | [`/connections/:id/send`](/docs/api-reference/connections/send) | Send a text message |
+| `POST` | `/connections/:id/send-image` | Send an image (URL or base64) |
+| `POST` | `/connections/:id/send-document` | Send a document/file |
+| `POST` | `/connections/:id/send-video` | Send a video |
+| `POST` | `/connections/:id/send-audio` | Send audio/voice |
+| `POST` | `/connections/:id/send-location` | Send a location pin |
+| `POST` | `/connections/:id/send-contact` | Send a contact card |
+
+## Webhooks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | [`/connections/:cid/webhooks`](/docs/api-reference/webhooks/list) | List webhooks for a connection |
+| `POST` | [`/connections/:cid/webhooks`](/docs/api-reference/webhooks/create) | Create a webhook |
+| `PUT` | [`/webhooks/:id`](/docs/api-reference/webhooks/update) | Update a webhook |
+| `DELETE` | [`/webhooks/:id`](/docs/api-reference/webhooks/delete) | Delete a webhook |
+| `GET` | [`/webhooks/:id/logs`](/docs/api-reference/webhooks/logs) | Get delivery logs |
+| `POST` | [`/webhooks/:id/test`](/docs/api-reference/webhooks/test) | Send a test event |
+
+## API Tokens
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | [`/tokens`](/docs/api-reference/tokens/list) | List active tokens |
+| `POST` | [`/tokens`](/docs/api-reference/tokens/create) | Create a new token |
+| `DELETE` | [`/tokens/:id`](/docs/api-reference/tokens/revoke) | Revoke a token |
+
+## Other
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check (no auth required) |
+| `GET` | `/billing/status` | Subscription and slot status |
+| `POST` | `/billing/checkout` | Create Stripe checkout session |
+| `POST` | `/billing/portal` | Open Stripe customer portal |
