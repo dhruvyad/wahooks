@@ -76,18 +76,23 @@ wahooks connections send d7e5f208-... 1234567890@s.whatsapp.net "Hello from CLI!
 
 ## Send media
 
+Pass a URL or a local file path — the CLI auto-detects which and handles base64 encoding for local files.
+
 ```bash
-# Image (with optional caption)
+# Image by URL
 wahooks connections send-image CONNECTION_ID CHAT_ID https://example.com/photo.jpg --caption "Check this out"
 
-# Document (with optional filename)
-wahooks connections send-document CONNECTION_ID CHAT_ID https://example.com/report.pdf --filename report.pdf
+# Image from local file
+wahooks connections send-image CONNECTION_ID CHAT_ID ./photo.png
+
+# Document (auto-detects filename from path)
+wahooks connections send-document CONNECTION_ID CHAT_ID ./report.pdf
 
 # Video
-wahooks connections send-video CONNECTION_ID CHAT_ID https://example.com/clip.mp4
+wahooks connections send-video CONNECTION_ID CHAT_ID ./clip.mp4
 
 # Audio/voice
-wahooks connections send-audio CONNECTION_ID CHAT_ID https://example.com/voice.ogg
+wahooks connections send-audio CONNECTION_ID CHAT_ID ./voice.ogg
 ```
 
 ## Send location

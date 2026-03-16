@@ -3,8 +3,10 @@ package cmd
 import (
 	"encoding/base64"
 	"fmt"
+	"mime"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -292,6 +294,11 @@ func normalizeChatId(phone string) string {
 	return phone
 }
 
+// isURL returns true if the string looks like a URL rather than a local file path.
+func isURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
 func mediaSendCmd(use, short, endpoint string, hasCaption, hasFilename bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
@@ -300,8 +307,31 @@ func mediaSendCmd(use, short, endpoint string, hasCaption, hasFilename bool) *co
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"chatId": normalizeChatId(args[1]),
-				"url":    args[2],
 			}
+
+			source := args[2]
+			if isURL(source) {
+				body["url"] = source
+			} else {
+				// Local file — read, base64-encode, detect mimetype
+				fileData, err := os.ReadFile(source)
+				if err != nil {
+					return fmt.Errorf("read file: %w", err)
+				}
+				body["data"] = base64.StdEncoding.EncodeToString(fileData)
+				ext := filepath.Ext(source)
+				if mt := mime.TypeByExtension(ext); mt != "" {
+					body["mimetype"] = mt
+				}
+				// Auto-set filename from path if the endpoint supports it
+				if hasFilename {
+					if f, _ := cmd.Flags().GetString("filename"); f == "" {
+						body["filename"] = filepath.Base(source)
+					}
+				}
+				style.Dim("Uploading %s (%d bytes)", filepath.Base(source), len(fileData))
+			}
+
 			if hasCaption {
 				if c, _ := cmd.Flags().GetString("caption"); c != "" {
 					body["caption"] = c
@@ -333,10 +363,10 @@ func mediaSendCmd(use, short, endpoint string, hasCaption, hasFilename bool) *co
 	return cmd
 }
 
-var connSendImageCmd = mediaSendCmd("send-image <id> <phone> <url>", "Send an image by URL", "send-image", true, false)
-var connSendDocCmd = mediaSendCmd("send-document <id> <phone> <url>", "Send a document by URL", "send-document", true, true)
-var connSendVideoCmd = mediaSendCmd("send-video <id> <phone> <url>", "Send a video by URL", "send-video", true, false)
-var connSendAudioCmd = mediaSendCmd("send-audio <id> <phone> <url>", "Send audio by URL", "send-audio", false, false)
+var connSendImageCmd = mediaSendCmd("send-image <id> <phone> <url-or-file>", "Send an image (URL or local file)", "send-image", true, false)
+var connSendDocCmd = mediaSendCmd("send-document <id> <phone> <url-or-file>", "Send a document (URL or local file)", "send-document", true, true)
+var connSendVideoCmd = mediaSendCmd("send-video <id> <phone> <url-or-file>", "Send a video (URL or local file)", "send-video", true, false)
+var connSendAudioCmd = mediaSendCmd("send-audio <id> <phone> <url-or-file>", "Send audio (URL or local file)", "send-audio", false, false)
 
 var connSendLocationCmd = &cobra.Command{
 	Use:   "send-location <id> <phone> <latitude> <longitude>",
