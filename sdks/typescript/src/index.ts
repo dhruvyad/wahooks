@@ -1,6 +1,7 @@
 export { WAHooks } from './client';
 export type {
   Connection,
+  ScannableConnection,
   WebhookConfig,
   WebhookLog,
   ApiToken,

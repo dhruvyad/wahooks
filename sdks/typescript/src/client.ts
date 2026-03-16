@@ -1,6 +1,7 @@
 import type {
   WAHooksOptions,
   Connection,
+  ScannableConnection,
   WebhookConfig,
   WebhookLog,
   ApiToken,
@@ -63,6 +64,14 @@ export class WAHooks {
 
   async createConnection(): Promise<Connection> {
     return this.request('POST', '/connections');
+  }
+
+  /**
+   * Get a connection ready to scan. Reuses an idle one if available, or creates new.
+   * Returns { id, status, qr } — one call instead of list + filter + restart/create.
+   */
+  async getOrCreateScannableConnection(): Promise<ScannableConnection> {
+    return this.request('POST', '/connections/get-or-create');
   }
 
   async getConnection(id: string): Promise<Connection> {

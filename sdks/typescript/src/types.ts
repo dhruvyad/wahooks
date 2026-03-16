@@ -68,3 +68,9 @@ export interface SendResult {
   id: string;
   timestamp: number;
 }
+
+export interface ScannableConnection {
+  id: string;
+  status: string;
+  qr: string | null;
+}

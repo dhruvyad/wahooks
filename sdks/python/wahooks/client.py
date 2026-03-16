@@ -69,6 +69,14 @@ class WAHooks:
     def create_connection(self) -> Dict[str, Any]:
         return self._request("POST", "/connections")
 
+    def get_or_create_scannable_connection(self) -> Dict[str, Any]:
+        """Get a connection ready to scan. Reuses an idle one if available, or creates new.
+
+        Returns ``{"id": "...", "status": "scan_qr", "qr": "iVBOR..."}``
+        — one call instead of list + filter + restart/create.
+        """
+        return self._request("POST", "/connections/get-or-create")
+
     def get_connection(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}")
 
