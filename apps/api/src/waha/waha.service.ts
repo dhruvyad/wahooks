@@ -406,6 +406,72 @@ export class WahaService {
     });
   }
 
+  async sendVideo(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    mediaUrl?: string,
+    caption?: string,
+    mediaData?: string,
+    mimetype?: string,
+  ): Promise<any> {
+    const url = this.buildUrl(workerUrl, '/api/sendVideo');
+    const headers = this.buildHeaders(apiKey);
+    const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }) };
+    if (caption) body.caption = caption;
+
+    return this.request<any>('POST', url, headers, body);
+  }
+
+  async sendLocation(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    latitude: number,
+    longitude: number,
+    name?: string,
+    address?: string,
+  ): Promise<any> {
+    const url = this.buildUrl(workerUrl, '/api/sendLocation');
+    const headers = this.buildHeaders(apiKey);
+
+    return this.request<any>('POST', url, headers, {
+      chatId,
+      session: sessionName,
+      latitude,
+      longitude,
+      title: name,
+      address,
+    });
+  }
+
+  async sendContactVcard(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    contactName: string,
+    contactPhone: string,
+  ): Promise<any> {
+    const url = this.buildUrl(workerUrl, '/api/sendContactVcard');
+    const headers = this.buildHeaders(apiKey);
+    const vcard = [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      `FN:${contactName}`,
+      `TEL;type=CELL;type=VOICE;waid=${contactPhone.replace(/\D/g, '')}:+${contactPhone.replace(/\D/g, '')}`,
+      'END:VCARD',
+    ].join('\n');
+
+    return this.request<any>('POST', url, headers, {
+      chatId,
+      session: sessionName,
+      contacts: [{ vcard }],
+    });
+  }
+
   async getMessages(
     workerUrl: string,
     apiKey: string,

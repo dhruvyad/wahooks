@@ -151,6 +151,42 @@ async def send_message(connection_id: str, chat_id: str, text: str, ctx: Context
 
 
 @mcp.tool
+async def send_image(connection_id: str, chat_id: str, url: str, ctx: Context, caption: str | None = None) -> dict:
+    """Send an image via URL."""
+    return await _post(f"/connections/{connection_id}/send-image", ctx, json={"chatId": chat_id, "url": url, "caption": caption})
+
+
+@mcp.tool
+async def send_document(connection_id: str, chat_id: str, url: str, ctx: Context, filename: str | None = None, caption: str | None = None) -> dict:
+    """Send a document/file via URL."""
+    return await _post(f"/connections/{connection_id}/send-document", ctx, json={"chatId": chat_id, "url": url, "filename": filename, "caption": caption})
+
+
+@mcp.tool
+async def send_video(connection_id: str, chat_id: str, url: str, ctx: Context, caption: str | None = None) -> dict:
+    """Send a video via URL."""
+    return await _post(f"/connections/{connection_id}/send-video", ctx, json={"chatId": chat_id, "url": url, "caption": caption})
+
+
+@mcp.tool
+async def send_audio(connection_id: str, chat_id: str, url: str, ctx: Context) -> dict:
+    """Send an audio/voice message via URL."""
+    return await _post(f"/connections/{connection_id}/send-audio", ctx, json={"chatId": chat_id, "url": url})
+
+
+@mcp.tool
+async def send_location(connection_id: str, chat_id: str, latitude: float, longitude: float, ctx: Context, name: str | None = None, address: str | None = None) -> dict:
+    """Share a location pin."""
+    return await _post(f"/connections/{connection_id}/send-location", ctx, json={"chatId": chat_id, "latitude": latitude, "longitude": longitude, "name": name, "address": address})
+
+
+@mcp.tool
+async def send_contact(connection_id: str, chat_id: str, contact_name: str, contact_phone: str, ctx: Context) -> dict:
+    """Share a contact card."""
+    return await _post(f"/connections/{connection_id}/send-contact", ctx, json={"chatId": chat_id, "contactName": contact_name, "contactPhone": contact_phone})
+
+
+@mcp.tool
 async def get_or_create_scannable_connection(ctx: Context) -> dict:
     """Get a connection ready to scan a QR code.
 

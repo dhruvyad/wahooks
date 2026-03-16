@@ -625,6 +625,98 @@ export class ConnectionsController {
     );
   }
 
+  /** Resolve connection → worker → wahaName, with ownership check */
+  private async resolveWorker(id: string, userId: string) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userId !== userId) throw new ForbiddenException('You do not own this connection');
+    const worker = await this.workersService.getWorkerForSession(id);
+    if (!worker) throw new ServiceUnavailableException('No worker assigned');
+    const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
+    return { worker, wahaName };
+  }
+
+  @Post(':id/send-image')
+  async sendImage(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; url: string; caption?: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.wahaService.sendImage(
+      worker.internalIp, worker.apiKeyEnc, wahaName,
+      body.chatId, body.url, body.caption,
+    );
+  }
+
+  @Post(':id/send-document')
+  async sendDocument(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; url: string; filename?: string; caption?: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.wahaService.sendFile(
+      worker.internalIp, worker.apiKeyEnc, wahaName,
+      body.chatId, body.url, body.filename, body.caption,
+    );
+  }
+
+  @Post(':id/send-video')
+  async sendVideo(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; url: string; caption?: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.wahaService.sendVideo(
+      worker.internalIp, worker.apiKeyEnc, wahaName,
+      body.chatId, body.url, body.caption,
+    );
+  }
+
+  @Post(':id/send-audio')
+  async sendAudio(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; url: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.wahaService.sendVoice(
+      worker.internalIp, worker.apiKeyEnc, wahaName,
+      body.chatId, body.url,
+    );
+  }
+
+  @Post(':id/send-location')
+  async sendLocation(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; latitude: number; longitude: number; name?: string; address?: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.wahaService.sendLocation(
+      worker.internalIp, worker.apiKeyEnc, wahaName,
+      body.chatId, body.latitude, body.longitude, body.name, body.address,
+    );
+  }
+
+  @Post(':id/send-contact')
+  async sendContact(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; contactName: string; contactPhone: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.wahaService.sendContactVcard(
+      worker.internalIp, worker.apiKeyEnc, wahaName,
+      body.chatId, body.contactName, body.contactPhone,
+    );
+  }
+
   @Get(':id')
   async getConnection(
     @Param('id') id: string,

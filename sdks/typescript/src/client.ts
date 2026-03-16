@@ -102,6 +102,30 @@ export class WAHooks {
     return this.request('POST', `/connections/${connectionId}/send`, { chatId, text });
   }
 
+  async sendImage(connectionId: string, chatId: string, url: string, caption?: string): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-image`, { chatId, url, caption });
+  }
+
+  async sendDocument(connectionId: string, chatId: string, url: string, filename?: string, caption?: string): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-document`, { chatId, url, filename, caption });
+  }
+
+  async sendVideo(connectionId: string, chatId: string, url: string, caption?: string): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-video`, { chatId, url, caption });
+  }
+
+  async sendAudio(connectionId: string, chatId: string, url: string): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-audio`, { chatId, url });
+  }
+
+  async sendLocation(connectionId: string, chatId: string, latitude: number, longitude: number, name?: string, address?: string): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-location`, { chatId, latitude, longitude, name, address });
+  }
+
+  async sendContact(connectionId: string, chatId: string, contactName: string, contactPhone: string): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-contact`, { chatId, contactName, contactPhone });
+  }
+
   // --- Webhooks ---
 
   async listWebhooks(connectionId: string): Promise<WebhookConfig[]> {

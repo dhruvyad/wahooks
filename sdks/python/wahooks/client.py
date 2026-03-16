@@ -98,6 +98,24 @@ class WAHooks:
     def send_message(self, connection_id: str, chat_id: str, text: str) -> Dict[str, Any]:
         return self._request("POST", f"/connections/{connection_id}/send", json={"chatId": chat_id, "text": text})
 
+    def send_image(self, connection_id: str, chat_id: str, url: str, caption: Optional[str] = None) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send-image", json={"chatId": chat_id, "url": url, "caption": caption})
+
+    def send_document(self, connection_id: str, chat_id: str, url: str, filename: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send-document", json={"chatId": chat_id, "url": url, "filename": filename, "caption": caption})
+
+    def send_video(self, connection_id: str, chat_id: str, url: str, caption: Optional[str] = None) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send-video", json={"chatId": chat_id, "url": url, "caption": caption})
+
+    def send_audio(self, connection_id: str, chat_id: str, url: str) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send-audio", json={"chatId": chat_id, "url": url})
+
+    def send_location(self, connection_id: str, chat_id: str, latitude: float, longitude: float, name: Optional[str] = None, address: Optional[str] = None) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send-location", json={"chatId": chat_id, "latitude": latitude, "longitude": longitude, "name": name, "address": address})
+
+    def send_contact(self, connection_id: str, chat_id: str, contact_name: str, contact_phone: str) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send-contact", json={"chatId": chat_id, "contactName": contact_name, "contactPhone": contact_phone})
+
     # --- Webhooks ---
 
     def list_webhooks(self, connection_id: str) -> List[Dict[str, Any]]:
