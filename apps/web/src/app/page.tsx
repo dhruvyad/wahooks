@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { usePricing } from "@/lib/pricing";
 
+
 function CopySnippet({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -119,11 +120,21 @@ export default function Home() {
       <section className="relative z-10 px-6 py-36">
         <div className="mx-auto max-w-4xl text-center">
           <h1 className="text-5xl font-bold leading-[1.1] tracking-tight sm:text-7xl">
-            WhatsApp Webhooks,{" "}
+            WhatsApp,{" "}
             <br className="hidden sm:block" />
             <span className="text-wa-green">Instant Setup</span>
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-text-secondary">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            {["Webhooks", "REST API", "MCP", "TypeScript SDK", "Python SDK", "CLI"].map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-border-primary px-3 py-1 text-xs text-text-tertiary"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-text-secondary">
             Connect WhatsApp numbers, receive real-time webhooks, and send
             messages — all through a simple API. No infrastructure to manage.
           </p>
