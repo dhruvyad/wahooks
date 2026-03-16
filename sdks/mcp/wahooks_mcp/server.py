@@ -150,6 +150,20 @@ async def send_message(connection_id: str, chat_id: str, text: str, ctx: Context
     )
 
 
+@mcp.tool
+async def get_or_create_scannable_connection(ctx: Context) -> dict:
+    """Get a connection ready to scan a QR code.
+
+    Reuses an existing idle connection (scan_qr, pending, or failed) if
+    available, or creates a new one. Returns the connection ID, status,
+    and a base64-encoded QR code image if ready.
+
+    This is the recommended way to get a connection — one call instead of
+    listing, filtering, and deciding whether to restart or create.
+    """
+    return await _post("/connections/get-or-create", ctx)
+
+
 # ---------------------------------------------------------------------------
 # Webhook tools
 # ---------------------------------------------------------------------------

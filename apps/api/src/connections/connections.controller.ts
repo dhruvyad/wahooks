@@ -13,7 +13,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq, and, ne } from 'drizzle-orm';
+import { eq, and, ne, inArray, desc } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
@@ -50,6 +50,75 @@ export class ConnectionsController {
       );
 
     return results;
+  }
+
+  /**
+   * Get a connection ready to scan, reusing an idle one if available.
+   * Returns { id, status, qr } — one call, one response.
+   */
+  @Post('get-or-create')
+  async getOrCreateScannable(@CurrentUser() user: { sub: string }) {
+    // 1. Look for an existing idle connection (scan_qr, pending, or failed)
+    const idleStatuses: ('scan_qr' | 'pending' | 'failed')[] = ['scan_qr', 'pending', 'failed'];
+    const [idle] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(
+        and(
+          eq(wahaSessions.userId, user.sub),
+          inArray(wahaSessions.status, idleStatuses),
+        ),
+      )
+      .orderBy(desc(wahaSessions.createdAt))
+      .limit(1);
+
+    let connectionId: string;
+
+    if (idle) {
+      // 2a. Reuse existing — restart it
+      this.logger.log(`Reusing idle connection ${idle.id} (status: ${idle.status})`);
+      connectionId = idle.id;
+
+      const worker = await this.workersService.getWorkerForSession(idle.id);
+      if (worker) {
+        const wahaName = this.wahaService.resolveSessionName(idle.sessionName);
+        const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
+        const webhookUrl = `${apiUrl}/api/events/waha`;
+        await this.wahaService.resetSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+          webhookUrl,
+        );
+        await this.db
+          .update(wahaSessions)
+          .set({ status: 'scan_qr', updatedAt: new Date() })
+          .where(eq(wahaSessions.id, idle.id));
+      }
+    } else {
+      // 2b. No idle connection — create a new one
+      const created = await this.createConnection(user);
+      connectionId = created.id;
+    }
+
+    // 3. Poll for QR (up to 10 attempts, 2s apart)
+    for (let i = 0; i < 10; i++) {
+      try {
+        const qr = await this.getQrCode(connectionId, user);
+        if (qr && 'connected' in qr && qr.connected) {
+          return { id: connectionId, status: 'working', qr: null };
+        }
+        if (qr && 'value' in qr) {
+          return { id: connectionId, status: 'scan_qr', qr: qr.value };
+        }
+      } catch {
+        // Worker not ready yet
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // Return without QR if polling timed out — client can fetch it separately
+    return { id: connectionId, status: 'pending', qr: null };
   }
 
   @Post()

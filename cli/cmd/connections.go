@@ -298,6 +298,59 @@ var connRestartCmd = &cobra.Command{
 	},
 }
 
+var connQuickCmd = &cobra.Command{
+	Use:     "quick",
+	Aliases: []string{"q"},
+	Short:   "Get a scannable connection (reuses idle or creates new)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		stop := style.Spinner("Getting scannable connection...")
+
+		resp, err := client.Do("POST", "/api/connections/get-or-create", nil)
+		stop()
+		if err != nil {
+			return err
+		}
+
+		var result map[string]interface{}
+		if err := resp.JSON(&result); err != nil {
+			resp.Print()
+			return nil
+		}
+
+		id, _ := result["id"].(string)
+		status, _ := result["status"].(string)
+		qr, _ := result["qr"].(string)
+
+		if id == "" {
+			resp.Print()
+			return nil
+		}
+
+		style.Success("Connection %s (status: %s)", id, status)
+
+		if qr != "" {
+			imgData, err := base64.StdEncoding.DecodeString(qr)
+			if err == nil {
+				path := "/tmp/wahooks-qr.png"
+				os.WriteFile(path, imgData, 0644)
+				style.Info("QR saved to %s", path)
+				if runtime.GOOS == "darwin" {
+					exec.Command("open", path).Start()
+				} else if runtime.GOOS == "linux" {
+					exec.Command("xdg-open", path).Start()
+				}
+				style.Warn("Scan the QR code with WhatsApp")
+			}
+		} else if status == "working" {
+			style.Success("Already connected — no QR needed")
+		} else {
+			style.Dim("QR not ready yet. Run: wahooks connections qr %s --poll", id)
+		}
+
+		return nil
+	},
+}
+
 var connDeleteCmd = &cobra.Command{
 	Use:     "delete <id>",
 	Aliases: []string{"rm"},
@@ -335,6 +388,7 @@ func init() {
 	connectionsCmd.AddCommand(connSendCmd)
 	connectionsCmd.AddCommand(connRestartCmd)
 	connectionsCmd.AddCommand(connDeleteCmd)
+	connectionsCmd.AddCommand(connQuickCmd)
 
 	rootCmd.AddCommand(connectionsCmd)
 }
