@@ -98,7 +98,11 @@ describe('ConnectionsController', () => {
 
       const result = await controller.listConnections(user);
 
-      expect(result).toEqual(sessions);
+      // API maps "working" → "connected" in responses
+      expect(result).toEqual([
+        { id: 'sess-1', userId: 'user-123', sessionName: 'u_user-123_s_abc', status: 'connected' },
+        { id: 'sess-2', userId: 'user-123', sessionName: 'u_user-123_s_def', status: 'scan_qr' },
+      ]);
       expect(db.select).toHaveBeenCalled();
       expect(db.from).toHaveBeenCalled();
       expect(db.where).toHaveBeenCalled();
@@ -215,7 +219,7 @@ describe('ConnectionsController', () => {
 
       const result = await controller.getConnection('sess-1', user);
 
-      expect(result).toEqual(connection);
+      expect(result).toEqual({ ...connection, status: 'connected' });
     });
 
     it('should throw NotFoundException when connection not found', async () => {
