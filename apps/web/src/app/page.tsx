@@ -351,6 +351,18 @@ export default function Home() {
             >
               GitHub
             </a>
+            <Link
+              href="/terms"
+              className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
+            >
+              Terms
+            </Link>
+            <Link
+              href="/privacy"
+              className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
+            >
+              Privacy
+            </Link>
             <span className="text-sm text-text-tertiary">
               &copy; {new Date().getFullYear()}
             </span>
