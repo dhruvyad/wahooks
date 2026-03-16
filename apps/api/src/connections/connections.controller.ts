@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Body,
@@ -132,7 +133,10 @@ export class ConnectionsController {
   }
 
   @Post()
-  async createConnection(@CurrentUser() user: { sub: string }) {
+  async createConnection(
+    @CurrentUser() user: { sub: string },
+    @Body() body?: { name?: string },
+  ) {
     // Check billing: user must have available connection slots
     const [dbUser] = await this.db
       .select()
@@ -168,6 +172,7 @@ export class ConnectionsController {
       .insert(wahaSessions)
       .values({
         userId: user.sub,
+        name: body?.name || null,
         sessionName,
         status: 'pending',
         engine: 'NOWEB',
@@ -580,6 +585,32 @@ export class ConnectionsController {
       body.chatId,
       body.text,
     );
+  }
+
+  @Patch(':id')
+  async updateConnection(
+    @Param('id') id: string,
+    @Body() body: { name?: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userId !== user.sub) throw new ForbiddenException('You do not own this connection');
+
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (body.name !== undefined) updates.name = body.name || null;
+
+    const [updated] = await this.db
+      .update(wahaSessions)
+      .set(updates)
+      .where(eq(wahaSessions.id, id))
+      .returning();
+
+    return this.mapConnection(updated);
   }
 
   /** Resolve connection → worker → wahaName, with ownership check */

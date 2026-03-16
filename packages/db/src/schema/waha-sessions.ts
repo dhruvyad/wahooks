@@ -10,6 +10,7 @@ export const wahaSessions = pgTable("waha_sessions", {
   workerId: uuid("worker_id").references(() => wahaWorkers.id, {
     onDelete: "set null",
   }),
+  name: text("name"), // user-friendly display name
   sessionName: text("session_name").notNull().unique(), // format: u_{userId}_s_{sessionId}
   phoneNumber: text("phone_number"),
   status: text("status", {

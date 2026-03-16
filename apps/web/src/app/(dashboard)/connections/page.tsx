@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, startTransition } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { apiFetch } from "@/lib/api";
@@ -20,15 +20,6 @@ interface Connection {
   name: string | null;
   phoneNumber: string | null;
   status: string;
-}
-
-function getStoredName(connectionId: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(`wahooks-conn-name-${connectionId}`);
-  } catch {
-    return null;
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -150,20 +141,11 @@ export default function ConnectionsPage() {
       .catch(() => {});
   }, []);
 
-  // Read custom names from localStorage + fetch phone numbers for working connections
-  const [customNames, setCustomNames] = useState<Record<string, string>>({});
+  // Fetch phone numbers for connected accounts (if not already in the API response)
   const [phoneNumbers, setPhoneNumbers] = useState<Record<string, string>>({});
   useEffect(() => {
     if (list.length === 0) return;
-    const names: Record<string, string> = {};
-    for (const conn of list) {
-      const stored = getStoredName(conn.id);
-      if (stored) names[conn.id] = stored;
-    }
-    startTransition(() => setCustomNames(names));
-
-    // Fetch phone numbers for connected accounts
-    const working = list.filter((c) => c.status === "connected" || c.status === "working");
+    const working = list.filter((c) => c.status === "connected" && !c.phoneNumber);
     if (working.length === 0) return;
     Promise.all(
       working.map((c) =>
@@ -254,14 +236,14 @@ export default function ConnectionsPage() {
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-text-primary">
-                  {customNames[conn.id] || conn.name || "Unnamed Connection"}
+                  {conn.name || "Unnamed Connection"}
                 </p>
                 <p className="mt-0.5 text-xs text-text-tertiary">
-                  {phoneNumbers[conn.id]
-                    ? `+${phoneNumbers[conn.id]}`
-                    : conn.phoneNumber
-                      ? conn.phoneNumber
-                      : conn.status === "connected" || conn.status === "working"
+                  {conn.phoneNumber
+                    ? `+${conn.phoneNumber}`
+                    : phoneNumbers[conn.id]
+                      ? `+${phoneNumbers[conn.id]}`
+                      : conn.status === "connected"
                         ? "Loading..."
                         : "No phone linked"}
                 </p>

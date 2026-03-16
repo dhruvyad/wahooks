@@ -3,10 +3,6 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
     label: "Connected",
     className: "bg-status-success-bg text-status-success-text",
   },
-  working: {
-    label: "Connected",
-    className: "bg-status-success-bg text-status-success-text",
-  },
   scan_qr: {
     label: "Scan QR",
     className: "bg-status-warning-bg text-status-warning-text",

@@ -99,28 +99,6 @@ function ChatAvatar({
   );
 }
 
-function getStoredName(connectionId: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(`wahooks-conn-name-${connectionId}`);
-  } catch {
-    return null;
-  }
-}
-
-function setStoredName(connectionId: string, name: string) {
-  if (typeof window === "undefined") return;
-  try {
-    if (name.trim()) {
-      localStorage.setItem(`wahooks-conn-name-${connectionId}`, name.trim());
-    } else {
-      localStorage.removeItem(`wahooks-conn-name-${connectionId}`);
-    }
-  } catch {
-    // ignore
-  }
-}
-
 export default function ConnectionDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -202,13 +180,12 @@ export default function ConnectionDetailPage() {
     return () => { cancelled = true; };
   }, [selectedChat?.id, id]);
 
-  // Initialize custom name from localStorage
+  // Initialize name from connection data
   useEffect(() => {
-    const stored = getStoredName(id);
-    if (stored) {
-      setCustomName(stored);
+    if (connection?.name && !customName) {
+      setCustomName(connection.name);
     }
-  }, [id]);
+  }, [connection?.name]);
 
   const fetchConnection = useCallback(async () => {
     try {
@@ -225,7 +202,7 @@ export default function ConnectionDetailPage() {
       const data = await apiFetch(`/api/connections/${id}/qr`);
       if (data.connected) {
         mutateConnection((prev: Connection | null) =>
-          prev ? { ...prev, status: "working" } : prev
+          prev ? { ...prev, status: "connected" } : prev
         );
         setQr(null);
         setQrError(null);
@@ -272,7 +249,7 @@ export default function ConnectionDetailPage() {
   }, [connection?.status, fetchQr, connection]);
 
   useEffect(() => {
-    if (connection?.status !== "working") return;
+    if (connection?.status !== "connected") return;
 
     async function fetchConnectedData() {
       const [meData, chatsData] = await Promise.all([
@@ -350,7 +327,12 @@ export default function ConnectionDetailPage() {
 
   function handleNameSave() {
     setEditingName(false);
-    setStoredName(id, customName);
+    apiFetch(`/api/connections/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: customName.trim() }),
+    }).then((updated: any) => {
+      mutateConnection(updated);
+    }).catch(() => {});
   }
 
   function handleNameKeyDown(e: React.KeyboardEvent) {
@@ -358,8 +340,7 @@ export default function ConnectionDetailPage() {
       handleNameSave();
     } else if (e.key === "Escape") {
       setEditingName(false);
-      const stored = getStoredName(id);
-      setCustomName(stored || "");
+      setCustomName(connection?.name || "");
     }
   }
 
@@ -621,7 +602,7 @@ export default function ConnectionDetailPage() {
       )}
 
       {/* Connected section */}
-      {connection?.status === "working" && (
+      {connection?.status === "connected" && (
         <div className="mt-8 space-y-4">
           <div className="rounded-xl border border-status-success-border bg-status-success-bg p-6">
             <div className="flex items-start justify-between">
