@@ -69,17 +69,20 @@ const profile: Profile = await client.getProfile(connectionId);
 // Send a text message
 const result: SendResult = await client.sendMessage(connectionId, chatId, text);
 
-// Send an image
-await client.sendImage(connectionId, chatId, 'https://example.com/photo.jpg', 'Check this out');
+// Send an image (by URL)
+await client.sendImage(connectionId, chatId, { url: 'https://example.com/photo.jpg', caption: 'Check this out' });
+
+// Send an image (by base64)
+await client.sendImage(connectionId, chatId, { data: 'iVBORw0KGgo...', mimetype: 'image/png' });
 
 // Send a document
-await client.sendDocument(connectionId, chatId, 'https://example.com/report.pdf', 'report.pdf');
+await client.sendDocument(connectionId, chatId, { url: 'https://example.com/report.pdf', filename: 'report.pdf' });
 
 // Send a video
-await client.sendVideo(connectionId, chatId, 'https://example.com/clip.mp4', 'Watch this');
+await client.sendVideo(connectionId, chatId, { url: 'https://example.com/clip.mp4', caption: 'Watch this' });
 
 // Send audio
-await client.sendAudio(connectionId, chatId, 'https://example.com/voice.ogg');
+await client.sendAudio(connectionId, chatId, { url: 'https://example.com/voice.ogg' });
 
 // Send a location
 await client.sendLocation(connectionId, chatId, 37.7749, -122.4194, 'San Francisco', '123 Main St');

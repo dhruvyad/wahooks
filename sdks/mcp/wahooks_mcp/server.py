@@ -151,27 +151,27 @@ async def send_message(connection_id: str, chat_id: str, text: str, ctx: Context
 
 
 @mcp.tool
-async def send_image(connection_id: str, chat_id: str, url: str, ctx: Context, caption: str | None = None) -> dict:
-    """Send an image via URL."""
-    return await _post(f"/connections/{connection_id}/send-image", ctx, json={"chatId": chat_id, "url": url, "caption": caption})
+async def send_image(connection_id: str, chat_id: str, ctx: Context, url: str | None = None, data: str | None = None, mimetype: str | None = None, caption: str | None = None) -> dict:
+    """Send an image. Provide url (public URL) or data (base64) + mimetype."""
+    return await _post(f"/connections/{connection_id}/send-image", ctx, json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption})
 
 
 @mcp.tool
-async def send_document(connection_id: str, chat_id: str, url: str, ctx: Context, filename: str | None = None, caption: str | None = None) -> dict:
-    """Send a document/file via URL."""
-    return await _post(f"/connections/{connection_id}/send-document", ctx, json={"chatId": chat_id, "url": url, "filename": filename, "caption": caption})
+async def send_document(connection_id: str, chat_id: str, ctx: Context, url: str | None = None, data: str | None = None, mimetype: str | None = None, filename: str | None = None, caption: str | None = None) -> dict:
+    """Send a document/file. Provide url or data (base64) + mimetype."""
+    return await _post(f"/connections/{connection_id}/send-document", ctx, json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "filename": filename, "caption": caption})
 
 
 @mcp.tool
-async def send_video(connection_id: str, chat_id: str, url: str, ctx: Context, caption: str | None = None) -> dict:
-    """Send a video via URL."""
-    return await _post(f"/connections/{connection_id}/send-video", ctx, json={"chatId": chat_id, "url": url, "caption": caption})
+async def send_video(connection_id: str, chat_id: str, ctx: Context, url: str | None = None, data: str | None = None, mimetype: str | None = None, caption: str | None = None) -> dict:
+    """Send a video. Provide url or data (base64) + mimetype."""
+    return await _post(f"/connections/{connection_id}/send-video", ctx, json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption})
 
 
 @mcp.tool
-async def send_audio(connection_id: str, chat_id: str, url: str, ctx: Context) -> dict:
-    """Send an audio/voice message via URL."""
-    return await _post(f"/connections/{connection_id}/send-audio", ctx, json={"chatId": chat_id, "url": url})
+async def send_audio(connection_id: str, chat_id: str, ctx: Context, url: str | None = None, data: str | None = None, mimetype: str | None = None) -> dict:
+    """Send audio/voice. Provide url or data (base64) + mimetype."""
+    return await _post(f"/connections/{connection_id}/send-audio", ctx, json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype})
 
 
 @mcp.tool

@@ -79,8 +79,11 @@ profile = client.get_profile(connection_id)
 # Send a text message
 result = client.send_message(connection_id, chat_id="1234@s.whatsapp.net", text="Hello!")
 
-# Send an image
+# Send an image (by URL)
 client.send_image(connection_id, chat_id="1234@s.whatsapp.net", url="https://example.com/photo.jpg", caption="Check this out")
+
+# Send an image (by base64)
+client.send_image(connection_id, chat_id="1234@s.whatsapp.net", data="iVBORw0KGgo...", mimetype="image/png")
 
 # Send a document
 client.send_document(connection_id, chat_id="1234@s.whatsapp.net", url="https://example.com/report.pdf", filename="report.pdf")

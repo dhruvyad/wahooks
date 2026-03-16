@@ -98,17 +98,21 @@ class WAHooks:
     def send_message(self, connection_id: str, chat_id: str, text: str) -> Dict[str, Any]:
         return self._request("POST", f"/connections/{connection_id}/send", json={"chatId": chat_id, "text": text})
 
-    def send_image(self, connection_id: str, chat_id: str, url: str, caption: Optional[str] = None) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send-image", json={"chatId": chat_id, "url": url, "caption": caption})
+    def send_image(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
+        """Send an image. Provide ``url`` (public URL) or ``data`` (base64) + ``mimetype``."""
+        return self._request("POST", f"/connections/{connection_id}/send-image", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption})
 
-    def send_document(self, connection_id: str, chat_id: str, url: str, filename: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send-document", json={"chatId": chat_id, "url": url, "filename": filename, "caption": caption})
+    def send_document(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, filename: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
+        """Send a document/file. Provide ``url`` or ``data`` + ``mimetype``."""
+        return self._request("POST", f"/connections/{connection_id}/send-document", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "filename": filename, "caption": caption})
 
-    def send_video(self, connection_id: str, chat_id: str, url: str, caption: Optional[str] = None) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send-video", json={"chatId": chat_id, "url": url, "caption": caption})
+    def send_video(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
+        """Send a video. Provide ``url`` or ``data`` + ``mimetype``."""
+        return self._request("POST", f"/connections/{connection_id}/send-video", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption})
 
-    def send_audio(self, connection_id: str, chat_id: str, url: str) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send-audio", json={"chatId": chat_id, "url": url})
+    def send_audio(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None) -> Dict[str, Any]:
+        """Send audio/voice. Provide ``url`` or ``data`` + ``mimetype``."""
+        return self._request("POST", f"/connections/{connection_id}/send-audio", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype})
 
     def send_location(self, connection_id: str, chat_id: str, latitude: float, longitude: float, name: Optional[str] = None, address: Optional[str] = None) -> Dict[str, Any]:
         return self._request("POST", f"/connections/{connection_id}/send-location", json={"chatId": chat_id, "latitude": latitude, "longitude": longitude, "name": name, "address": address})

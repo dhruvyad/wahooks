@@ -542,49 +542,6 @@ export class ConnectionsController {
     );
   }
 
-  @Post(':id/send-media')
-  async sendMedia(
-    @Param('id') id: string,
-    @Body() body: { chatId: string; type: string; mediaUrl?: string; mediaData?: string; mimetype?: string; caption?: string; filename?: string },
-    @CurrentUser() user: { sub: string },
-  ) {
-    const [connection] = await this.db
-      .select()
-      .from(wahaSessions)
-      .where(eq(wahaSessions.id, id));
-
-    if (!connection) throw new NotFoundException('Connection not found');
-    if (connection.userId !== user.sub) throw new ForbiddenException('You do not own this connection');
-
-    const worker = await this.workersService.getWorkerForSession(id);
-    if (!worker) throw new ServiceUnavailableException('No worker assigned');
-
-    const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
-
-    switch (body.type) {
-      case 'image':
-        return this.wahaService.sendImage(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
-          body.mediaUrl, body.caption, body.mediaData, body.mimetype,
-        );
-      case 'file':
-        return this.wahaService.sendFile(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
-          body.mediaUrl, body.filename, body.caption, body.mediaData, body.mimetype,
-        );
-      case 'voice':
-        return this.wahaService.sendVoice(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
-          body.mediaUrl, body.mediaData, body.mimetype,
-        );
-      default:
-        return this.wahaService.sendFile(
-          worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId,
-          body.mediaUrl, body.filename, body.caption, body.mediaData, body.mimetype,
-        );
-    }
-  }
-
   @Post(':id/send')
   async sendText(
     @Param('id') id: string,
@@ -642,52 +599,52 @@ export class ConnectionsController {
   @Post(':id/send-image')
   async sendImage(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url: string; caption?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendImage(
       worker.internalIp, worker.apiKeyEnc, wahaName,
-      body.chatId, body.url, body.caption,
+      body.chatId, body.url, body.caption, body.data, body.mimetype,
     );
   }
 
   @Post(':id/send-document')
   async sendDocument(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url: string; filename?: string; caption?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; filename?: string; caption?: string },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendFile(
       worker.internalIp, worker.apiKeyEnc, wahaName,
-      body.chatId, body.url, body.filename, body.caption,
+      body.chatId, body.url, body.filename, body.caption, body.data, body.mimetype,
     );
   }
 
   @Post(':id/send-video')
   async sendVideo(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url: string; caption?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendVideo(
       worker.internalIp, worker.apiKeyEnc, wahaName,
-      body.chatId, body.url, body.caption,
+      body.chatId, body.url, body.caption, body.data, body.mimetype,
     );
   }
 
   @Post(':id/send-audio')
   async sendAudio(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendVoice(
       worker.internalIp, worker.apiKeyEnc, wahaName,
-      body.chatId, body.url,
+      body.chatId, body.url, body.data, body.mimetype,
     );
   }
 
