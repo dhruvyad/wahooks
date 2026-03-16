@@ -125,13 +125,21 @@ export default function Home() {
             <span className="text-wa-green">Instant Setup</span>
           </h1>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            {["Webhooks", "REST API", "MCP", "TypeScript SDK", "Python SDK", "CLI"].map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-border-primary px-3 py-1 text-xs text-text-tertiary"
+            {[
+              { label: "Webhooks", href: "/docs/concepts/webhooks" },
+              { label: "REST API", href: "/docs/api-reference" },
+              { label: "MCP", href: "/docs/mcp" },
+              { label: "TypeScript SDK", href: "/docs/sdk/typescript" },
+              { label: "Python SDK", href: "/docs/sdk/python" },
+              { label: "CLI", href: "/docs/cli/installation" },
+            ].map((tag) => (
+              <Link
+                key={tag.label}
+                href={tag.href}
+                className="rounded-full border border-border-primary px-3 py-1 text-xs text-text-tertiary transition-colors hover:border-border-secondary hover:text-text-secondary"
               >
-                {tag}
-              </span>
+                {tag.label}
+              </Link>
             ))}
           </div>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-text-secondary">
