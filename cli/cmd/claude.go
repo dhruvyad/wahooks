@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"github.com/dhruvyad/wahooks/cli/internal/style"
 	"github.com/spf13/cobra"
@@ -13,7 +14,47 @@ import (
 
 var claudeCmd = &cobra.Command{
 	Use:   "claude",
-	Short: "Set up WAHooks for Claude Code",
+	Short: "Launch Claude Code with the WhatsApp channel",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Check if setup has been done
+		home, _ := os.UserHomeDir()
+		envPath := filepath.Join(home, ".claude", "channels", "wahooks", ".env")
+		if _, err := os.Stat(envPath); os.IsNotExist(err) {
+			style.Error("Channel not configured. Run 'wahooks claude setup' first.")
+			return nil
+		}
+
+		// Check if wahooks-channel is installed
+		if _, err := exec.LookPath("wahooks-channel"); err != nil {
+			style.Error("wahooks-channel not found. Install it:")
+			fmt.Println("  npm install -g @wahooks/channel")
+			return nil
+		}
+
+		// Check if claude is installed
+		claudePath, err := exec.LookPath("claude")
+		if err != nil {
+			style.Error("claude not found. Install Claude Code first:")
+			fmt.Println("  https://code.claude.com")
+			return nil
+		}
+
+		// Launch claude with the channel
+		style.Success("Launching Claude Code with WhatsApp channel...")
+		fmt.Println()
+
+		launchArgs := []string{
+			"claude",
+			"--dangerously-load-development-channels",
+			"server:wahooks-channel",
+		}
+
+		// Pass through any extra args
+		launchArgs = append(launchArgs, args...)
+
+		// Replace this process with claude
+		return syscall.Exec(claudePath, launchArgs, os.Environ())
+	},
 }
 
 var claudeSetupCmd = &cobra.Command{
@@ -54,7 +95,7 @@ var claudeSetupCmd = &cobra.Command{
 		}
 		style.Success("API token created")
 
-		// 3. Find or create a connection
+		// 3. Find an active connection
 		style.Info("Checking for an active connection...")
 		resp, err = client.Do("GET", "/api/connections", nil)
 		if err != nil {
@@ -73,7 +114,7 @@ var claudeSetupCmd = &cobra.Command{
 		}
 
 		if connectionId == "" {
-			style.Dim("No active connection found — you can create one later")
+			style.Dim("No active connection found — you can create one later with 'wahooks connections quick'")
 		} else {
 			style.Success("Using connection %s", connectionId)
 		}
@@ -96,7 +137,7 @@ var claudeSetupCmd = &cobra.Command{
 		if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
 			return fmt.Errorf("write channel config: %w", err)
 		}
-		style.Success("Channel config saved to %s", envPath)
+		style.Success("Channel config saved")
 
 		// 5. Write MCP config to ~/.claude/mcp.json
 		mcpPath := filepath.Join(home, ".claude", "mcp.json")
@@ -121,27 +162,21 @@ var claudeSetupCmd = &cobra.Command{
 		if err := os.WriteFile(mcpPath, mcpData, 0600); err != nil {
 			return fmt.Errorf("write MCP config: %w", err)
 		}
-		style.Success("MCP config written to %s", mcpPath)
+		style.Success("MCP config written")
 
-		// 6. Summary
+		// 6. Check if @wahooks/channel is installed
 		fmt.Println()
-		style.Header("Setup complete!")
-		fmt.Println()
-
-		// Check if @wahooks/channel is installed
 		if _, err := exec.LookPath("wahooks-channel"); err != nil {
-			style.Warn("Install the channel package:")
+			style.Warn("Install the channel package to finish setup:")
 			fmt.Println("  npm install -g @wahooks/channel")
 			fmt.Println()
 		}
 
-		style.Info("Start Claude Code with the WhatsApp channel:")
-		fmt.Println("  claude --dangerously-load-development-channels server:wahooks-channel")
+		style.Header("Setup complete!")
 		fmt.Println()
-
-		if connectionId == "" {
-			style.Dim("Tip: create a connection first with 'wahooks connections quick'")
-		}
+		style.Info("Launch Claude with WhatsApp:")
+		fmt.Println("  wahooks claude")
+		fmt.Println()
 
 		return nil
 	},
