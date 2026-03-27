@@ -22,7 +22,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import http from "node:http";
+import WebSocket from "ws";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -97,8 +97,6 @@ const ALLOW_LIST = new Set(
     .map((s) => s.trim().replace(/\D/g, ""))
     .filter(Boolean)
 );
-const WEBHOOK_PORT = parseInt(cfg.WAHOOKS_CHANNEL_PORT ?? "8790", 10);
-
 if (!API_KEY) {
   console.error("[wahooks-channel] No API key found.");
   console.error("[wahooks-channel] Run: wahooks-channel --configure <your-api-key>");
@@ -408,95 +406,88 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
 });
 
-// ─── Webhook receiver ───────────────────────────────────────────────────
+// ─── WebSocket event stream ─────────────────────────────────────────────
 
-function startWebhookServer() {
-  const server = http.createServer(async (req, res) => {
-    if (req.method !== "POST") {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
+function connectWebSocket() {
+  const wsProtocol = API_URL.startsWith("https") ? "wss" : "ws";
+  const wsHost = API_URL.replace(/^https?/, wsProtocol);
+  const wsUrl = `${wsHost}/ws?token=${encodeURIComponent(API_KEY)}`;
 
-    let body = "";
-    req.on("data", (chunk: Buffer) => { body += chunk; });
-    req.on("end", async () => {
-      try {
-        const event = JSON.parse(body);
+  console.error("[wahooks-channel] Connecting to event stream...");
 
-        // WAHooks webhook payload structure
-        const eventType: string = event.event ?? "";
-        const payload = event.payload ?? {};
+  const ws = new WebSocket(wsUrl);
 
-        // Only handle incoming messages
-        if (!eventType.startsWith("message")) {
-          res.writeHead(200);
-          res.end("ok");
-          return;
-        }
-
-        const from: string = (payload.from ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "");
-        const text: string = payload.body ?? payload.text ?? "";
-        const messageId: string = payload.id?._serialized ?? payload.id ?? `msg_${Date.now()}`;
-
-        if (!from || !text) {
-          res.writeHead(200);
-          res.end("ok");
-          return;
-        }
-
-        // Sender gating
-        if (ALLOW_LIST.size > 0 && !ALLOW_LIST.has(from)) {
-          console.error(`[wahooks-channel] Blocked message from ${from} (not in allow list)`);
-          res.writeHead(200);
-          res.end("ok");
-          return;
-        }
-
-        // Track last sender for permission relay
-        lastSender = from;
-
-        // Check if this is a permission verdict
-        const permMatch = PERMISSION_RE.exec(text);
-        if (permMatch) {
-          await mcp.notification({
-            method: "notifications/claude/channel/permission",
-            params: {
-              request_id: permMatch[2].toLowerCase(),
-              behavior: permMatch[1].toLowerCase().startsWith("y") ? "allow" : "deny",
-            },
-          });
-          console.error(`[wahooks-channel] Permission verdict: ${permMatch[1]} ${permMatch[2]}`);
-          res.writeHead(200);
-          res.end("ok");
-          return;
-        }
-
-        // Forward to Claude Code
-        await mcp.notification({
-          method: "notifications/claude/channel",
-          params: {
-            content: text,
-            meta: {
-              from,
-              message_id: messageId,
-            },
-          },
-        });
-
-        console.error(`[wahooks-channel] Message from ${from}: ${text.slice(0, 80)}`);
-        res.writeHead(200);
-        res.end("ok");
-      } catch (err) {
-        console.error("[wahooks-channel] Webhook error:", err);
-        res.writeHead(500);
-        res.end("error");
-      }
-    });
+  ws.on("open", () => {
+    console.error("[wahooks-channel] Connected to event stream");
   });
 
-  server.listen(WEBHOOK_PORT, "127.0.0.1", () => {
-    console.error(`[wahooks-channel] Webhook server listening on http://127.0.0.1:${WEBHOOK_PORT}`);
+  ws.on("message", async (data: WebSocket.RawData) => {
+    try {
+      const event = JSON.parse(data.toString());
+      const eventType: string = event.event ?? "";
+      const payload = event.payload ?? {};
+
+      // Only handle incoming messages
+      if (!eventType.startsWith("message")) return;
+
+      const from: string = (payload.from ?? "")
+        .replace("@c.us", "")
+        .replace("@s.whatsapp.net", "");
+      const text: string = payload.body ?? payload.text ?? "";
+      const messageId: string =
+        payload.id?._serialized ?? payload.id ?? `msg_${Date.now()}`;
+
+      if (!from || !text) return;
+
+      // Sender gating
+      if (ALLOW_LIST.size > 0 && !ALLOW_LIST.has(from)) {
+        console.error(`[wahooks-channel] Blocked message from ${from} (not in allow list)`);
+        return;
+      }
+
+      // Track last sender for permission relay
+      lastSender = from;
+
+      // Check if this is a permission verdict
+      const permMatch = PERMISSION_RE.exec(text);
+      if (permMatch) {
+        await mcp.notification({
+          method: "notifications/claude/channel/permission",
+          params: {
+            request_id: permMatch[2].toLowerCase(),
+            behavior: permMatch[1].toLowerCase().startsWith("y") ? "allow" : "deny",
+          },
+        });
+        console.error(`[wahooks-channel] Permission verdict: ${permMatch[1]} ${permMatch[2]}`);
+        return;
+      }
+
+      // Forward to Claude Code
+      await mcp.notification({
+        method: "notifications/claude/channel",
+        params: {
+          content: text,
+          meta: {
+            from,
+            message_id: messageId,
+          },
+        },
+      });
+
+      console.error(`[wahooks-channel] Message from ${from}: ${text.slice(0, 80)}`);
+    } catch (err) {
+      console.error("[wahooks-channel] Event parse error:", err);
+    }
+  });
+
+  ws.on("close", (code: number) => {
+    console.error(`[wahooks-channel] Connection closed (${code}), reconnecting in 5s...`);
+    setTimeout(connectWebSocket, 5000);
+  });
+
+  ws.on("error", (err: Error) => {
+    console.error(`[wahooks-channel] WebSocket error: ${err.message}`);
+    // close event will fire after this and trigger reconnect
   });
 }
 
@@ -510,8 +501,8 @@ async function main() {
   const transport = new StdioServerTransport();
   await mcp.connect(transport);
 
-  // Start webhook receiver
-  startWebhookServer();
+  // Connect to real-time event stream
+  connectWebSocket();
 
   console.error("[wahooks-channel] Ready — WhatsApp messages will appear in Claude Code");
 }

@@ -6,6 +6,7 @@ import { eq, and, not } from 'drizzle-orm';
 import { wahaSessions, webhookConfigs, webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
+import { EventsGateway } from './events.gateway';
 
 interface WahaEvent {
   event: string;
@@ -23,6 +24,7 @@ export class EventsController {
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
     private readonly wahaService: WahaService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   /**
@@ -65,7 +67,15 @@ export class EventsController {
       return { received: true };
     }
 
-    // 2. Find all active webhook configs for this session
+    // 2. Broadcast to WebSocket clients
+    this.eventsGateway.broadcastEvent(session.id, session.userId, {
+      event: event.event,
+      connectionId: session.id,
+      payload: event.payload,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 3. Find all active webhook configs for this session
     const configs = await this.db
       .select()
       .from(webhookConfigs)

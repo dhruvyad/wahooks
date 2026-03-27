@@ -8,11 +8,11 @@ The WAHooks channel lets you interact with [Claude Code](https://code.claude.com
 ## How it works
 
 ```
-You (WhatsApp) → WAHooks webhook → Channel server → Claude Code session
-Claude Code    → wahooks_reply tool → WAHooks API  → You (WhatsApp)
+You (WhatsApp) → WAHA → WAHooks API → WebSocket → Channel → Claude Code
+Claude Code    → wahooks_reply tool  → WAHooks API → WAHA  → You (WhatsApp)
 ```
 
-The channel runs as a local process alongside Claude Code. It receives WhatsApp messages via WAHooks webhooks and pushes them into your Claude session using the [Claude Code channels protocol](https://code.claude.com/docs/en/channels).
+The channel runs as a local process alongside Claude Code. It connects to the WAHooks API via WebSocket for real-time message delivery — no webhooks, tunnels, or port forwarding needed.
 
 ## Prerequisites
 
@@ -65,15 +65,7 @@ Add to `~/.claude/mcp.json`:
 }
 ```
 
-### 3. Set up a webhook
-
-Create a webhook on your WAHooks connection pointing to the channel's local server:
-
-```bash
-wahooks webhooks create CONNECTION_ID http://localhost:8790/webhook "message,message.any"
-```
-
-### 4. Start Claude Code
+### 3. Start Claude Code
 
 ```bash
 wahooks claude
@@ -113,7 +105,6 @@ All configuration is stored in `~/.claude/channels/wahooks/.env` or can be set v
 | `WAHOOKS_API_URL` | API base URL | `https://api.wahooks.com` |
 | `WAHOOKS_CONNECTION` | Connection ID to use | Auto-detected if only one |
 | `WAHOOKS_ALLOW` | Comma-separated allowed phone numbers | All (no filtering) |
-| `WAHOOKS_CHANNEL_PORT` | Local webhook server port | `8790` |
 
 ## Sender gating
 
@@ -161,16 +152,13 @@ When the channel is active, Claude has these tools:
 ## Troubleshooting
 
 **No messages appearing in Claude Code**
-- Check that the webhook URL is `http://localhost:8790/webhook` (not https)
-- Verify the webhook is active: `wahooks webhooks list CONNECTION_ID`
-- Check the channel is running: look for `[wahooks-channel] Ready` in output
+- Check the channel connected: look for `[wahooks-channel] Connected to event stream` in output
+- Make sure your WhatsApp connection is in `connected` status
+- Check sender gating: if `WAHOOKS_ALLOW` is set, verify the sender's number is listed
 
 **"No connected WAHooks connections found"**
 - Create a connection and scan the QR code first
 - Or set `WAHOOKS_CONNECTION` explicitly
-
-**Port conflict**
-- Set a different port: `WAHOOKS_CHANNEL_PORT=8791`
 
 **"No API key found"**
 - Run `wahooks-channel --configure wh_your_key`

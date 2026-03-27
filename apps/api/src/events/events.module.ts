@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { EventsController } from './events.controller';
+import { EventsGateway } from './events.gateway';
 import { WebhookDeliveryProcessor } from './webhook-delivery.processor';
 
 @Module({
@@ -38,6 +39,7 @@ import { WebhookDeliveryProcessor } from './webhook-delivery.processor';
     }),
   ],
   controllers: [EventsController],
-  providers: [WebhookDeliveryProcessor],
+  providers: [WebhookDeliveryProcessor, EventsGateway],
+  exports: [EventsGateway],
 })
 export class EventsModule {}
