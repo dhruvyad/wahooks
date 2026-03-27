@@ -56,26 +56,25 @@ export class StripeService {
     });
 
     if (subs.data.length > 0) {
-      // Update existing subscription quantity
-      const sub = subs.data[0];
-      const item = sub.items.data[0];
-      const currentQty = item.quantity ?? 0;
-      const newQty = currentQty + quantity;
-
-      await this.stripe.subscriptions.update(sub.id, {
-        items: [{
-          id: item.id,
-          quantity: newQty,
-        }],
-        proration_behavior: 'create_prorations',
+      // Existing subscriber — redirect to Stripe Customer Portal for upgrades.
+      // The portal lets users change quantity with payment confirmation,
+      // preventing slots from being granted without explicit approval.
+      const portalSession = await this.stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: successUrl,
+        flow_data: {
+          type: 'subscription_update',
+          subscription_update: {
+            subscription: subs.data[0].id,
+          },
+        },
       });
 
       this.logger.log(
-        `Updated subscription ${sub.id} quantity: ${currentQty} → ${newQty}`,
+        `Redirecting existing subscriber to portal for upgrade (sub: ${subs.data[0].id})`,
       );
 
-      // Return success URL directly since no checkout needed
-      return successUrl;
+      return portalSession.url;
     }
 
     // New subscription via Checkout
