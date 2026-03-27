@@ -390,12 +390,16 @@ function connectWebSocket() {
       const eventType: string = event.event ?? "";
       const payload = event.payload ?? {};
 
-      // Only handle incoming messages
-      if (!eventType.startsWith("message")) return;
+      // Only handle "message" events (skip "message.any", "message.ack" to avoid duplicates)
+      if (eventType !== "message") return;
+
+      // Skip outbound messages (sent by us)
+      if (payload.fromMe) return;
 
       const from: string = (payload.from ?? "")
         .replace("@c.us", "")
-        .replace("@s.whatsapp.net", "");
+        .replace("@s.whatsapp.net", "")
+        .replace("@lid", "");
       const text: string = payload.body ?? payload.text ?? "";
       const messageId: string =
         payload.id?._serialized ?? payload.id ?? `msg_${Date.now()}`;
