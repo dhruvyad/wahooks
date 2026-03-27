@@ -39,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" style={{ colorScheme: "dark" }} suppressHydrationWarning>
       <head>
         <script
           type="application/ld+json"
@@ -62,7 +62,7 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <RootProvider>
+        <RootProvider theme={{ defaultTheme: "dark", forcedTheme: "dark" }}>
           {children}
         </RootProvider>
       </body>
