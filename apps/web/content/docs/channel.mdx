@@ -23,21 +23,24 @@ The channel runs as a local process alongside Claude Code. It connects to the WA
 
 ## Quick setup (recommended)
 
+Two commands to get started:
+
 ```bash
-npm install -g @wahooks/channel   # install the channel package
-wahooks claude setup               # login, create token, configure everything
-wahooks claude                     # launch Claude Code with WhatsApp
+wahooks claude setup    # login, install channel, create token, register MCP server
+wahooks claude          # launch Claude Code with WhatsApp active
 ```
 
-That's it — three commands. The setup only needs to run once.
+That's it. Run `wahooks claude setup` once, then `wahooks claude` anytime you want to chat via WhatsApp.
 
-`wahooks claude setup` handles:
-1. Browser authentication (skipped if already logged in)
+`wahooks claude setup` handles everything automatically:
+1. Opens browser for authentication (skipped if already logged in)
 2. Creates a dedicated API token for the channel
-3. Saves config to `~/.claude/channels/wahooks/.env`
-4. Writes the MCP server entry to `~/.claude/mcp.json`
+3. Installs `@wahooks/channel` via npm (skipped if already installed)
+4. Saves channel config to `~/.claude/channels/wahooks/.env`
+5. Registers the MCP server in `~/.claude.json`
+6. Detects your active WhatsApp connection
 
-After setup, just run `wahooks claude` to launch Claude Code with the WhatsApp channel active.
+After setup, `wahooks claude` launches Claude Code with the channel active and permissions bypassed so WhatsApp users get immediate responses.
 
 ## Manual setup
 
@@ -50,16 +53,22 @@ npm install -g @wahooks/channel
 wahooks-channel --configure wh_your_api_key
 ```
 
-### 2. Add to MCP config
+### 2. Register with Claude Code
 
-Add to `~/.claude/mcp.json`:
+```bash
+claude mcp add -s user wahooks-channel wahooks-channel
+```
+
+Or add manually to `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "wahooks-channel": {
+      "type": "stdio",
       "command": "wahooks-channel",
-      "args": []
+      "args": [],
+      "env": {}
     }
   }
 }
