@@ -1,4 +1,5 @@
-export { WAHooks } from './client';
+export { WAHooks, WAHooksEventStream } from './client';
+export type { WAHooksEvent } from './client';
 export type {
   Connection,
   ScannableConnection,

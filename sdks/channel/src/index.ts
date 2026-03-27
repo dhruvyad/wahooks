@@ -411,7 +411,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 function connectWebSocket() {
   const wsProtocol = API_URL.startsWith("https") ? "wss" : "ws";
   const wsHost = API_URL.replace(/^https?/, wsProtocol);
-  const wsUrl = `${wsHost}/ws?token=${encodeURIComponent(API_KEY)}`;
+  const wsUrl = `${wsHost}/api/ws?token=${encodeURIComponent(API_KEY)}`;
 
   console.error("[wahooks-channel] Connecting to event stream...");
 

@@ -13,6 +13,67 @@ import type {
 
 const DEFAULT_BASE_URL = 'https://api.wahooks.com';
 
+export interface WAHooksEvent {
+  event: string;
+  connectionId: string;
+  payload: unknown;
+  timestamp: string;
+}
+
+/**
+ * Real-time event stream over WebSocket. Auto-reconnects on disconnect.
+ */
+export class WAHooksEventStream {
+  onmessage?: (event: WAHooksEvent) => void;
+  onerror?: (error: Error) => void;
+  onopen?: () => void;
+  onclose?: () => void;
+
+  private ws: WebSocket | null = null;
+  private closed = false;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+
+  constructor(private readonly url: string) {
+    this.connect();
+  }
+
+  private connect() {
+    if (this.closed) return;
+
+    this.ws = new WebSocket(this.url);
+
+    this.ws.onopen = () => {
+      this.onopen?.();
+    };
+
+    this.ws.onmessage = (msg) => {
+      try {
+        const data = JSON.parse(typeof msg.data === 'string' ? msg.data : msg.data.toString()) as WAHooksEvent;
+        this.onmessage?.(data);
+      } catch (e) {
+        this.onerror?.(e instanceof Error ? e : new Error(String(e)));
+      }
+    };
+
+    this.ws.onerror = (e) => {
+      this.onerror?.(new Error('WebSocket error'));
+    };
+
+    this.ws.onclose = () => {
+      this.onclose?.();
+      if (!this.closed) {
+        this.reconnectTimer = setTimeout(() => this.connect(), 5000);
+      }
+    };
+  }
+
+  close() {
+    this.closed = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.ws?.close();
+  }
+}
+
 class WAHooksError extends Error {
   constructor(
     message: string,
@@ -128,6 +189,27 @@ export class WAHooks {
 
   async sendContact(connectionId: string, chatId: string, contactName: string, contactPhone: string): Promise<SendResult> {
     return this.request('POST', `/connections/${connectionId}/send-contact`, { chatId, contactName, contactPhone });
+  }
+
+  // --- Real-time Events ---
+
+  /**
+   * Connect to the real-time event stream via WebSocket.
+   * Returns an EventSource-like object with onmessage/onerror/close.
+   *
+   * ```ts
+   * const stream = client.listen();
+   * stream.onmessage = (event) => {
+   *   console.log(event.event, event.connectionId, event.payload);
+   * };
+   * // later: stream.close();
+   * ```
+   */
+  listen(): WAHooksEventStream {
+    const wsProtocol = this.baseUrl.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = this.baseUrl.replace(/^https?/, wsProtocol);
+    const wsUrl = `${wsHost}/api/ws?token=${encodeURIComponent(this.apiKey)}`;
+    return new WAHooksEventStream(wsUrl);
   }
 
   // --- Webhooks ---

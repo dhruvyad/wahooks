@@ -35,6 +35,7 @@ class WAHooks:
 
     def __init__(self, api_key: str, base_url: str = DEFAULT_BASE_URL):
         self.base_url = base_url.rstrip("/")
+        self._api_key = api_key
         self._http = httpx.Client(
             base_url=f"{self.base_url}/api",
             headers={
@@ -120,6 +121,25 @@ class WAHooks:
     def send_contact(self, connection_id: str, chat_id: str, contact_name: str, contact_phone: str) -> Dict[str, Any]:
         return self._request("POST", f"/connections/{connection_id}/send-contact", json={"chatId": chat_id, "contactName": contact_name, "contactPhone": contact_phone})
 
+    # --- Real-time Events ---
+
+    def listen(self, on_event: Any = None) -> "WAHooksEventStream":
+        """Connect to the real-time event stream via WebSocket.
+
+        Usage::
+
+            def handler(event):
+                print(event["event"], event["connectionId"], event["payload"])
+
+            stream = client.listen(on_event=handler)
+            stream.run_forever()  # blocks
+            # or: stream.close() to stop
+        """
+        ws_protocol = "wss" if self.base_url.startswith("https") else "ws"
+        ws_host = self.base_url.replace("https://", "").replace("http://", "")
+        ws_url = f"{ws_protocol}://{ws_host}/api/ws?token={self._api_key}"
+        return WAHooksEventStream(ws_url, on_event=on_event)
+
     # --- Webhooks ---
 
     def list_webhooks(self, connection_id: str) -> List[Dict[str, Any]]:
@@ -150,3 +170,62 @@ class WAHooks:
 
     def revoke_token(self, token_id: str) -> Dict[str, Any]:
         return self._request("DELETE", f"/tokens/{token_id}")
+
+
+class WAHooksEventStream:
+    """Real-time event stream over WebSocket. Auto-reconnects on disconnect.
+
+    Usage::
+
+        import json
+        from wahooks import WAHooks
+
+        client = WAHooks(api_key="wh_...")
+        stream = client.listen(on_event=lambda e: print(e))
+        stream.run_forever()
+    """
+
+    def __init__(self, url: str, on_event: Any = None):
+        self._url = url
+        self.on_event = on_event
+        self._closed = False
+        self._ws: Any = None
+
+    def run_forever(self) -> None:
+        """Block and listen for events. Reconnects automatically."""
+        import websocket  # type: ignore[import-untyped]
+
+        while not self._closed:
+            try:
+                self._ws = websocket.WebSocketApp(
+                    self._url,
+                    on_message=self._on_message,
+                    on_error=self._on_error,
+                    on_close=self._on_close,
+                )
+                self._ws.run_forever(ping_interval=30, ping_timeout=10)
+            except Exception:
+                pass
+            if not self._closed:
+                import time
+                time.sleep(5)
+
+    def close(self) -> None:
+        self._closed = True
+        if self._ws:
+            self._ws.close()
+
+    def _on_message(self, ws: Any, message: str) -> None:
+        import json as _json
+        try:
+            event = _json.loads(message)
+            if self.on_event:
+                self.on_event(event)
+        except Exception:
+            pass
+
+    def _on_error(self, ws: Any, error: Any) -> None:
+        pass
+
+    def _on_close(self, ws: Any, close_status_code: Any, close_msg: Any) -> None:
+        pass

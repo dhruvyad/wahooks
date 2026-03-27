@@ -121,6 +121,25 @@ const logs: WebhookLog[] = await client.getWebhookLogs(webhookId);
 const result = await client.testWebhook(webhookId);
 ```
 
+### Real-time Events
+
+Listen for WhatsApp events (messages, status changes) in real-time via WebSocket:
+
+```typescript
+const stream = client.listen();
+
+stream.onmessage = (event) => {
+  console.log(event.event);        // "message"
+  console.log(event.connectionId); // connection UUID
+  console.log(event.payload);      // WAHA event payload
+};
+
+stream.onerror = (err) => console.error(err);
+
+// Auto-reconnects on disconnect. Close when done:
+// stream.close();
+```
+
 ### API Tokens
 
 ```typescript

@@ -4,12 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wahooks"
-version = "0.3.1"
+version = "0.4.0"
 description = "Official WAHooks SDK for Python"
 requires-python = ">=3.8"
 license = "MIT"
 keywords = ["wahooks", "whatsapp", "api", "webhook", "sdk"]
 dependencies = ["httpx>=0.24.0"]
+
+[project.optional-dependencies]
+realtime = ["websocket-client>=1.6.0"]
 
 [project.urls]
 Repository = "https://github.com/dhruvyad/wahooks"

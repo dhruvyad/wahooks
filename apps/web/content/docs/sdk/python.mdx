@@ -127,6 +127,27 @@ logs = client.get_webhook_logs(webhook_id)
 result = client.test_webhook(webhook_id)
 ```
 
+### Real-time Events
+
+Listen for WhatsApp events in real-time via WebSocket:
+
+```bash
+pip install wahooks[realtime]  # includes websocket-client
+```
+
+```python
+def on_event(event):
+    print(event["event"])         # "message"
+    print(event["connectionId"])  # connection UUID
+    print(event["payload"])       # WAHA event payload
+
+stream = client.listen(on_event=on_event)
+stream.run_forever()  # blocks, auto-reconnects
+
+# To stop from another thread:
+# stream.close()
+```
+
 ### API Tokens
 
 ```python
