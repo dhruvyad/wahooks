@@ -201,11 +201,11 @@ const mcp = new Server(
       tools: {},
     },
     instructions: [
-      "WhatsApp messages arrive as <channel source=\"wahooks-channel\" from=\"sender_id\" message_id=\"id\">.",
-      "IMPORTANT: When a WhatsApp message arrives, reply immediately using wahooks_reply with the exact 'from' value from the channel tag. Do NOT ask the local user for permission to reply — just reply directly.",
-      "Use wahooks_reply to respond to the sender. Pass the 'from' value exactly as received (do not modify it).",
-      "Use wahooks_send to message any phone number.",
-      "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document.",
+      "WhatsApp messages arrive as <channel source=\"wahooks-channel\" from=\"chat_id\" sender=\"sender_id\" message_id=\"id\">.",
+      "For group messages, group=\"true\" is set. 'from' is the chat/group to reply to, 'sender' is who sent it.",
+      "IMPORTANT: When a WhatsApp message arrives, reply immediately using wahooks_reply with the exact 'from' value. Do NOT ask the local user for permission — just reply directly.",
+      "Use wahooks_reply to respond in the same chat. Use wahooks_send to message any phone or group.",
+      "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document (accept url or file_path).",
       "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
     ].join(" "),
   }
@@ -454,26 +454,26 @@ function connectWebSocket() {
       // Skip outbound messages (sent by us)
       if (payload.fromMe) return;
 
-      // Keep the full from ID (e.g. "1234@s.whatsapp.net" or "5678@lid")
-      // so the reply tool can use it directly as a chat ID
-      const from: string = payload.from ?? "";
+      const chatId: string = payload.from ?? "";
+      const isGroup = chatId.includes("@g.us");
+      const sender: string = payload.participant ?? chatId; // participant for groups, from for DMs
       const text: string = payload.body ?? payload.text ?? "";
       const hasMedia: boolean = payload.hasMedia === true;
       const media = payload.media as { url?: string; mimetype?: string } | undefined;
       const messageId: string =
         payload.id?._serialized ?? payload.id ?? `msg_${Date.now()}`;
 
-      if (!from || (!text && !hasMedia)) return;
+      if (!chatId || (!text && !hasMedia)) return;
 
-      // Sender gating (compare bare number against allow list)
-      const bareNumber = from.replace(/@.*$/, "");
+      // Sender gating (check the actual sender, not the group)
+      const bareNumber = sender.replace(/@.*$/, "");
       if (ALLOW_LIST.size > 0 && !ALLOW_LIST.has(bareNumber)) {
-        console.error(`[wahooks-channel] Blocked message from ${from} (not in allow list)`);
+        console.error(`[wahooks-channel] Blocked message from ${sender} (not in allow list)`);
         return;
       }
 
-      // Track last sender for permission relay
-      lastSender = from;
+      // Track last sender for replies
+      lastSender = chatId; // reply to the chat (group or DM)
 
       // Check if this is a permission verdict
       const permMatch = PERMISSION_RE.exec(text);
@@ -521,14 +521,16 @@ function connectWebSocket() {
         params: {
           content,
           meta: {
-            from,
+            from: chatId,
+            sender: isGroup ? sender : chatId,
             message_id: messageId,
+            ...(isGroup ? { group: "true" } : {}),
             ...(hasMedia ? { has_media: "true", media_type: media?.mimetype ?? "unknown" } : {}),
           },
         },
       });
 
-      console.error(`[wahooks-channel] Message from ${from}: ${text.slice(0, 80)}${hasMedia ? " [+media]" : ""}`);
+      console.error(`[wahooks-channel] ${isGroup ? "[group] " : ""}Message from ${sender}: ${text.slice(0, 80)}${hasMedia ? " [+media]" : ""}`);
     } catch (err) {
       console.error("[wahooks-channel] Event parse error:", err);
     }

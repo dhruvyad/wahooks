@@ -1,6 +1,6 @@
 {
   "name": "@wahooks/channel",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "WhatsApp channel for Claude Code — chat with Claude via WhatsApp",
   "type": "module",
   "bin": {
