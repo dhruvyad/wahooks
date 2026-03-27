@@ -161,7 +161,6 @@ const mcp = new Server(
     capabilities: {
       experimental: {
         "claude/channel": {},
-        "claude/channel/permission": {},
       },
       tools: {},
     },
@@ -181,42 +180,6 @@ const PERMISSION_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
 
 // Track the last sender so we can forward permission requests
 let lastSender = "";
-
-// Listen for permission requests from Claude Code
-const PermissionRequestSchema = {
-  method: "notifications/claude/channel/permission_request" as const,
-};
-
-mcp.setNotificationHandler(
-  PermissionRequestSchema as any,
-  async (notification: any) => {
-    const params = notification.params as {
-      request_id: string;
-      tool_name: string;
-      description: string;
-      input_preview: string;
-    };
-
-    if (!lastSender || !connectionId) return;
-
-    // Forward the permission request to the WhatsApp user
-    const msg = [
-      `🔐 Claude wants to run: ${params.tool_name}`,
-      `${params.description}`,
-      ``,
-      `Reply "yes ${params.request_id}" to allow or "no ${params.request_id}" to deny`,
-    ].join("\n");
-
-    try {
-      await api("POST", `/connections/${connectionId}/send`, {
-        chatId: `${lastSender}@s.whatsapp.net`,
-        text: msg,
-      });
-    } catch {
-      console.error("[wahooks-channel] Failed to forward permission request");
-    }
-  }
-);
 
 // ─── Tools ──────────────────────────────────────────────────────────────
 
