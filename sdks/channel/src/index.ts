@@ -27,6 +27,42 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
+// Minimal mime type detection from extension
+const MIME_MAP: Record<string, string> = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+  ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+  ".pdf": "application/pdf", ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav",
+  ".m4a": "audio/mp4", ".opus": "audio/opus",
+  ".zip": "application/zip", ".txt": "text/plain", ".csv": "text/csv",
+  ".json": "application/json",
+};
+
+function getMimeType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  return MIME_MAP[ext] ?? "application/octet-stream";
+}
+
+/** Resolve file_path/data/url into API-ready body fields */
+function resolveMedia(args: Record<string, string>): { url?: string; data?: string; mimetype?: string; filename?: string } {
+  if (args.file_path) {
+    const fileData = fs.readFileSync(args.file_path);
+    return {
+      data: fileData.toString("base64"),
+      mimetype: args.mimetype ?? getMimeType(args.file_path),
+      filename: args.filename ?? path.basename(args.file_path),
+    };
+  }
+  if (args.data) {
+    return { data: args.data, mimetype: args.mimetype };
+  }
+  return { url: args.url };
+}
+
 // ─── Config ─────────────────────────────────────────────────────────────
 
 const CONFIG_DIR = path.join(os.homedir(), ".claude", "channels", "wahooks");
@@ -212,53 +248,66 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "wahooks_send_image",
-      description: "Send an image via WhatsApp.",
+      description: "Send an image via WhatsApp. Provide url, file_path (local file), or data (base64).",
       inputSchema: {
         type: "object" as const,
         properties: {
-          to: { type: "string", description: "Phone number" },
+          to: { type: "string", description: "Recipient (phone number or chat ID from channel event)" },
           url: { type: "string", description: "Image URL" },
+          file_path: { type: "string", description: "Local file path" },
+          data: { type: "string", description: "Base64-encoded image data" },
+          mimetype: { type: "string", description: "MIME type (auto-detected from file_path)" },
           caption: { type: "string", description: "Optional caption" },
         },
-        required: ["to", "url"],
+        required: ["to"],
       },
     },
     {
       name: "wahooks_send_document",
-      description: "Send a document/file via WhatsApp.",
+      description: "Send a document/file via WhatsApp. Provide url, file_path (local file), or data (base64).",
       inputSchema: {
         type: "object" as const,
         properties: {
-          to: { type: "string", description: "Phone number" },
+          to: { type: "string", description: "Recipient" },
           url: { type: "string", description: "Document URL" },
-          filename: { type: "string", description: "Filename" },
+          file_path: { type: "string", description: "Local file path" },
+          data: { type: "string", description: "Base64-encoded file data" },
+          mimetype: { type: "string", description: "MIME type" },
+          filename: { type: "string", description: "Filename (auto-detected from file_path)" },
+          caption: { type: "string", description: "Optional caption" },
         },
-        required: ["to", "url"],
+        required: ["to"],
       },
     },
     {
       name: "wahooks_send_video",
-      description: "Send a video via WhatsApp.",
+      description: "Send a video via WhatsApp. Provide url, file_path (local file), or data (base64).",
       inputSchema: {
         type: "object" as const,
         properties: {
-          to: { type: "string", description: "Phone number" },
+          to: { type: "string", description: "Recipient" },
           url: { type: "string", description: "Video URL" },
+          file_path: { type: "string", description: "Local file path" },
+          data: { type: "string", description: "Base64-encoded video data" },
+          mimetype: { type: "string", description: "MIME type" },
           caption: { type: "string", description: "Optional caption" },
         },
-        required: ["to", "url"],
+        required: ["to"],
       },
     },
     {
       name: "wahooks_send_audio",
-      description: "Send an audio/voice message via WhatsApp.",
+      description: "Send an audio/voice message via WhatsApp. Provide url, file_path (local file), or data (base64).",
       inputSchema: {
         type: "object" as const,
         properties: {
-          to: { type: "string", description: "Phone number" },
+          to: { type: "string", description: "Recipient" },
           url: { type: "string", description: "Audio URL" },
+          file_path: { type: "string", description: "Local file path" },
+          data: { type: "string", description: "Base64-encoded audio data" },
+          mimetype: { type: "string", description: "MIME type" },
         },
-        required: ["to", "url"],
+        required: ["to"],
       },
     },
     {
@@ -315,36 +364,40 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     }
 
     case "wahooks_send_image": {
+      const media = resolveMedia(args);
       await api("POST", `/connections/${connectionId}/send-image`, {
         chatId: toChatId(args.to),
-        url: args.url,
+        ...media,
         caption: args.caption,
       });
       return { content: [{ type: "text" as const, text: `Image sent to ${args.to}` }] };
     }
 
     case "wahooks_send_document": {
+      const media = resolveMedia(args);
       await api("POST", `/connections/${connectionId}/send-document`, {
         chatId: toChatId(args.to),
-        url: args.url,
-        filename: args.filename,
+        ...media,
+        caption: args.caption,
       });
       return { content: [{ type: "text" as const, text: `Document sent to ${args.to}` }] };
     }
 
     case "wahooks_send_video": {
+      const media = resolveMedia(args);
       await api("POST", `/connections/${connectionId}/send-video`, {
         chatId: toChatId(args.to),
-        url: args.url,
+        ...media,
         caption: args.caption,
       });
       return { content: [{ type: "text" as const, text: `Video sent to ${args.to}` }] };
     }
 
     case "wahooks_send_audio": {
+      const media = resolveMedia(args);
       await api("POST", `/connections/${connectionId}/send-audio`, {
         chatId: toChatId(args.to),
-        url: args.url,
+        ...media,
       });
       return { content: [{ type: "text" as const, text: `Audio sent to ${args.to}` }] };
     }
