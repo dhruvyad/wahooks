@@ -169,9 +169,9 @@ const mcp = new Server(
     },
     instructions: [
       "WhatsApp messages arrive as <channel source=\"wahooks-channel\" from=\"phone\" message_id=\"id\">.",
-      "Use the wahooks_reply tool to send responses back. Pass the from phone number.",
-      "Use wahooks_send_image / wahooks_send_document to send media.",
-      "You can also proactively message any phone with wahooks_send.",
+      "Use wahooks_reply to respond to the sender. Use wahooks_send to message any phone.",
+      "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document.",
+      "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
       "For permission requests, the user can reply 'yes XXXXX' or 'no XXXXX' where XXXXX is the request ID.",
     ].join(" "),
   }
@@ -274,6 +274,59 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["to", "url"],
       },
     },
+    {
+      name: "wahooks_send_video",
+      description: "Send a video via WhatsApp.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Phone number" },
+          url: { type: "string", description: "Video URL" },
+          caption: { type: "string", description: "Optional caption" },
+        },
+        required: ["to", "url"],
+      },
+    },
+    {
+      name: "wahooks_send_audio",
+      description: "Send an audio/voice message via WhatsApp.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Phone number" },
+          url: { type: "string", description: "Audio URL" },
+        },
+        required: ["to", "url"],
+      },
+    },
+    {
+      name: "wahooks_send_location",
+      description: "Send a location pin via WhatsApp.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Phone number" },
+          latitude: { type: "number", description: "Latitude" },
+          longitude: { type: "number", description: "Longitude" },
+          name: { type: "string", description: "Location name" },
+          address: { type: "string", description: "Address" },
+        },
+        required: ["to", "latitude", "longitude"],
+      },
+    },
+    {
+      name: "wahooks_send_contact",
+      description: "Send a contact card via WhatsApp.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Phone number" },
+          contact_name: { type: "string", description: "Contact's display name" },
+          contact_phone: { type: "string", description: "Contact's phone number" },
+        },
+        required: ["to", "contact_name", "contact_phone"],
+      },
+    },
   ],
 }));
 
@@ -311,6 +364,43 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         filename: args.filename,
       });
       return { content: [{ type: "text" as const, text: `Document sent to ${args.to}` }] };
+    }
+
+    case "wahooks_send_video": {
+      await api("POST", `/connections/${connectionId}/send-video`, {
+        chatId: toChatId(args.to),
+        url: args.url,
+        caption: args.caption,
+      });
+      return { content: [{ type: "text" as const, text: `Video sent to ${args.to}` }] };
+    }
+
+    case "wahooks_send_audio": {
+      await api("POST", `/connections/${connectionId}/send-audio`, {
+        chatId: toChatId(args.to),
+        url: args.url,
+      });
+      return { content: [{ type: "text" as const, text: `Audio sent to ${args.to}` }] };
+    }
+
+    case "wahooks_send_location": {
+      await api("POST", `/connections/${connectionId}/send-location`, {
+        chatId: toChatId(args.to),
+        latitude: parseFloat(args.latitude),
+        longitude: parseFloat(args.longitude),
+        name: args.name,
+        address: args.address,
+      });
+      return { content: [{ type: "text" as const, text: `Location sent to ${args.to}` }] };
+    }
+
+    case "wahooks_send_contact": {
+      await api("POST", `/connections/${connectionId}/send-contact`, {
+        chatId: toChatId(args.to),
+        contactName: args.contact_name,
+        contactPhone: args.contact_phone,
+      });
+      return { content: [{ type: "text" as const, text: `Contact sent to ${args.to}` }] };
     }
 
     default:
