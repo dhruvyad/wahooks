@@ -23,15 +23,11 @@ The channel runs as a local process alongside Claude Code. It receives WhatsApp 
 
 ## Installation
 
-### Option A: MCP server (recommended)
-
-Install the package globally and add it to your MCP config:
-
 ```bash
 npm install -g @wahooks/channel
 ```
 
-Add to your `~/.claude/mcp.json`:
+Then add to your `~/.claude/mcp.json`:
 
 ```json
 {
@@ -42,15 +38,6 @@ Add to your `~/.claude/mcp.json`:
     }
   }
 }
-```
-
-### Option B: Plugin marketplace
-
-Add the WAHooks marketplace, then install the plugin:
-
-```bash
-/plugin marketplace add dhruvyad/wahooks
-/plugin install wahooks@dhruvyad/wahooks
 ```
 
 ## Setup
