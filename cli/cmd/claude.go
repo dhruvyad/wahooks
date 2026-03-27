@@ -174,14 +174,25 @@ var claudeSetupCmd = &cobra.Command{
 		}
 		style.Success("MCP config written")
 
-		// 6. Check if @wahooks/channel is installed
+		// 6. Install @wahooks/channel if not present
 		fmt.Println()
 		if _, err := exec.LookPath("wahooks-channel"); err != nil {
-			style.Warn("Install the channel package to finish setup:")
-			fmt.Println("  npm install -g @wahooks/channel")
-			fmt.Println()
+			style.Info("Installing @wahooks/channel...")
+			installCmd := exec.Command("npm", "install", "-g", "@wahooks/channel")
+			installCmd.Stdout = os.Stdout
+			installCmd.Stderr = os.Stderr
+			if err := installCmd.Run(); err != nil {
+				style.Warn("Auto-install failed. Install manually:")
+				fmt.Println("  npm install -g @wahooks/channel")
+				fmt.Println()
+			} else {
+				style.Success("@wahooks/channel installed")
+			}
+		} else {
+			style.Success("@wahooks/channel already installed")
 		}
 
+		fmt.Println()
 		style.Header("Setup complete!")
 		fmt.Println()
 		style.Info("Launch Claude with WhatsApp:")
