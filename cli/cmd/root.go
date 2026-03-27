@@ -42,6 +42,7 @@ var rootGroups = []commandGroup{
 	{"Webhooks", []string{"webhooks"}},
 	{"Billing", []string{"billing"}},
 	{"Tokens & Config", []string{"tokens", "config"}},
+	{"Integrations", []string{"claude"}},
 	{"Testing", []string{"e2e"}},
 }
 

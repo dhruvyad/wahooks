@@ -17,26 +17,45 @@ The channel runs as a local process alongside Claude Code. It receives WhatsApp 
 ## Prerequisites
 
 - A [WAHooks account](https://wahooks.com/signup) with a connected WhatsApp number
-- A WAHooks [API token](/docs/concepts/api-tokens)
 - [Claude Code](https://code.claude.com) v2.1.80+
 - Node.js 18+
+- [WAHooks CLI](/docs/cli/installation)
 
-## Installation
+## Quick setup (recommended)
 
-### Option A: Plugin install
+One command handles everything — login, API token creation, channel config, and MCP registration:
 
 ```bash
-/plugin marketplace add dhruvyad/wahooks
-/plugin install wahooks-channel@dhruvyad-wahooks
+wahooks claude setup
 ```
 
-### Option B: MCP config
+Then install the channel package and start Claude:
 
 ```bash
 npm install -g @wahooks/channel
+claude --dangerously-load-development-channels server:wahooks-channel
 ```
 
-Then add to your `~/.claude/mcp.json`:
+That's it. The setup command:
+1. Opens browser for authentication (skipped if already logged in)
+2. Creates a dedicated API token for the channel
+3. Saves config to `~/.claude/channels/wahooks/.env`
+4. Writes the MCP server entry to `~/.claude/mcp.json`
+
+## Manual setup
+
+If you prefer to configure manually:
+
+### 1. Install and configure
+
+```bash
+npm install -g @wahooks/channel
+wahooks-channel --configure wh_your_api_key
+```
+
+### 2. Add to MCP config
+
+Add to `~/.claude/mcp.json`:
 
 ```json
 {
@@ -49,27 +68,15 @@ Then add to your `~/.claude/mcp.json`:
 }
 ```
 
-## Setup
+### 3. Set up a webhook
 
-### 1. Configure your API key
-
-```bash
-wahooks-channel --configure wh_your_api_key
-```
-
-This stores your key in `~/.claude/channels/wahooks/.env`. You only need to do this once.
-
-### 2. Set up a webhook
-
-Create a webhook on your WAHooks connection that points to the channel's local server:
+Create a webhook on your WAHooks connection pointing to the channel's local server:
 
 ```bash
 wahooks webhooks create CONNECTION_ID http://localhost:8790/webhook "message,message.any"
 ```
 
-Or via the [dashboard](https://wahooks.com/connections) — add a webhook with URL `http://localhost:8790/webhook`.
-
-### 3. Start Claude Code with the channel
+### 4. Start Claude Code
 
 ```bash
 claude --dangerously-load-development-channels server:wahooks-channel
