@@ -1,0 +1,142 @@
+---
+title: WhatsApp Channel for Claude Code
+description: "Chat with Claude Code via WhatsApp"
+---
+
+The WAHooks channel lets you interact with [Claude Code](https://code.claude.com) directly from WhatsApp. Send a message on WhatsApp, and it appears in your Claude Code session. Claude's replies are sent back to you on WhatsApp.
+
+## How it works
+
+```
+You (WhatsApp) → WAHooks webhook → Channel server → Claude Code session
+Claude Code    → wahooks_reply tool → WAHooks API  → You (WhatsApp)
+```
+
+The channel runs as a local process alongside Claude Code. It receives WhatsApp messages via WAHooks webhooks and pushes them into your Claude session using the [Claude Code channels protocol](https://code.claude.com/docs/en/channels).
+
+## Prerequisites
+
+- A [WAHooks account](https://wahooks.com/signup) with a connected WhatsApp number
+- A WAHooks [API token](/docs/concepts/api-tokens)
+- [Claude Code](https://code.claude.com) v2.1.80+
+- Node.js 18+
+
+## Installation
+
+```bash
+npm install -g @wahooks/channel
+```
+
+## Setup
+
+### 1. Configure your API key
+
+```bash
+wahooks-channel --configure wh_your_api_key
+```
+
+This stores your key in `~/.claude/channels/wahooks/.env`. You only need to do this once.
+
+### 2. Set up a webhook
+
+Create a webhook on your WAHooks connection that points to the channel's local server:
+
+```bash
+wahooks webhooks create CONNECTION_ID http://localhost:8790/webhook "message,message.any"
+```
+
+Or via the [dashboard](https://wahooks.com/connections) — add a webhook with URL `http://localhost:8790/webhook`.
+
+### 3. Start Claude Code with the channel
+
+```bash
+claude --dangerously-load-development-channels server:wahooks-channel
+```
+
+You should see:
+```
+[wahooks-channel] Using connection: abc123...
+[wahooks-channel] Webhook server listening on http://127.0.0.1:8790
+[wahooks-channel] Ready — WhatsApp messages will appear in Claude Code
+```
+
+### 4. Send a WhatsApp message
+
+Message your connected WhatsApp number. It will appear in Claude Code as:
+
+```xml
+<channel source="wahooks-channel" from="1234567890" message_id="msg_1">
+list the files in the current directory
+</channel>
+```
+
+Claude will process your request and reply via WhatsApp.
+
+## Configuration
+
+All configuration is stored in `~/.claude/channels/wahooks/.env` or can be set via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WAHOOKS_API_KEY` | Your WAHooks API token (`wh_...`) | Required |
+| `WAHOOKS_API_URL` | API base URL | `https://api.wahooks.com` |
+| `WAHOOKS_CONNECTION` | Connection ID to use | Auto-detected if only one |
+| `WAHOOKS_ALLOW` | Comma-separated allowed phone numbers | All (no filtering) |
+| `WAHOOKS_CHANNEL_PORT` | Local webhook server port | `8790` |
+
+## Sender gating
+
+For security, restrict which phone numbers can send messages to Claude:
+
+```bash
+export WAHOOKS_ALLOW=1234567890,9876543210
+```
+
+Or add to your config file:
+```
+WAHOOKS_ALLOW=1234567890,9876543210
+```
+
+Messages from unlisted numbers are silently dropped.
+
+## Permission relay
+
+The channel supports [permission relay](https://code.claude.com/docs/en/channels-reference) — when Claude wants to run a tool (Bash, Write, etc.), it forwards the approval prompt to you on WhatsApp:
+
+```
+🔐 Claude wants to run: Bash
+Execute: git status
+
+Reply "yes abcde" to allow or "no abcde" to deny
+```
+
+Reply with the verdict and Claude continues.
+
+## Available tools
+
+When the channel is active, Claude has these tools:
+
+| Tool | Description |
+|------|-------------|
+| `wahooks_reply` | Reply to the sender of the last WhatsApp message |
+| `wahooks_send` | Send a message to any phone number |
+| `wahooks_send_image` | Send an image (by URL) |
+| `wahooks_send_document` | Send a document/file (by URL) |
+
+## Troubleshooting
+
+**No messages appearing in Claude Code**
+- Check that the webhook URL is `http://localhost:8790/webhook` (not https)
+- Verify the webhook is active: `wahooks webhooks list CONNECTION_ID`
+- Check the channel is running: look for `[wahooks-channel] Ready` in output
+
+**"No connected WAHooks connections found"**
+- Create a connection and scan the QR code first
+- Or set `WAHOOKS_CONNECTION` explicitly
+
+**Port conflict**
+- Set a different port: `WAHOOKS_CHANNEL_PORT=8791`
+
+**"No API key found"**
+- Run `wahooks-channel --configure wh_your_key`
+- Or set `WAHOOKS_API_KEY` environment variable

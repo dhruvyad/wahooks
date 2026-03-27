@@ -1,0 +1,20 @@
+{
+  "name": "wahooks",
+  "version": "0.1.0",
+  "description": "WhatsApp channel for Claude Code — chat with Claude via WhatsApp using WAHooks",
+  "channels": [
+    {
+      "name": "wahooks-channel",
+      "command": "node",
+      "args": ["./dist/index.js"]
+    }
+  ],
+  "skills": [
+    {
+      "name": "configure",
+      "description": "Configure your WAHooks API key for the WhatsApp channel",
+      "command": "node",
+      "args": ["./dist/index.js", "--configure"]
+    }
+  ]
+}

@@ -6,13 +6,13 @@
  * Messages from WhatsApp appear as <channel> events; Claude replies
  * via the reply tool and messages are sent back through WhatsApp.
  *
- * Usage:
- *   claude --dangerously-load-development-channels server:wahooks-channel
+ * Setup:
+ *   /wahooks:configure <api-key>
  *
- * Environment:
+ * Or set environment variables:
  *   WAHOOKS_API_KEY     — WAHooks API token (wh_...)
  *   WAHOOKS_API_URL     — API base URL (default: https://api.wahooks.com)
- *   WAHOOKS_CONNECTION  — Connection ID to use (auto-detected if only one)
+ *   WAHOOKS_CONNECTION  — Connection ID (auto-detected if only one)
  *   WAHOOKS_ALLOW       — Comma-separated phone numbers to accept (empty = all)
  */
 
@@ -23,22 +23,86 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 // ─── Config ─────────────────────────────────────────────────────────────
 
-const API_KEY = process.env.WAHOOKS_API_KEY ?? "";
-const API_URL = (process.env.WAHOOKS_API_URL ?? "https://api.wahooks.com").replace(/\/$/, "");
-const CONNECTION_ID = process.env.WAHOOKS_CONNECTION ?? "";
+const CONFIG_DIR = path.join(os.homedir(), ".claude", "channels", "wahooks");
+const ENV_FILE = path.join(CONFIG_DIR, ".env");
+
+/** Load config from ~/.claude/channels/wahooks/.env, then overlay env vars */
+function loadConfig(): Record<string, string> {
+  const config: Record<string, string> = {};
+
+  // Read stored config file
+  if (fs.existsSync(ENV_FILE)) {
+    const lines = fs.readFileSync(ENV_FILE, "utf-8").split("\n");
+    for (const line of lines) {
+      const match = line.match(/^([A-Z_]+)=(.*)$/);
+      if (match) config[match[1]] = match[2];
+    }
+  }
+
+  // Env vars override file config
+  for (const key of ["WAHOOKS_API_KEY", "WAHOOKS_API_URL", "WAHOOKS_CONNECTION", "WAHOOKS_ALLOW", "WAHOOKS_CHANNEL_PORT"]) {
+    if (process.env[key]) config[key] = process.env[key]!;
+  }
+
+  return config;
+}
+
+/** Save config to ~/.claude/channels/wahooks/.env */
+function saveConfig(key: string, value: string): void {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+
+  const config: Record<string, string> = {};
+  if (fs.existsSync(ENV_FILE)) {
+    const lines = fs.readFileSync(ENV_FILE, "utf-8").split("\n");
+    for (const line of lines) {
+      const match = line.match(/^([A-Z_]+)=(.*)$/);
+      if (match) config[match[1]] = match[2];
+    }
+  }
+
+  config[key] = value;
+
+  const content = Object.entries(config)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  fs.writeFileSync(ENV_FILE, content + "\n", { mode: 0o600 });
+}
+
+// Handle configure command: wahooks-channel --configure <api-key>
+if (process.argv[2] === "--configure") {
+  const apiKey = process.argv[3];
+  if (!apiKey) {
+    console.error("Usage: wahooks-channel --configure <api-key>");
+    process.exit(1);
+  }
+  saveConfig("WAHOOKS_API_KEY", apiKey);
+  if (process.argv[4]) saveConfig("WAHOOKS_CONNECTION", process.argv[4]);
+  console.error(`Saved WAHooks API key to ${ENV_FILE}`);
+  process.exit(0);
+}
+
+const cfg = loadConfig();
+const API_KEY = cfg.WAHOOKS_API_KEY ?? "";
+const API_URL = (cfg.WAHOOKS_API_URL ?? "https://api.wahooks.com").replace(/\/$/, "");
+const CONNECTION_ID = cfg.WAHOOKS_CONNECTION ?? "";
 const ALLOW_LIST = new Set(
-  (process.env.WAHOOKS_ALLOW ?? "")
+  (cfg.WAHOOKS_ALLOW ?? "")
     .split(",")
     .map((s) => s.trim().replace(/\D/g, ""))
     .filter(Boolean)
 );
-const WEBHOOK_PORT = parseInt(process.env.WAHOOKS_CHANNEL_PORT ?? "8790", 10);
+const WEBHOOK_PORT = parseInt(cfg.WAHOOKS_CHANNEL_PORT ?? "8790", 10);
 
 if (!API_KEY) {
-  console.error("[wahooks-channel] WAHOOKS_API_KEY is required");
+  console.error("[wahooks-channel] No API key found.");
+  console.error("[wahooks-channel] Run: wahooks-channel --configure <your-api-key>");
+  console.error("[wahooks-channel] Or set WAHOOKS_API_KEY environment variable");
   process.exit(1);
 }
 
@@ -91,16 +155,16 @@ async function resolveConnection(): Promise<string> {
 
 let connectionId: string;
 
-// Track inbound message → sender mapping for replies
-const messageToSender = new Map<string, string>();
-
 // ─── MCP Server ─────────────────────────────────────────────────────────
 
 const mcp = new Server(
   { name: "wahooks-channel", version: "0.1.0" },
   {
     capabilities: {
-      experimental: { "claude/channel": {} },
+      experimental: {
+        "claude/channel": {},
+        "claude/channel/permission": {},
+      },
       tools: {},
     },
     instructions: [
@@ -108,7 +172,51 @@ const mcp = new Server(
       "Use the wahooks_reply tool to send responses back. Pass the from phone number.",
       "Use wahooks_send_image / wahooks_send_document to send media.",
       "You can also proactively message any phone with wahooks_send.",
+      "For permission requests, the user can reply 'yes XXXXX' or 'no XXXXX' where XXXXX is the request ID.",
     ].join(" "),
+  }
+);
+
+// ─── Permission relay ───────────────────────────────────────────────────
+
+const PERMISSION_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
+
+// Track the last sender so we can forward permission requests
+let lastSender = "";
+
+// Listen for permission requests from Claude Code
+const PermissionRequestSchema = {
+  method: "notifications/claude/channel/permission_request" as const,
+};
+
+mcp.setNotificationHandler(
+  PermissionRequestSchema as any,
+  async (notification: any) => {
+    const params = notification.params as {
+      request_id: string;
+      tool_name: string;
+      description: string;
+      input_preview: string;
+    };
+
+    if (!lastSender || !connectionId) return;
+
+    // Forward the permission request to the WhatsApp user
+    const msg = [
+      `🔐 Claude wants to run: ${params.tool_name}`,
+      `${params.description}`,
+      ``,
+      `Reply "yes ${params.request_id}" to allow or "no ${params.request_id}" to deny`,
+    ].join("\n");
+
+    try {
+      await api("POST", `/connections/${connectionId}/send`, {
+        chatId: `${lastSender}@s.whatsapp.net`,
+        text: msg,
+      });
+    } catch {
+      console.error("[wahooks-channel] Failed to forward permission request");
+    }
   }
 );
 
@@ -255,8 +363,24 @@ function startWebhookServer() {
           return;
         }
 
-        // Track sender for replies
-        messageToSender.set(messageId, from);
+        // Track last sender for permission relay
+        lastSender = from;
+
+        // Check if this is a permission verdict
+        const permMatch = PERMISSION_RE.exec(text);
+        if (permMatch) {
+          await mcp.notification({
+            method: "notifications/claude/channel/permission",
+            params: {
+              request_id: permMatch[2].toLowerCase(),
+              behavior: permMatch[1].toLowerCase().startsWith("y") ? "allow" : "deny",
+            },
+          });
+          console.error(`[wahooks-channel] Permission verdict: ${permMatch[1]} ${permMatch[2]}`);
+          res.writeHead(200);
+          res.end("ok");
+          return;
+        }
 
         // Forward to Claude Code
         await mcp.notification({
@@ -283,30 +407,7 @@ function startWebhookServer() {
 
   server.listen(WEBHOOK_PORT, "127.0.0.1", () => {
     console.error(`[wahooks-channel] Webhook server listening on http://127.0.0.1:${WEBHOOK_PORT}`);
-    console.error(`[wahooks-channel] Configure WAHooks webhook URL: http://localhost:${WEBHOOK_PORT}/webhook`);
   });
-}
-
-// ─── Setup webhook on WAHooks ───────────────────────────────────────────
-
-async function ensureWebhook() {
-  try {
-    const webhooks = await api<Array<{ id: string; url: string }>>(
-      "GET",
-      `/connections/${connectionId}/webhooks`
-    );
-
-    const localUrl = `http://localhost:${WEBHOOK_PORT}/webhook`;
-    const existing = webhooks.find((w) => w.url === localUrl);
-
-    if (!existing) {
-      console.error("[wahooks-channel] Note: set up a webhook pointing to this server.");
-      console.error(`[wahooks-channel] URL: ${localUrl}`);
-      console.error("[wahooks-channel] Events: message, message.any");
-    }
-  } catch {
-    // Non-critical
-  }
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────
@@ -321,7 +422,6 @@ async function main() {
 
   // Start webhook receiver
   startWebhookServer();
-  await ensureWebhook();
 
   console.error("[wahooks-channel] Ready — WhatsApp messages will appear in Claude Code");
 }
