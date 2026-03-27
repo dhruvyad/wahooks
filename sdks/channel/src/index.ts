@@ -405,10 +405,12 @@ function connectWebSocket() {
       // so the reply tool can use it directly as a chat ID
       const from: string = payload.from ?? "";
       const text: string = payload.body ?? payload.text ?? "";
+      const hasMedia: boolean = payload.hasMedia === true;
+      const media = payload.media as { url?: string; mimetype?: string } | undefined;
       const messageId: string =
         payload.id?._serialized ?? payload.id ?? `msg_${Date.now()}`;
 
-      if (!from || !text) return;
+      if (!from || (!text && !hasMedia)) return;
 
       // Sender gating (compare bare number against allow list)
       const bareNumber = from.replace(/@.*$/, "");
@@ -434,19 +436,41 @@ function connectWebSocket() {
         return;
       }
 
+      // Build message content for Claude
+      let content = text;
+      if (hasMedia && media?.url) {
+        // Download media and convert to base64 for Claude to see
+        try {
+          const mediaRes = await fetch(media.url, {
+            headers: { Authorization: `Bearer ${API_KEY}` },
+          });
+          if (mediaRes.ok) {
+            const buf = Buffer.from(await mediaRes.arrayBuffer());
+            const b64 = buf.toString("base64");
+            const mime = media.mimetype ?? "image/jpeg";
+            content = `${text ? text + "\n\n" : ""}[Media: ${mime}]\ndata:${mime};base64,${b64}`;
+          } else {
+            content = `${text ? text + "\n\n" : ""}[Media attached but could not be downloaded: ${media.mimetype ?? "unknown type"}]`;
+          }
+        } catch {
+          content = `${text ? text + "\n\n" : ""}[Media attached: ${media?.mimetype ?? "unknown type"}]`;
+        }
+      }
+
       // Forward to Claude Code
       await mcp.notification({
         method: "notifications/claude/channel",
         params: {
-          content: text,
+          content,
           meta: {
             from,
             message_id: messageId,
+            ...(hasMedia ? { has_media: "true", media_type: media?.mimetype ?? "unknown" } : {}),
           },
         },
       });
 
-      console.error(`[wahooks-channel] Message from ${from}: ${text.slice(0, 80)}`);
+      console.error(`[wahooks-channel] Message from ${from}: ${text.slice(0, 80)}${hasMedia ? " [+media]" : ""}`);
     } catch (err) {
       console.error("[wahooks-channel] Event parse error:", err);
     }

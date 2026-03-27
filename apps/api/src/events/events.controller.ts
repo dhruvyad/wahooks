@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Inject, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -25,6 +26,7 @@ export class EventsController {
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
     private readonly wahaService: WahaService,
     private readonly eventsGateway: EventsGateway,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -67,11 +69,20 @@ export class EventsController {
       return { received: true };
     }
 
-    // 2. Broadcast to WebSocket clients
+    // 2. Broadcast to WebSocket clients (rewrite internal media URLs to proxy)
+    const broadcastPayload = { ...(event.payload as any) };
+    if (broadcastPayload.media?.url) {
+      const filename = broadcastPayload.media.url.split('/').pop();
+      const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
+      broadcastPayload.media = {
+        ...broadcastPayload.media,
+        url: `${apiUrl}/api/connections/${session.id}/media/${filename}`,
+      };
+    }
     this.eventsGateway.broadcastEvent(session.id, session.userId, {
       event: event.event,
       connectionId: session.id,
-      payload: event.payload,
+      payload: broadcastPayload,
       timestamp: new Date().toISOString(),
     });
 

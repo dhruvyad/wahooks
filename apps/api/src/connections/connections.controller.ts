@@ -12,6 +12,8 @@ import {
   NotFoundException,
   ForbiddenException,
   ServiceUnavailableException,
+  Header,
+  StreamableFile,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq, and, ne, inArray, desc } from 'drizzle-orm';
@@ -585,6 +587,45 @@ export class ConnectionsController {
       body.chatId,
       body.text,
     );
+  }
+
+  @Get(':id/media/:filename')
+  async getMedia(
+    @Param('id') id: string,
+    @Param('filename') filename: string,
+    @CurrentUser() user: { sub: string },
+  ): Promise<StreamableFile> {
+    // Sanitize filename — reject path traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      throw new NotFoundException('Invalid filename');
+    }
+
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+
+    // Fetch from WAHA worker's internal file endpoint
+    const wahaUrl = `http://${worker.internalIp}:3000/api/files/${encodeURIComponent(wahaName)}/${encodeURIComponent(filename)}`;
+    const wahaRes = await fetch(wahaUrl, {
+      headers: { 'X-Api-Key': worker.apiKeyEnc },
+    });
+
+    if (!wahaRes.ok || !wahaRes.body) {
+      throw new NotFoundException('Media not found');
+    }
+
+    const contentType = wahaRes.headers.get('content-type') || 'application/octet-stream';
+
+    // Convert web ReadableStream to Node Buffer
+    const chunks: Uint8Array[] = [];
+    const reader = wahaRes.body.getReader();
+    let done = false;
+    while (!done) {
+      const result = await reader.read();
+      done = result.done;
+      if (result.value) chunks.push(result.value);
+    }
+    const buffer = Buffer.concat(chunks);
+
+    return new StreamableFile(buffer, { type: contentType });
   }
 
   @Patch(':id')
