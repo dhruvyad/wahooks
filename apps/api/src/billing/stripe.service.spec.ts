@@ -136,7 +136,7 @@ describe('StripeService', () => {
       );
     });
 
-    it('should update existing subscription quantity when active subscription exists', async () => {
+    it('should redirect existing subscriber to portal for upgrade', async () => {
       mockStripe.subscriptions.list.mockResolvedValue({
         data: [{
           id: 'sub_existing',
@@ -145,7 +145,9 @@ describe('StripeService', () => {
           },
         }],
       });
-      mockStripe.subscriptions.update.mockResolvedValue({});
+      mockStripe.billingPortal.sessions.create.mockResolvedValue({
+        url: 'https://billing.stripe.com/portal/sess_123',
+      });
 
       const result = await service.createCheckoutSession(
         'cus_123',
@@ -155,16 +157,18 @@ describe('StripeService', () => {
         'https://app.example.com/cancel',
       );
 
-      expect(mockStripe.subscriptions.update).toHaveBeenCalledWith('sub_existing', {
-        items: [{
-          id: 'si_existing',
-          quantity: 5, // 3 + 2
-        }],
-        proration_behavior: 'create_prorations',
-      });
-      // Should return success URL directly (no checkout needed)
-      expect(result).toBe('https://app.example.com/success');
-      expect(mockStripe.checkout.sessions.create).not.toHaveBeenCalled();
+      expect(mockStripe.billingPortal.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customer: 'cus_123',
+          flow_data: expect.objectContaining({
+            type: 'subscription_update',
+            subscription_update: { subscription: 'sub_existing' },
+          }),
+        }),
+      );
+      expect(result).toBe('https://billing.stripe.com/portal/sess_123');
+      // Should NOT silently update the subscription
+      expect(mockStripe.subscriptions.update).not.toHaveBeenCalled();
     });
   });
 
