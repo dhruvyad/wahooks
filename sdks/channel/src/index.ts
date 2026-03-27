@@ -491,9 +491,28 @@ function connectWebSocket() {
 
       // Build message content for Claude
       let content = text;
+      let localMediaPath = "";
       if (hasMedia && media?.url) {
         const mime = media.mimetype ?? "unknown";
-        content = `${text ? text + "\n\n" : ""}[Attached: ${mime}]\nDownload URL: ${media.url}`;
+        // Download media locally so Claude can access it directly
+        try {
+          const mediaRes = await fetch(media.url, {
+            headers: { Authorization: `Bearer ${API_KEY}` },
+          });
+          if (mediaRes.ok) {
+            const buf = Buffer.from(await mediaRes.arrayBuffer());
+            const ext = mime.split("/")[1]?.split(";")[0] ?? "bin";
+            localMediaPath = path.join(os.tmpdir(), `wahooks-media-${Date.now()}.${ext}`);
+            fs.writeFileSync(localMediaPath, buf);
+            content = `${text ? text + "\n\n" : ""}[Attached: ${mime}] Saved to: ${localMediaPath}`;
+            console.error(`[wahooks-channel] Media saved: ${localMediaPath} (${buf.length} bytes)`);
+          } else {
+            content = `${text ? text + "\n\n" : ""}[Attached: ${mime}] (could not download)`;
+          }
+        } catch (err) {
+          content = `${text ? text + "\n\n" : ""}[Attached: ${mime}] (download failed)`;
+          console.error(`[wahooks-channel] Media download failed: ${err}`);
+        }
       }
 
       // Forward to Claude Code
