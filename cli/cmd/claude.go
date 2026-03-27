@@ -149,15 +149,15 @@ var claudeSetupCmd = &cobra.Command{
 		}
 		style.Success("Channel config saved")
 
-		// 5. Write MCP config to ~/.claude/mcp.json
-		mcpPath := filepath.Join(home, ".claude", "mcp.json")
-		mcpConfig := make(map[string]interface{})
+		// 5. Write MCP server to ~/.claude/settings.json
+		settingsPath := filepath.Join(home, ".claude", "settings.json")
+		settings := make(map[string]interface{})
 
-		if data, err := os.ReadFile(mcpPath); err == nil {
-			json.Unmarshal(data, &mcpConfig)
+		if data, err := os.ReadFile(settingsPath); err == nil {
+			json.Unmarshal(data, &settings)
 		}
 
-		servers, ok2 := mcpConfig["mcpServers"].(map[string]interface{})
+		servers, ok2 := settings["mcpServers"].(map[string]interface{})
 		if !ok2 {
 			servers = make(map[string]interface{})
 		}
@@ -166,13 +166,13 @@ var claudeSetupCmd = &cobra.Command{
 			"command": "wahooks-channel",
 			"args":    []string{},
 		}
-		mcpConfig["mcpServers"] = servers
+		settings["mcpServers"] = servers
 
-		mcpData, _ := json.MarshalIndent(mcpConfig, "", "  ")
-		if err := os.WriteFile(mcpPath, mcpData, 0600); err != nil {
-			return fmt.Errorf("write MCP config: %w", err)
+		settingsData, _ := json.MarshalIndent(settings, "", "  ")
+		if err := os.WriteFile(settingsPath, settingsData, 0600); err != nil {
+			return fmt.Errorf("write settings: %w", err)
 		}
-		style.Success("MCP config written")
+		style.Success("MCP server registered")
 
 		// 6. Install @wahooks/channel if not present
 		fmt.Println()
