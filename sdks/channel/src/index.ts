@@ -439,22 +439,8 @@ function connectWebSocket() {
       // Build message content for Claude
       let content = text;
       if (hasMedia && media?.url) {
-        // Download media and convert to base64 for Claude to see
-        try {
-          const mediaRes = await fetch(media.url, {
-            headers: { Authorization: `Bearer ${API_KEY}` },
-          });
-          if (mediaRes.ok) {
-            const buf = Buffer.from(await mediaRes.arrayBuffer());
-            const b64 = buf.toString("base64");
-            const mime = media.mimetype ?? "image/jpeg";
-            content = `${text ? text + "\n\n" : ""}[Media: ${mime}]\ndata:${mime};base64,${b64}`;
-          } else {
-            content = `${text ? text + "\n\n" : ""}[Media attached but could not be downloaded: ${media.mimetype ?? "unknown type"}]`;
-          }
-        } catch {
-          content = `${text ? text + "\n\n" : ""}[Media attached: ${media?.mimetype ?? "unknown type"}]`;
-        }
+        const mime = media.mimetype ?? "unknown";
+        content = `${text ? text + "\n\n" : ""}[Attached: ${mime}]\nDownload URL: ${media.url}`;
       }
 
       // Forward to Claude Code
