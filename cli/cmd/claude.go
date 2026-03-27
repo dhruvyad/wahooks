@@ -63,13 +63,23 @@ var claudeSetupCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, _ := os.UserHomeDir()
 
-		// 1. Check if logged in
-		if cfg.Token == "" {
-			style.Info("Not logged in — opening browser to authenticate...")
+		// 1. Check if logged in — verify token actually works
+		needsLogin := cfg.Token == ""
+		if !needsLogin {
+			resp, err := client.Do("GET", "/api/connections", nil)
+			if err != nil || resp.StatusCode == 401 {
+				needsLogin = true
+			}
+		}
+
+		if needsLogin {
+			style.Info("Authenticating — opening browser...")
 			fmt.Println()
 			if err := browserLogin(); err != nil {
 				return fmt.Errorf("login failed: %w", err)
 			}
+			// Reinitialize client with new token
+			client.Token = cfg.Token
 			fmt.Println()
 		} else {
 			style.Success("Already authenticated")
