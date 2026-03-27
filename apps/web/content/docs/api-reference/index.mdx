@@ -88,6 +88,25 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 | `POST` | [`/tokens`](/docs/api-reference/tokens/create) | Create a new token |
 | `DELETE` | [`/tokens/:id`](/docs/api-reference/tokens/revoke) | Revoke a token |
 
+## Real-time Events
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `WebSocket` | `/ws?token=wh_...` | Real-time event stream. Receives all WAHA events for your connections. Auto-scoped to the authenticated user. |
+
+Connect with any WebSocket client. Events arrive as JSON:
+
+```json
+{
+  "event": "message",
+  "connectionId": "c1a2b3c4-...",
+  "payload": { "from": "1234567890@c.us", "body": "Hello" },
+  "timestamp": "2026-03-27T12:00:00.000Z"
+}
+```
+
+See the [TypeScript SDK](/docs/sdk/typescript#real-time-events) or [Python SDK](/docs/sdk/python#real-time-events) for client libraries.
+
 ## Other
 
 | Method | Endpoint | Description |
