@@ -140,6 +140,33 @@ stream.onerror = (err) => console.error(err);
 // stream.close();
 ```
 
+#### Handling media messages
+
+When a message includes media (image, video, document, audio), the payload contains `hasMedia: true` and a `media` object with a proxied URL:
+
+```typescript
+stream.onmessage = async (event) => {
+  if (event.event !== 'message') return;
+
+  const { payload } = event;
+  console.log(payload.body); // caption or text
+
+  if (payload.hasMedia) {
+    console.log(payload.media.mimetype); // e.g. "image/jpeg"
+    console.log(payload.media.url);      // proxied URL
+
+    // Download the media file (requires auth)
+    const response = await fetch(payload.media.url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const buffer = await response.arrayBuffer();
+    // ... save or process the file
+  }
+};
+```
+
+The `media.url` points to the WAHooks media proxy (`/connections/:id/media/:filename`), which streams the file from the internal WAHA worker. It requires the same `Authorization` header as other API calls.
+
 ### API Tokens
 
 ```typescript

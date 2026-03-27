@@ -148,6 +148,37 @@ stream.run_forever()  # blocks, auto-reconnects
 # stream.close()
 ```
 
+#### Handling media messages
+
+When a message includes media (image, video, document, audio), the payload contains `hasMedia: True` and a `media` dict with a proxied URL:
+
+```python
+import httpx
+
+def on_event(event):
+    if event["event"] != "message":
+        return
+
+    payload = event["payload"]
+    print(payload.get("body"))  # caption or text
+
+    if payload.get("hasMedia"):
+        media = payload["media"]
+        print(media["mimetype"])  # e.g. "image/jpeg"
+        print(media["url"])       # proxied URL
+
+        # Download the media file (requires auth)
+        resp = httpx.get(
+            media["url"],
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        resp.raise_for_status()
+        with open("downloaded_file", "wb") as f:
+            f.write(resp.content)
+```
+
+The `media["url"]` points to the WAHooks media proxy (`/connections/:id/media/:filename`), which streams the file from the internal WAHA worker. It requires the same `Authorization` header as other API calls.
+
 ### API Tokens
 
 ```python

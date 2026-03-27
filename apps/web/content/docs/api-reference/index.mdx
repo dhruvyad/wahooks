@@ -56,6 +56,7 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 | `GET` | [`/connections/:id/qr`](/docs/api-reference/connections/qr) | Get QR code for linking |
 | `GET` | [`/connections/:id/chats`](/docs/api-reference/connections/chats) | Get recent chats |
 | `GET` | [`/connections/:id/me`](/docs/api-reference/connections/profile) | Get WhatsApp profile info |
+| `GET` | `/connections/:id/media/:filename` | Proxy a media file from the WAHA worker (streams the file) |
 
 ## Messaging
 
@@ -100,10 +101,34 @@ Connect with any WebSocket client. Events arrive as JSON:
 {
   "event": "message",
   "connectionId": "c1a2b3c4-...",
-  "payload": { "from": "1234567890@c.us", "body": "Hello" },
+  "payload": {
+    "from": "1234567890@c.us",
+    "body": "Hello"
+  },
   "timestamp": "2026-03-27T12:00:00.000Z"
 }
 ```
+
+When a message includes media (image, video, document, audio), the payload contains `hasMedia: true` and a `media` object with a proxied URL you can fetch directly:
+
+```json
+{
+  "event": "message",
+  "connectionId": "c1a2b3c4-...",
+  "payload": {
+    "from": "1234567890@c.us",
+    "body": "Check this photo",
+    "hasMedia": true,
+    "media": {
+      "url": "https://api.wahooks.com/api/connections/c1a2b3c4-.../media/photo.jpeg",
+      "mimetype": "image/jpeg"
+    }
+  },
+  "timestamp": "2026-03-27T12:00:00.000Z"
+}
+```
+
+The `media.url` points to the [media proxy endpoint](#connections) (`/connections/:id/media/:filename`), which streams the file from the internal WAHA worker. The URL requires authentication (same `Authorization` header as other endpoints).
 
 See the [TypeScript SDK](/docs/sdk/typescript#real-time-events) or [Python SDK](/docs/sdk/python#real-time-events) for client libraries.
 

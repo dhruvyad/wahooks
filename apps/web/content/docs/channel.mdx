@@ -142,12 +142,44 @@ When the channel is active, Claude has these tools:
 |------|-------------|
 | `wahooks_reply` | Reply to the sender of the last WhatsApp message |
 | `wahooks_send` | Send a text message to any phone number |
-| `wahooks_send_image` | Send an image (by URL) with optional caption |
-| `wahooks_send_document` | Send a document/file (by URL) with optional filename |
-| `wahooks_send_video` | Send a video (by URL) with optional caption |
-| `wahooks_send_audio` | Send an audio/voice message (by URL) |
+| `wahooks_send_image` | Send an image (by URL or local `file_path`) with optional caption |
+| `wahooks_send_document` | Send a document/file (by URL or local `file_path`) with optional filename |
+| `wahooks_send_video` | Send a video (by URL or local `file_path`) with optional caption |
+| `wahooks_send_audio` | Send an audio/voice message (by URL or local `file_path`) |
 | `wahooks_send_location` | Send a location pin (latitude, longitude, name, address) |
 | `wahooks_send_contact` | Send a contact card (name, phone number) |
+
+## Multimodal conversations
+
+The channel supports sending and receiving media (images, documents, videos, audio).
+
+### Receiving media
+
+When someone sends you a photo, video, or file on WhatsApp, the channel message includes the media URL. Claude can see the media type and download the file if needed:
+
+```xml
+<channel source="wahooks-channel" from="1234567890" message_id="msg_2">
+Check this photo
+[media: image/jpeg https://api.wahooks.com/api/connections/.../media/photo.jpeg]
+</channel>
+```
+
+The media URL points to the WAHooks media proxy, which streams the file from the internal WAHA worker. The channel authenticates automatically.
+
+### Sending media
+
+Claude can send media back using the send tools. Each media tool accepts either a public URL or a local `file_path`:
+
+```
+# By URL
+wahooks_send_image(chat_id, url="https://example.com/chart.png", caption="Here's the chart")
+
+# By local file path
+wahooks_send_image(chat_id, file_path="/tmp/screenshot.png", caption="Screenshot attached")
+wahooks_send_document(chat_id, file_path="./report.pdf", filename="report.pdf")
+```
+
+This means Claude can generate a file locally (e.g. a chart, a code snippet, a PDF) and send it directly to you on WhatsApp.
 
 ## Troubleshooting
 
