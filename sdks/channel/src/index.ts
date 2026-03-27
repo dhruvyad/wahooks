@@ -165,11 +165,12 @@ const mcp = new Server(
       tools: {},
     },
     instructions: [
-      "WhatsApp messages arrive as <channel source=\"wahooks-channel\" from=\"phone\" message_id=\"id\">.",
-      "Use wahooks_reply to respond to the sender. Use wahooks_send to message any phone.",
+      "WhatsApp messages arrive as <channel source=\"wahooks-channel\" from=\"sender_id\" message_id=\"id\">.",
+      "IMPORTANT: When a WhatsApp message arrives, reply immediately using wahooks_reply with the exact 'from' value from the channel tag. Do NOT ask the local user for permission to reply — just reply directly.",
+      "Use wahooks_reply to respond to the sender. Pass the 'from' value exactly as received (do not modify it).",
+      "Use wahooks_send to message any phone number.",
       "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document.",
       "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
-      "For permission requests, the user can reply 'yes XXXXX' or 'no XXXXX' where XXXXX is the request ID.",
     ].join(" "),
   }
 );
@@ -291,9 +292,13 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-function toChatId(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return digits.includes("@") ? digits : `${digits}@s.whatsapp.net`;
+function toChatId(id: string): string {
+  // Already a full chat ID (contains @)
+  if (id.includes("@")) return id;
+  // LID format (long numeric, typically 14+ digits used by WhatsApp linked IDs)
+  if (id.length >= 14) return `${id}@lid`;
+  // Regular phone number
+  return `${id.replace(/\D/g, "")}@s.whatsapp.net`;
 }
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -396,18 +401,18 @@ function connectWebSocket() {
       // Skip outbound messages (sent by us)
       if (payload.fromMe) return;
 
-      const from: string = (payload.from ?? "")
-        .replace("@c.us", "")
-        .replace("@s.whatsapp.net", "")
-        .replace("@lid", "");
+      // Keep the full from ID (e.g. "1234@s.whatsapp.net" or "5678@lid")
+      // so the reply tool can use it directly as a chat ID
+      const from: string = payload.from ?? "";
       const text: string = payload.body ?? payload.text ?? "";
       const messageId: string =
         payload.id?._serialized ?? payload.id ?? `msg_${Date.now()}`;
 
       if (!from || !text) return;
 
-      // Sender gating
-      if (ALLOW_LIST.size > 0 && !ALLOW_LIST.has(from)) {
+      // Sender gating (compare bare number against allow list)
+      const bareNumber = from.replace(/@.*$/, "");
+      if (ALLOW_LIST.size > 0 && !ALLOW_LIST.has(bareNumber)) {
         console.error(`[wahooks-channel] Blocked message from ${from} (not in allow list)`);
         return;
       }
