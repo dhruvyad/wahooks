@@ -17,7 +17,7 @@ type AuthenticatedSocket = WebSocket & {
   connectionIds?: Set<string>;
 };
 
-@WebSocketGateway({ path: '/ws' })
+@WebSocketGateway({ path: '/api/ws' })
 export class EventsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
