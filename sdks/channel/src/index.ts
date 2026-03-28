@@ -267,22 +267,21 @@ async function processPendingQueue(): Promise<void> {
 
     for (const item of active) {
       try {
+        console.error(`[wahooks-channel] Sending reminder ${item.reminderId} to Claude...`);
         await mcp.notification({
           method: "notifications/claude/channel",
           params: {
-            content: `[Scheduled Reminder] ${item.task}`,
+            content: `[Scheduled Reminder] ${item.task}\n\nTarget chat: ${item.chatId}\nScheduled for: ${item.scheduledFor}\n\nPlease execute this task now and send the results to the target chat using wahooks_reply.`,
             meta: {
               from: item.chatId,
               reminder_id: item.reminderId,
-              scheduled_for: item.scheduledFor,
-              type: "reminder",
             },
           },
         });
-        console.error(`[wahooks-channel] Delivered reminder ${item.reminderId}: ${item.task.slice(0, 60)}`);
-      } catch {
+        console.error(`[wahooks-channel] Delivered reminder ${item.reminderId}`);
+      } catch (err) {
         claudeConnected = false;
-        console.error("[wahooks-channel] Claude disconnected during reminder delivery");
+        console.error(`[wahooks-channel] Claude disconnected during reminder delivery: ${err}`);
         return; // stop processing, items stay in queue
       }
     }
