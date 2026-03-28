@@ -198,7 +198,6 @@ let claudeConnected = false;
 const WAHOOKS_DIR = path.join(os.homedir(), ".wahooks");
 const REMINDERS_FILE = path.join(WAHOOKS_DIR, "reminders.json");
 const PENDING_FILE = path.join(WAHOOKS_DIR, "pending.json");
-const LOCK_FILE = path.join(WAHOOKS_DIR, ".pending.lock");
 
 interface Reminder {
   id: string;
@@ -219,22 +218,6 @@ interface PendingItem {
   addedAt: string;
 }
 
-function acquireLock(): boolean {
-  try {
-    fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" });
-    return true;
-  } catch {
-    try {
-      const pid = parseInt(fs.readFileSync(LOCK_FILE, "utf-8"));
-      try { process.kill(pid, 0); return false; } catch { fs.writeFileSync(LOCK_FILE, String(process.pid)); return true; }
-    } catch { return false; }
-  }
-}
-
-function releaseLock(): void {
-  try { fs.unlinkSync(LOCK_FILE); } catch {}
-}
-
 function readReminders(): Record<string, Reminder> {
   try { return JSON.parse(fs.readFileSync(REMINDERS_FILE, "utf-8")); } catch { return {}; }
 }
@@ -242,55 +225,6 @@ function readReminders(): Record<string, Reminder> {
 function writeReminders(reminders: Record<string, Reminder>): void {
   fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
   fs.writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2) + "\n", { mode: 0o600 });
-}
-
-function readPending(): PendingItem[] {
-  try { return JSON.parse(fs.readFileSync(PENDING_FILE, "utf-8")); } catch { return []; }
-}
-
-function writePending(items: PendingItem[]): void {
-  fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
-  fs.writeFileSync(PENDING_FILE, JSON.stringify(items, null, 2) + "\n", { mode: 0o600 });
-}
-
-async function processPendingQueue(): Promise<void> {
-  if (!claudeConnected) return;
-  if (!acquireLock()) return;
-
-  try {
-    const pending = readPending();
-    if (pending.length === 0) return;
-
-    // Prune stale items (>24h)
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const active = pending.filter((p) => new Date(p.addedAt) > cutoff);
-
-    for (const item of active) {
-      try {
-        console.error(`[wahooks-channel] Sending reminder ${item.reminderId} to Claude...`);
-        await mcp.notification({
-          method: "notifications/claude/channel",
-          params: {
-            content: `[Scheduled Reminder] ${item.task}\n\nTarget chat: ${item.chatId}\nScheduled for: ${item.scheduledFor}\n\nPlease execute this task now and send the results to the target chat using wahooks_reply.`,
-            meta: {
-              from: item.chatId,
-              reminder_id: item.reminderId,
-            },
-          },
-        });
-        console.error(`[wahooks-channel] Delivered reminder ${item.reminderId}`);
-      } catch (err) {
-        claudeConnected = false;
-        console.error(`[wahooks-channel] Claude disconnected during reminder delivery: ${err}`);
-        return; // stop processing, items stay in queue
-      }
-    }
-
-    // All delivered — clear the queue
-    writePending([]);
-  } finally {
-    releaseLock();
-  }
 }
 
 // ─── MCP Server ─────────────────────────────────────────────────────────
