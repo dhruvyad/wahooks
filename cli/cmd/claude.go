@@ -275,12 +275,9 @@ func ensureReminderDaemon(home string) {
 
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		os.WriteFile(plistPath, []byte(plist), 0644)
-		exec.Command("launchctl", "load", plistPath).Run()
-		style.Success("Reminder daemon registered with launchd")
-	} else {
-		// Already registered — make sure it's running
-		exec.Command("launchctl", "start", plistName).Run()
 	}
+	// Always load — handles both fresh install and previously unloaded
+	exec.Command("launchctl", "load", plistPath).Run()
 }
 
 func init() {
