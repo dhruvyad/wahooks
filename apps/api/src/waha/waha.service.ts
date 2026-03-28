@@ -636,7 +636,6 @@ export class WahaService {
     const headers = this.buildHeaders(apiKey);
 
     await this.request<void>('PUT', url, headers, {
-      chatId,
       messageId,
       reaction,
       session: sessionName,
