@@ -116,7 +116,8 @@ function checkReminders(parseExpression: (expr: string) => { next: () => { toDat
 async function main() {
   fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
 
-  const { parseExpression } = await import("cron-parser");
+  const cronParser = await import("cron-parser");
+  const parseExpression = cronParser.default?.parseExpression ?? cronParser.parseExpression;
 
   console.log(`[reminders] Daemon started — checking every ${CHECK_INTERVAL / 1000}s`);
 

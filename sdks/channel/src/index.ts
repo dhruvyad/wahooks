@@ -591,7 +591,8 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       // Calculate next run
       let nextRunAt: string;
       try {
-        const { parseExpression } = await import("cron-parser");
+        const cronParser = await import("cron-parser");
+        const parseExpression = cronParser.default?.parseExpression ?? cronParser.parseExpression;
         const interval = parseExpression(args.schedule);
         nextRunAt = interval.next().toDate().toISOString();
       } catch {
