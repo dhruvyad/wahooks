@@ -89,6 +89,30 @@ All messages follow WhatsApp's anti-ban guidelines automatically:
 - Random delay based on message length
 - Stop typing before sending
 
+### Scheduled reminders
+
+Claude can schedule tasks to run at specific times — one-time or recurring via cron expressions. When a reminder comes due, it is delivered to Claude as a pending message so Claude can act on it (e.g., send a daily briefing to a group).
+
+**How it works:** A background daemon checks `~/.wahooks/reminders.json` every 30 seconds. When a reminder's `nextRunAt` time has passed, the daemon moves it into a pending queue (`~/.wahooks/pending.json`). The channel picks up pending items and delivers them to Claude when connected.
+
+| Tool | Description |
+|------|-------------|
+| `wahooks_schedule_reminder` | Create a reminder. Parameters: `task` (what to do), `chat_id` (target chat), `schedule` (cron expression), `one_time` (boolean). |
+| `wahooks_list_reminders` | List all active reminders with their next run times. |
+| `wahooks_cancel_reminder` | Cancel a reminder by ID. |
+
+**Setup:** The reminder daemon is automatically installed and registered with `launchd` during `wahooks claude setup`. No additional configuration is needed.
+
+**Example:** "Remind me to send a daily briefing to the dev group at 8am on weekdays" — Claude creates a recurring reminder with cron schedule `0 8 * * 1-5` targeting the group chat.
+
+<Callout type="info">
+Reminders require Claude to be running. If Claude is not connected when a reminder fires, the pending item is held in the queue and delivered when Claude next connects. Pending items older than 24 hours are automatically pruned.
+</Callout>
+
+**Storage:**
+- Active reminders: `~/.wahooks/reminders.json`
+- Pending queue: `~/.wahooks/pending.json`
+
 ## Configuration
 
 Stored in `~/.claude/channels/wahooks/.env`:

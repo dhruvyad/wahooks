@@ -9,6 +9,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "node --import tsx --test src/index.test.ts",
     "prepublishOnly": "npm run build"
   },
   "files": ["dist"],
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0"
   }
 }
