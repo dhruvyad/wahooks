@@ -682,78 +682,84 @@ export class ConnectionsController {
   @Post(':id/send-image')
   async sendImage(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendImage(
       worker.internalIp, worker.apiKeyEnc, wahaName,
       body.chatId, body.url, body.caption, body.data, body.mimetype,
+      { skipPresence: body.skipPresence },
     );
   }
 
   @Post(':id/send-document')
   async sendDocument(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; filename?: string; caption?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; filename?: string; caption?: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendFile(
       worker.internalIp, worker.apiKeyEnc, wahaName,
       body.chatId, body.url, body.filename, body.caption, body.data, body.mimetype,
+      { skipPresence: body.skipPresence },
     );
   }
 
   @Post(':id/send-video')
   async sendVideo(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendVideo(
       worker.internalIp, worker.apiKeyEnc, wahaName,
       body.chatId, body.url, body.caption, body.data, body.mimetype,
+      { skipPresence: body.skipPresence },
     );
   }
 
   @Post(':id/send-audio')
   async sendAudio(
     @Param('id') id: string,
-    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string },
+    @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendVoice(
       worker.internalIp, worker.apiKeyEnc, wahaName,
       body.chatId, body.url, body.data, body.mimetype,
+      { skipPresence: body.skipPresence },
     );
   }
 
   @Post(':id/send-location')
   async sendLocation(
     @Param('id') id: string,
-    @Body() body: { chatId: string; latitude: number; longitude: number; name?: string; address?: string },
+    @Body() body: { chatId: string; latitude: number; longitude: number; name?: string; address?: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendLocation(
       worker.internalIp, worker.apiKeyEnc, wahaName,
       body.chatId, body.latitude, body.longitude, body.name, body.address,
+      { skipPresence: body.skipPresence },
     );
   }
 
   @Post(':id/send-contact')
   async sendContact(
     @Param('id') id: string,
-    @Body() body: { chatId: string; contactName: string; contactPhone: string },
+    @Body() body: { chatId: string; contactName: string; contactPhone: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendContactVcard(
       worker.internalIp, worker.apiKeyEnc, wahaName,
       body.chatId, body.contactName, body.contactPhone,
+      { skipPresence: body.skipPresence },
     );
   }
 

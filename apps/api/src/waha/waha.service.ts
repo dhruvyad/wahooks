@@ -359,7 +359,11 @@ export class WahaService {
     caption?: string,
     mediaData?: string,
     mimetype?: string,
+    options?: { skipPresence?: boolean },
   ): Promise<any> {
+    if (!options?.skipPresence) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
+    }
     const url = this.buildUrl(workerUrl, '/api/sendImage');
     const headers = this.buildHeaders(apiKey);
     const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }) };
@@ -378,7 +382,11 @@ export class WahaService {
     caption?: string,
     mediaData?: string,
     mimetype?: string,
+    options?: { skipPresence?: boolean },
   ): Promise<any> {
+    if (!options?.skipPresence) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
+    }
     const url = this.buildUrl(workerUrl, '/api/sendFile');
     const headers = this.buildHeaders(apiKey);
     const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype, filename }) };
@@ -395,7 +403,11 @@ export class WahaService {
     mediaUrl?: string,
     mediaData?: string,
     mimetype?: string,
+    options?: { skipPresence?: boolean },
   ): Promise<any> {
+    if (!options?.skipPresence) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
+    }
     const url = this.buildUrl(workerUrl, '/api/sendVoice');
     const headers = this.buildHeaders(apiKey);
 
@@ -415,7 +427,11 @@ export class WahaService {
     caption?: string,
     mediaData?: string,
     mimetype?: string,
+    options?: { skipPresence?: boolean },
   ): Promise<any> {
+    if (!options?.skipPresence) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
+    }
     const url = this.buildUrl(workerUrl, '/api/sendVideo');
     const headers = this.buildHeaders(apiKey);
     const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }) };
@@ -433,7 +449,11 @@ export class WahaService {
     longitude: number,
     name?: string,
     address?: string,
+    options?: { skipPresence?: boolean },
   ): Promise<any> {
+    if (!options?.skipPresence) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
+    }
     const url = this.buildUrl(workerUrl, '/api/sendLocation');
     const headers = this.buildHeaders(apiKey);
 
@@ -454,7 +474,11 @@ export class WahaService {
     chatId: string,
     contactName: string,
     contactPhone: string,
+    options?: { skipPresence?: boolean },
   ): Promise<any> {
+    if (!options?.skipPresence) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
+    }
     const url = this.buildUrl(workerUrl, '/api/sendContactVcard');
     const headers = this.buildHeaders(apiKey);
     const vcard = [
@@ -555,6 +579,27 @@ export class WahaService {
    * 4. Stop typing
    * 5. Send the message
    */
+  /**
+   * Human-like presence: seen → typing → random delay → stop typing.
+   * Used before any send to comply with WhatsApp anti-ban guidelines.
+   */
+  async simulatePresence(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    contentLength = 20,
+  ): Promise<void> {
+    try { await this.sendSeen(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
+    try { await this.startTyping(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
+
+    const baseDelay = 1000 + Math.random() * 2000;
+    const typingDelay = Math.min(contentLength * 50, 5000);
+    await new Promise((resolve) => setTimeout(resolve, baseDelay + typingDelay));
+
+    try { await this.stopTyping(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
+  }
+
   async sendText(
     workerUrl: string,
     apiKey: string,
@@ -568,30 +613,7 @@ export class WahaService {
     );
 
     if (!options?.skipPresence) {
-      // Anti-spam: simulate human behavior
-      try {
-        await this.sendSeen(workerUrl, apiKey, sessionName, chatId);
-      } catch {
-        // Non-critical — continue sending
-      }
-
-      try {
-        await this.startTyping(workerUrl, apiKey, sessionName, chatId);
-      } catch {
-        // Non-critical — continue sending
-      }
-
-      // Random delay: 1-3s base + ~50ms per character (capped at 8s)
-      const baseDelay = 1000 + Math.random() * 2000;
-      const typingDelay = Math.min(text.length * 50, 5000);
-      const totalDelay = baseDelay + typingDelay;
-      await new Promise((resolve) => setTimeout(resolve, totalDelay));
-
-      try {
-        await this.stopTyping(workerUrl, apiKey, sessionName, chatId);
-      } catch {
-        // Non-critical — continue sending
-      }
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId, text.length);
     }
 
     const url = this.buildUrl(workerUrl, '/api/sendText');

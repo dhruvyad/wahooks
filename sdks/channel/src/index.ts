@@ -378,7 +378,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       const media = resolveMedia(args);
       const endpoint = req.params.name.replace("wahooks_", "").replace("_", "-");
 
-      // Human-like: typing → delay → stop typing → send
+      // Human-like: typing → delay → stop typing → send (skipPresence to avoid API doubling)
       await api("POST", `/connections/${connectionId}/typing`, { chatId }).catch(() => {});
       await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000));
       await api("POST", `/connections/${connectionId}/typing/stop`, { chatId }).catch(() => {});
@@ -388,6 +388,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         ...media,
         caption: args.caption,
         filename: args.filename,
+        skipPresence: true,
       });
 
       const type = endpoint.replace("send-", "");

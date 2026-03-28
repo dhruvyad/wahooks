@@ -176,31 +176,31 @@ export class WAHooks {
   }
 
   /** Send an image. Provide `url` (public URL) or `data` (base64) + `mimetype`. */
-  async sendImage(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; caption?: string }): Promise<SendResult> {
+  async sendImage(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; caption?: string; skipPresence?: boolean }): Promise<SendResult> {
     return this.request('POST', `/connections/${connectionId}/send-image`, { chatId, ...options });
   }
 
   /** Send a document/file. Provide `url` or `data` + `mimetype`. */
-  async sendDocument(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; filename?: string; caption?: string }): Promise<SendResult> {
+  async sendDocument(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; filename?: string; caption?: string; skipPresence?: boolean }): Promise<SendResult> {
     return this.request('POST', `/connections/${connectionId}/send-document`, { chatId, ...options });
   }
 
   /** Send a video. Provide `url` or `data` + `mimetype`. */
-  async sendVideo(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; caption?: string }): Promise<SendResult> {
+  async sendVideo(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; caption?: string; skipPresence?: boolean }): Promise<SendResult> {
     return this.request('POST', `/connections/${connectionId}/send-video`, { chatId, ...options });
   }
 
   /** Send audio/voice. Provide `url` or `data` + `mimetype`. */
-  async sendAudio(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string }): Promise<SendResult> {
+  async sendAudio(connectionId: string, chatId: string, options: { url?: string; data?: string; mimetype?: string; skipPresence?: boolean }): Promise<SendResult> {
     return this.request('POST', `/connections/${connectionId}/send-audio`, { chatId, ...options });
   }
 
-  async sendLocation(connectionId: string, chatId: string, latitude: number, longitude: number, name?: string, address?: string): Promise<SendResult> {
-    return this.request('POST', `/connections/${connectionId}/send-location`, { chatId, latitude, longitude, name, address });
+  async sendLocation(connectionId: string, chatId: string, latitude: number, longitude: number, name?: string, address?: string, options?: { skipPresence?: boolean }): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-location`, { chatId, latitude, longitude, name, address, ...options });
   }
 
-  async sendContact(connectionId: string, chatId: string, contactName: string, contactPhone: string): Promise<SendResult> {
-    return this.request('POST', `/connections/${connectionId}/send-contact`, { chatId, contactName, contactPhone });
+  async sendContact(connectionId: string, chatId: string, contactName: string, contactPhone: string, options?: { skipPresence?: boolean }): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send-contact`, { chatId, contactName, contactPhone, ...options });
   }
 
   // --- Real-time Events ---

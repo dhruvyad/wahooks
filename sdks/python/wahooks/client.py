@@ -108,27 +108,29 @@ class WAHooks:
     def stop_typing(self, connection_id: str, chat_id: str) -> Dict[str, Any]:
         return self._request("POST", f"/connections/{connection_id}/typing/stop", json={"chatId": chat_id})
 
-    def send_image(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
-        """Send an image. Provide ``url`` (public URL) or ``data`` (base64) + ``mimetype``."""
-        return self._request("POST", f"/connections/{connection_id}/send-image", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption})
+    def send_image(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None, skip_presence: bool = False) -> Dict[str, Any]:
+        """Send an image. Provide ``url`` (public URL) or ``data`` (base64) + ``mimetype``. Presence (seen/typing/delay) runs by default."""
+        return self._request("POST", f"/connections/{connection_id}/send-image", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption, "skipPresence": skip_presence})
 
-    def send_document(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, filename: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
-        """Send a document/file. Provide ``url`` or ``data`` + ``mimetype``."""
-        return self._request("POST", f"/connections/{connection_id}/send-document", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "filename": filename, "caption": caption})
+    def send_document(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, filename: Optional[str] = None, caption: Optional[str] = None, skip_presence: bool = False) -> Dict[str, Any]:
+        """Send a document/file. Provide ``url`` or ``data`` + ``mimetype``. Presence runs by default."""
+        return self._request("POST", f"/connections/{connection_id}/send-document", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "filename": filename, "caption": caption, "skipPresence": skip_presence})
 
-    def send_video(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
-        """Send a video. Provide ``url`` or ``data`` + ``mimetype``."""
-        return self._request("POST", f"/connections/{connection_id}/send-video", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption})
+    def send_video(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None, skip_presence: bool = False) -> Dict[str, Any]:
+        """Send a video. Provide ``url`` or ``data`` + ``mimetype``. Presence runs by default."""
+        return self._request("POST", f"/connections/{connection_id}/send-video", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "caption": caption, "skipPresence": skip_presence})
 
-    def send_audio(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None) -> Dict[str, Any]:
-        """Send audio/voice. Provide ``url`` or ``data`` + ``mimetype``."""
-        return self._request("POST", f"/connections/{connection_id}/send-audio", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype})
+    def send_audio(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, skip_presence: bool = False) -> Dict[str, Any]:
+        """Send audio/voice. Provide ``url`` or ``data`` + ``mimetype``. Presence runs by default."""
+        return self._request("POST", f"/connections/{connection_id}/send-audio", json={"chatId": chat_id, "url": url, "data": data, "mimetype": mimetype, "skipPresence": skip_presence})
 
-    def send_location(self, connection_id: str, chat_id: str, latitude: float, longitude: float, name: Optional[str] = None, address: Optional[str] = None) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send-location", json={"chatId": chat_id, "latitude": latitude, "longitude": longitude, "name": name, "address": address})
+    def send_location(self, connection_id: str, chat_id: str, latitude: float, longitude: float, name: Optional[str] = None, address: Optional[str] = None, skip_presence: bool = False) -> Dict[str, Any]:
+        """Send a location. Presence runs by default."""
+        return self._request("POST", f"/connections/{connection_id}/send-location", json={"chatId": chat_id, "latitude": latitude, "longitude": longitude, "name": name, "address": address, "skipPresence": skip_presence})
 
-    def send_contact(self, connection_id: str, chat_id: str, contact_name: str, contact_phone: str) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send-contact", json={"chatId": chat_id, "contactName": contact_name, "contactPhone": contact_phone})
+    def send_contact(self, connection_id: str, chat_id: str, contact_name: str, contact_phone: str, skip_presence: bool = False) -> Dict[str, Any]:
+        """Send a contact card. Presence runs by default."""
+        return self._request("POST", f"/connections/{connection_id}/send-contact", json={"chatId": chat_id, "contactName": contact_name, "contactPhone": contact_phone, "skipPresence": skip_presence})
 
     # --- Real-time Events ---
 
