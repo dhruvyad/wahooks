@@ -812,26 +812,66 @@ async function main() {
   // Connect to real-time event stream
   connectWebSocket();
 
-  // Process any pending reminders immediately
-  await processPendingQueue();
-
-  // Watch pending.json for changes (daemon writes to it)
+  // Process pending reminders via polling
   fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
-  // Ensure file exists for watching
   if (!fs.existsSync(PENDING_FILE)) {
     fs.writeFileSync(PENDING_FILE, "[]", { mode: 0o600 });
   }
 
-  // Use both fs.watch and polling for robustness
-  try {
-    fs.watch(PENDING_FILE, () => {
-      setTimeout(() => processPendingQueue(), 500); // debounce
-    });
-  } catch {
-    // fs.watch not supported — fall back to polling only
+  async function pollPending(): Promise<void> {
+    if (!claudeConnected) return;
+
+    let pending: PendingItem[];
+    try {
+      const raw = fs.readFileSync(PENDING_FILE, "utf-8");
+      pending = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    if (!pending || pending.length === 0) return;
+
+    // Prune stale (>24h)
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const active = pending.filter((p) => new Date(p.addedAt) > cutoff);
+
+    if (active.length === 0) {
+      fs.writeFileSync(PENDING_FILE, "[]", { mode: 0o600 });
+      return;
+    }
+
+    console.error(`[wahooks-channel] Found ${active.length} pending reminder(s), delivering...`);
+
+    for (const item of active) {
+      console.error(`[wahooks-channel] Delivering: ${item.reminderId}`);
+      try {
+        await mcp.notification({
+          method: "notifications/claude/channel",
+          params: {
+            content: `[Scheduled Reminder] ${item.task}\n\nTarget chat: ${item.chatId}\nScheduled for: ${item.scheduledFor}\n\nPlease execute this task now and send the results to the target chat using wahooks_reply.`,
+            meta: {
+              from: item.chatId,
+              reminder_id: item.reminderId,
+            },
+          },
+        });
+        console.error(`[wahooks-channel] Delivered: ${item.reminderId}`);
+      } catch (err) {
+        console.error(`[wahooks-channel] Delivery failed: ${err}`);
+        claudeConnected = false;
+        return;
+      }
+    }
+
+    // Clear queue after all delivered
+    fs.writeFileSync(PENDING_FILE, "[]", { mode: 0o600 });
+    console.error("[wahooks-channel] Pending queue cleared");
   }
-  // Poll every 10s as fallback
-  setInterval(() => processPendingQueue(), 10_000);
+
+  // Poll every 10s
+  setInterval(pollPending, 10_000);
+  // Also run once after 3s
+  setTimeout(pollPending, 3000);
 
   console.error("[wahooks-channel] Ready — WhatsApp messages will appear in Claude Code");
 }
