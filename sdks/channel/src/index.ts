@@ -357,8 +357,11 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "wahooks_reply":
     case "wahooks_send": {
       const chatId = toChatId(args.to);
-      // Start typing, then send with skipPresence to avoid double seen/typing
-      api("POST", `/connections/${connectionId}/typing`, { chatId }).catch(() => {});
+      // Human-like: typing → random delay → stop typing → send
+      await api("POST", `/connections/${connectionId}/typing`, { chatId }).catch(() => {});
+      const delay = 1000 + Math.random() * 2000 + Math.min(args.text.length * 40, 4000);
+      await new Promise((r) => setTimeout(r, delay));
+      await api("POST", `/connections/${connectionId}/typing/stop`, { chatId }).catch(() => {});
       await api("POST", `/connections/${connectionId}/send`, {
         chatId,
         text: args.text,
@@ -367,43 +370,28 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       return { content: [{ type: "text" as const, text: `Sent to ${args.to}` }] };
     }
 
-    case "wahooks_send_image": {
-      const media = resolveMedia(args);
-      await api("POST", `/connections/${connectionId}/send-image`, {
-        chatId: toChatId(args.to),
-        ...media,
-        caption: args.caption,
-      });
-      return { content: [{ type: "text" as const, text: `Image sent to ${args.to}` }] };
-    }
-
-    case "wahooks_send_document": {
-      const media = resolveMedia(args);
-      await api("POST", `/connections/${connectionId}/send-document`, {
-        chatId: toChatId(args.to),
-        ...media,
-        caption: args.caption,
-      });
-      return { content: [{ type: "text" as const, text: `Document sent to ${args.to}` }] };
-    }
-
-    case "wahooks_send_video": {
-      const media = resolveMedia(args);
-      await api("POST", `/connections/${connectionId}/send-video`, {
-        chatId: toChatId(args.to),
-        ...media,
-        caption: args.caption,
-      });
-      return { content: [{ type: "text" as const, text: `Video sent to ${args.to}` }] };
-    }
-
+    case "wahooks_send_image":
+    case "wahooks_send_document":
+    case "wahooks_send_video":
     case "wahooks_send_audio": {
+      const chatId = toChatId(args.to);
       const media = resolveMedia(args);
-      await api("POST", `/connections/${connectionId}/send-audio`, {
-        chatId: toChatId(args.to),
+      const endpoint = req.params.name.replace("wahooks_", "").replace("_", "-");
+
+      // Human-like: typing → delay → stop typing → send
+      await api("POST", `/connections/${connectionId}/typing`, { chatId }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000));
+      await api("POST", `/connections/${connectionId}/typing/stop`, { chatId }).catch(() => {});
+
+      await api("POST", `/connections/${connectionId}/${endpoint}`, {
+        chatId,
         ...media,
+        caption: args.caption,
+        filename: args.filename,
       });
-      return { content: [{ type: "text" as const, text: `Audio sent to ${args.to}` }] };
+
+      const type = endpoint.replace("send-", "");
+      return { content: [{ type: "text" as const, text: `${type} sent to ${args.to}` }] };
     }
 
     case "wahooks_send_location": {
