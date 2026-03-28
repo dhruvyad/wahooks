@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"github.com/dhruvyad/wahooks/cli/internal/style"
@@ -48,6 +49,9 @@ var claudeCmd = &cobra.Command{
 			fmt.Println("  https://code.claude.com")
 			return nil
 		}
+
+		// Ensure reminder daemon is running
+		ensureReminderDaemon(home)
 
 		// Launch claude with the channel
 		style.Success("Launching Claude Code with WhatsApp channel...")
@@ -209,6 +213,22 @@ var claudeSetupCmd = &cobra.Command{
 			style.Success("@wahooks/channel already installed")
 		}
 
+		// 7. Install and start reminder daemon
+		if _, err := exec.LookPath("wahooks-reminders"); err != nil {
+			style.Info("Installing reminder daemon...")
+			installCmd := exec.Command("npm", "install", "-g", "@wahooks/reminder-daemon")
+			installCmd.Stdout = os.Stdout
+			installCmd.Stderr = os.Stderr
+			if err := installCmd.Run(); err != nil {
+				style.Dim("Reminder daemon not installed (optional)")
+			} else {
+				style.Success("Reminder daemon installed")
+			}
+		} else {
+			style.Success("Reminder daemon already installed")
+		}
+		ensureReminderDaemon(home)
+
 		fmt.Println()
 		style.Header("Setup complete!")
 		fmt.Println()
@@ -218,6 +238,52 @@ var claudeSetupCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func ensureReminderDaemon(home string) {
+	if runtime.GOOS != "darwin" {
+		return // launchd is macOS only
+	}
+
+	plistName := "com.wahooks.reminders"
+	plistPath := filepath.Join(home, "Library", "LaunchAgents", plistName+".plist")
+
+	reminderBin, err := exec.LookPath("wahooks-reminders")
+	if err != nil {
+		return // not installed
+	}
+
+	// Check if plist exists
+	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
+		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>%s</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>%s</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>%s/.wahooks/reminders.log</string>
+    <key>StandardErrorPath</key>
+    <string>%s/.wahooks/reminders.log</string>
+</dict>
+</plist>`, plistName, reminderBin, home, home)
+
+		os.MkdirAll(filepath.Dir(plistPath), 0755)
+		os.WriteFile(plistPath, []byte(plist), 0644)
+		exec.Command("launchctl", "load", plistPath).Run()
+		style.Success("Reminder daemon registered with launchd")
+	} else {
+		// Already registered — make sure it's running
+		exec.Command("launchctl", "start", plistName).Run()
+	}
 }
 
 func init() {

@@ -189,6 +189,111 @@ async function resolveConnection(): Promise<string> {
 
 let connectionId: string;
 
+// ─── Connection tracking ────────────────────────────────────────────────
+
+let claudeConnected = false;
+
+// ─── Reminder files ─────────────────────────────────────────────────────
+
+const WAHOOKS_DIR = path.join(os.homedir(), ".wahooks");
+const REMINDERS_FILE = path.join(WAHOOKS_DIR, "reminders.json");
+const PENDING_FILE = path.join(WAHOOKS_DIR, "pending.json");
+const LOCK_FILE = path.join(WAHOOKS_DIR, ".pending.lock");
+
+interface Reminder {
+  id: string;
+  task: string;
+  chatId: string;
+  schedule: string;
+  oneTime: boolean;
+  createdAt: string;
+  lastFiredAt: string | null;
+  nextRunAt: string;
+}
+
+interface PendingItem {
+  reminderId: string;
+  task: string;
+  chatId: string;
+  scheduledFor: string;
+  addedAt: string;
+}
+
+function acquireLock(): boolean {
+  try {
+    fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" });
+    return true;
+  } catch {
+    try {
+      const pid = parseInt(fs.readFileSync(LOCK_FILE, "utf-8"));
+      try { process.kill(pid, 0); return false; } catch { fs.writeFileSync(LOCK_FILE, String(process.pid)); return true; }
+    } catch { return false; }
+  }
+}
+
+function releaseLock(): void {
+  try { fs.unlinkSync(LOCK_FILE); } catch {}
+}
+
+function readReminders(): Record<string, Reminder> {
+  try { return JSON.parse(fs.readFileSync(REMINDERS_FILE, "utf-8")); } catch { return {}; }
+}
+
+function writeReminders(reminders: Record<string, Reminder>): void {
+  fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
+  fs.writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2) + "\n", { mode: 0o600 });
+}
+
+function readPending(): PendingItem[] {
+  try { return JSON.parse(fs.readFileSync(PENDING_FILE, "utf-8")); } catch { return []; }
+}
+
+function writePending(items: PendingItem[]): void {
+  fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
+  fs.writeFileSync(PENDING_FILE, JSON.stringify(items, null, 2) + "\n", { mode: 0o600 });
+}
+
+async function processPendingQueue(): Promise<void> {
+  if (!claudeConnected) return;
+  if (!acquireLock()) return;
+
+  try {
+    const pending = readPending();
+    if (pending.length === 0) return;
+
+    // Prune stale items (>24h)
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const active = pending.filter((p) => new Date(p.addedAt) > cutoff);
+
+    for (const item of active) {
+      try {
+        await mcp.notification({
+          method: "notifications/claude/channel",
+          params: {
+            content: `[Scheduled Reminder] ${item.task}`,
+            meta: {
+              from: item.chatId,
+              reminder_id: item.reminderId,
+              scheduled_for: item.scheduledFor,
+              type: "reminder",
+            },
+          },
+        });
+        console.error(`[wahooks-channel] Delivered reminder ${item.reminderId}: ${item.task.slice(0, 60)}`);
+      } catch {
+        claudeConnected = false;
+        console.error("[wahooks-channel] Claude disconnected during reminder delivery");
+        return; // stop processing, items stay in queue
+      }
+    }
+
+    // All delivered — clear the queue
+    writePending([]);
+  } finally {
+    releaseLock();
+  }
+}
+
 // ─── MCP Server ─────────────────────────────────────────────────────────
 
 const mcp = new Server(
@@ -209,6 +314,8 @@ const mcp = new Server(
       "Use wahooks_reply to respond in the same chat. Use wahooks_send to message any phone or group.",
       "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document (accept url or file_path).",
       "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
+      "Reminders: use wahooks_schedule_reminder to schedule tasks (one-time or recurring via cron). Use wahooks_list_reminders and wahooks_cancel_reminder to manage them.",
+      "When a reminder fires, it arrives as a <channel> event with type=\"reminder\". Execute the task described and send results to the specified chatId.",
     ].join(" "),
   }
 );
@@ -354,6 +461,39 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["to", "contact_name", "contact_phone"],
       },
     },
+    {
+      name: "wahooks_schedule_reminder",
+      description: "Schedule a reminder to perform a task at a specific time. The task will be delivered as a channel event when it's due.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          task: { type: "string", description: "What to do when the reminder fires (e.g. 'Read top HN stories and send a briefing')" },
+          chat_id: { type: "string", description: "Chat ID to send results to (from the channel tag 'from' attribute)" },
+          schedule: { type: "string", description: "Cron expression (e.g. '0 8 * * 1-5' for 8am weekdays, '30 9 * * *' for 9:30am daily)" },
+          one_time: { type: "boolean", description: "If true, fires once then auto-deletes. Default: false (recurring)." },
+        },
+        required: ["task", "chat_id", "schedule"],
+      },
+    },
+    {
+      name: "wahooks_list_reminders",
+      description: "List all active scheduled reminders.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {},
+      },
+    },
+    {
+      name: "wahooks_cancel_reminder",
+      description: "Cancel a scheduled reminder by ID.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          reminder_id: { type: "string", description: "Reminder ID to cancel" },
+        },
+        required: ["reminder_id"],
+      },
+    },
   ],
 }));
 
@@ -442,6 +582,63 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         contactPhone: args.contact_phone,
       });
       return { content: [{ type: "text" as const, text: `Contact sent to ${args.to}` }] };
+    }
+
+    case "wahooks_schedule_reminder": {
+      const id = `rem_${Date.now().toString(36)}`;
+      const oneTime = args.one_time === "true";
+
+      // Calculate next run
+      let nextRunAt: string;
+      try {
+        const { parseExpression } = await import("cron-parser");
+        const interval = parseExpression(args.schedule);
+        nextRunAt = interval.next().toDate().toISOString();
+      } catch {
+        return { content: [{ type: "text" as const, text: `Invalid cron expression: ${args.schedule}` }] };
+      }
+
+      const reminder: Reminder = {
+        id,
+        task: args.task,
+        chatId: args.chat_id,
+        schedule: args.schedule,
+        oneTime,
+        createdAt: new Date().toISOString(),
+        lastFiredAt: null,
+        nextRunAt,
+      };
+
+      const reminders = readReminders();
+      reminders[id] = reminder;
+      writeReminders(reminders);
+
+      console.error(`[wahooks-channel] Scheduled reminder ${id}: ${args.task.slice(0, 60)} (${args.schedule})`);
+      return { content: [{ type: "text" as const, text: `Reminder scheduled: ${id}\nTask: ${args.task}\nSchedule: ${args.schedule}\nNext run: ${nextRunAt}\nOne-time: ${oneTime}` }] };
+    }
+
+    case "wahooks_list_reminders": {
+      const reminders = readReminders();
+      const entries = Object.values(reminders);
+      if (entries.length === 0) {
+        return { content: [{ type: "text" as const, text: "No active reminders." }] };
+      }
+      const list = entries.map((r) =>
+        `${r.id}: "${r.task}" — ${r.schedule} (next: ${r.nextRunAt}, ${r.oneTime ? "one-time" : "recurring"})`
+      ).join("\n");
+      return { content: [{ type: "text" as const, text: `Active reminders:\n${list}` }] };
+    }
+
+    case "wahooks_cancel_reminder": {
+      const reminders = readReminders();
+      const id = args.reminder_id;
+      if (!reminders[id]) {
+        return { content: [{ type: "text" as const, text: `Reminder ${id} not found.` }] };
+      }
+      delete reminders[id];
+      writeReminders(reminders);
+      console.error(`[wahooks-channel] Cancelled reminder ${id}`);
+      return { content: [{ type: "text" as const, text: `Reminder ${id} cancelled.` }] };
     }
 
     default:
@@ -600,12 +797,40 @@ async function main() {
   connectionId = await resolveConnection();
   console.error(`[wahooks-channel] Using connection: ${connectionId}`);
 
-  // Start MCP transport
+  // Start MCP transport with connection tracking
   const transport = new StdioServerTransport();
+
+  transport.onclose = () => {
+    claudeConnected = false;
+    console.error("[wahooks-channel] Claude disconnected");
+  };
+
   await mcp.connect(transport);
+  claudeConnected = true;
 
   // Connect to real-time event stream
   connectWebSocket();
+
+  // Process any pending reminders immediately
+  await processPendingQueue();
+
+  // Watch pending.json for changes (daemon writes to it)
+  fs.mkdirSync(WAHOOKS_DIR, { recursive: true });
+  // Ensure file exists for watching
+  if (!fs.existsSync(PENDING_FILE)) {
+    fs.writeFileSync(PENDING_FILE, "[]", { mode: 0o600 });
+  }
+
+  // Use both fs.watch and polling for robustness
+  try {
+    fs.watch(PENDING_FILE, () => {
+      setTimeout(() => processPendingQueue(), 500); // debounce
+    });
+  } catch {
+    // fs.watch not supported — fall back to polling only
+  }
+  // Poll every 10s as fallback
+  setInterval(() => processPendingQueue(), 10_000);
 
   console.error("[wahooks-channel] Ready — WhatsApp messages will appear in Claude Code");
 }

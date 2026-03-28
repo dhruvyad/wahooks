@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "cron-parser": "^4.9.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
