@@ -803,7 +803,8 @@ async function main() {
 
   transport.onclose = () => {
     claudeConnected = false;
-    console.error("[wahooks-channel] Claude disconnected");
+    console.error("[wahooks-channel] Claude disconnected — exiting");
+    process.exit(0);
   };
 
   await mcp.connect(transport);
@@ -865,7 +866,6 @@ async function main() {
 
     // Clear queue after all delivered
     fs.writeFileSync(PENDING_FILE, "[]", { mode: 0o600 });
-    console.error("[wahooks-channel] Pending queue cleared");
   }
 
   // Poll every 10s
