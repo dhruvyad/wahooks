@@ -149,7 +149,8 @@ When the channel is active, Claude has these tools:
 
 | Tool | Description |
 |------|-------------|
-| `wahooks_reply` | Reply to the sender of the last WhatsApp message |
+| `wahooks_reply` | Reply to the sender. Supports `reply_to` to quote a specific message. |
+| `wahooks_react` | React to a message with an emoji (e.g. 👍, ❤️, 😂) |
 | `wahooks_send` | Send a text message to any phone number |
 | `wahooks_send_image` | Send an image (by URL or local `file_path`) with optional caption |
 | `wahooks_send_document` | Send a document/file (by URL or local `file_path`) with optional filename |

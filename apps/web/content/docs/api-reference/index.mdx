@@ -69,6 +69,9 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 | `POST` | `/connections/:id/send-audio` | Send audio/voice |
 | `POST` | `/connections/:id/send-location` | Send a location pin |
 | `POST` | `/connections/:id/send-contact` | Send a contact card |
+| `POST` | `/connections/:id/react` | React to a message with an emoji |
+
+The `send` endpoint accepts an optional `replyTo` field (message ID) to quote a specific message.
 
 All send endpoints include human-like presence by default (read receipt, typing indicator, random delay). Pass `skipPresence: true` in the request body to disable this when handling presence yourself.
 

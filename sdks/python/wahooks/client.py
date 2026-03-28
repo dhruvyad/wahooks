@@ -96,8 +96,15 @@ class WAHooks:
     def get_profile(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}/me")
 
-    def send_message(self, connection_id: str, chat_id: str, text: str, *, skip_presence: bool = False) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send", json={"chatId": chat_id, "text": text, "skipPresence": skip_presence})
+    def send_message(self, connection_id: str, chat_id: str, text: str, *, skip_presence: bool = False, reply_to: Optional[str] = None) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"chatId": chat_id, "text": text, "skipPresence": skip_presence}
+        if reply_to:
+            body["replyTo"] = reply_to
+        return self._request("POST", f"/connections/{connection_id}/send", json=body)
+
+    def react(self, connection_id: str, chat_id: str, message_id: str, reaction: str) -> Dict[str, Any]:
+        """React to a message with an emoji. Pass empty string to remove reaction."""
+        return self._request("POST", f"/connections/{connection_id}/react", json={"chatId": chat_id, "messageId": message_id, "reaction": reaction})
 
     def mark_read(self, connection_id: str, chat_id: str) -> Dict[str, Any]:
         return self._request("POST", f"/connections/{connection_id}/mark-read", json={"chatId": chat_id})

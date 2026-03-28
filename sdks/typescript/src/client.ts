@@ -159,8 +159,13 @@ export class WAHooks {
     return this.request('GET', `/connections/${connectionId}/me`);
   }
 
-  async sendMessage(connectionId: string, chatId: string, text: string, options?: { skipPresence?: boolean }): Promise<SendResult> {
+  async sendMessage(connectionId: string, chatId: string, text: string, options?: { skipPresence?: boolean; replyTo?: string }): Promise<SendResult> {
     return this.request('POST', `/connections/${connectionId}/send`, { chatId, text, ...options });
+  }
+
+  /** React to a message with an emoji. Pass empty string to remove reaction. */
+  async react(connectionId: string, chatId: string, messageId: string, reaction: string): Promise<{ success: boolean }> {
+    return this.request('POST', `/connections/${connectionId}/react`, { chatId, messageId, reaction });
   }
 
   async markRead(connectionId: string, chatId: string): Promise<{ success: boolean }> {

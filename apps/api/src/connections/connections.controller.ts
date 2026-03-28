@@ -552,7 +552,7 @@ export class ConnectionsController {
   @Post(':id/send')
   async sendText(
     @Param('id') id: string,
-    @Body() body: { chatId: string; text: string; skipPresence?: boolean },
+    @Body() body: { chatId: string; text: string; skipPresence?: boolean; replyTo?: string },
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
@@ -563,8 +563,26 @@ export class ConnectionsController {
       wahaName,
       body.chatId,
       body.text,
-      { skipPresence: body.skipPresence },
+      { skipPresence: body.skipPresence, replyTo: body.replyTo },
     );
+  }
+
+  @Post(':id/react')
+  async sendReaction(
+    @Param('id') id: string,
+    @Body() body: { chatId: string; messageId: string; reaction: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    await this.wahaService.sendReaction(
+      worker.internalIp,
+      worker.apiKeyEnc,
+      wahaName,
+      body.chatId,
+      body.messageId,
+      body.reaction,
+    );
+    return { success: true };
   }
 
   @Get(':id/media/:filename')

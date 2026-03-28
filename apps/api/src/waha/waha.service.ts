@@ -606,7 +606,7 @@ export class WahaService {
     sessionName: string,
     chatId: string,
     text: string,
-    options?: { skipPresence?: boolean },
+    options?: { skipPresence?: boolean; replyTo?: string },
   ): Promise<WahaSendTextResponse> {
     this.logger.log(
       `Sending text to ${chatId} via session "${sessionName}" on worker ${workerUrl}`,
@@ -618,10 +618,27 @@ export class WahaService {
 
     const url = this.buildUrl(workerUrl, '/api/sendText');
     const headers = this.buildHeaders(apiKey);
+    const body: any = { chatId, text, session: sessionName };
+    if (options?.replyTo) body.reply_to = options.replyTo;
 
-    return this.request<WahaSendTextResponse>('POST', url, headers, {
+    return this.request<WahaSendTextResponse>('POST', url, headers, body);
+  }
+
+  async sendReaction(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    messageId: string,
+    reaction: string,
+  ): Promise<void> {
+    const url = this.buildUrl(workerUrl, '/api/reaction');
+    const headers = this.buildHeaders(apiKey);
+
+    await this.request<void>('PUT', url, headers, {
       chatId,
-      text,
+      messageId,
+      reaction,
       session: sessionName,
     });
   }

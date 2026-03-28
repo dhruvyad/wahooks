@@ -108,6 +108,19 @@ client.send_message(connection_id, chat_id="...", text="Hi", skip_presence=True)
 client.send_image(connection_id, chat_id="...", url="...", skip_presence=True)
 ```
 
+### Replies and Reactions
+
+```python
+# Quote a specific message
+client.send_message(connection_id, chat_id="...", text="Thanks!", reply_to="msg_id_here")
+
+# React to a message with an emoji
+client.react(connection_id, chat_id="...", message_id="msg_id_here", reaction="👍")
+
+# Remove a reaction
+client.react(connection_id, chat_id="...", message_id="msg_id_here", reaction="")
+```
+
 ### Presence
 
 ```python

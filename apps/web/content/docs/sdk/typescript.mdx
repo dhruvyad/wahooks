@@ -98,6 +98,19 @@ await client.sendMessage(connectionId, chatId, text, { skipPresence: true });
 await client.sendImage(connectionId, chatId, { url: '...', skipPresence: true });
 ```
 
+### Replies and Reactions
+
+```typescript
+// Quote a specific message
+await client.sendMessage(connectionId, chatId, 'Thanks!', { replyTo: 'msg_id_here' });
+
+// React to a message with an emoji
+await client.react(connectionId, chatId, 'msg_id_here', '👍');
+
+// Remove a reaction
+await client.react(connectionId, chatId, 'msg_id_here', '');
+```
+
 ### Presence
 
 ```typescript

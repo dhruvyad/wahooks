@@ -204,6 +204,8 @@ const mcp = new Server(
       "WhatsApp messages arrive as <channel source=\"wahooks-channel\" from=\"chat_id\" sender=\"sender_id\" message_id=\"id\">.",
       "For group messages, group=\"true\" is set. 'from' is the chat/group to reply to, 'sender' is who sent it.",
       "IMPORTANT: When a WhatsApp message arrives, reply immediately using wahooks_reply with the exact 'from' value. Do NOT ask the local user for permission — just reply directly.",
+      "In group chats or multi-message threads, use reply_to with the message_id to quote the specific message you're responding to.",
+      "Use wahooks_react to add emoji reactions to messages (e.g. 👍 to acknowledge receipt).",
       "Use wahooks_reply to respond in the same chat. Use wahooks_send to message any phone or group.",
       "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document (accept url or file_path).",
       "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
@@ -224,14 +226,28 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "wahooks_reply",
-      description: "Reply to a WhatsApp message. Use the 'from' phone number from the channel event.",
+      description: "Reply to a WhatsApp message. Use the 'from' value from the channel event. Optionally quote a specific message with reply_to.",
       inputSchema: {
         type: "object" as const,
         properties: {
-          to: { type: "string", description: "Phone number to reply to (from the channel tag)" },
+          to: { type: "string", description: "Chat ID to reply in (from the channel tag 'from' attribute)" },
           text: { type: "string", description: "Message text" },
+          reply_to: { type: "string", description: "Message ID to quote (from the channel tag 'message_id' attribute). Use in groups or multi-message threads." },
         },
         required: ["to", "text"],
+      },
+    },
+    {
+      name: "wahooks_react",
+      description: "React to a WhatsApp message with an emoji. Use to acknowledge messages or express sentiment.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Chat ID (from the channel tag 'from' attribute)" },
+          message_id: { type: "string", description: "Message ID to react to (from the channel tag 'message_id' attribute)" },
+          reaction: { type: "string", description: "Emoji reaction (e.g. 👍, ❤️, 😂, 👀)" },
+        },
+        required: ["to", "message_id", "reaction"],
       },
     },
     {
@@ -362,12 +378,24 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       const delay = 1000 + Math.random() * 2000 + Math.min(args.text.length * 40, 4000);
       await new Promise((r) => setTimeout(r, delay));
       await api("POST", `/connections/${connectionId}/typing/stop`, { chatId }).catch(() => {});
-      await api("POST", `/connections/${connectionId}/send`, {
+      const sendBody: Record<string, unknown> = {
         chatId,
         text: args.text,
         skipPresence: true,
-      });
+      };
+      if (args.reply_to) sendBody.replyTo = args.reply_to;
+      await api("POST", `/connections/${connectionId}/send`, sendBody);
       return { content: [{ type: "text" as const, text: `Sent to ${args.to}` }] };
+    }
+
+    case "wahooks_react": {
+      const chatId = toChatId(args.to);
+      await api("POST", `/connections/${connectionId}/react`, {
+        chatId,
+        messageId: args.message_id,
+        reaction: args.reaction,
+      });
+      return { content: [{ type: "text" as const, text: `Reacted ${args.reaction} to message` }] };
     }
 
     case "wahooks_send_image":
