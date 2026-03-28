@@ -13,9 +13,19 @@ import (
 )
 
 var claudeCmd = &cobra.Command{
-	Use:   "claude",
-	Short: "Launch Claude Code with the WhatsApp channel",
+	Use:                "claude [-- claude-args...]",
+	Short:              "Launch Claude Code with the WhatsApp channel",
+	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Handle --help / setup subcommand before disabling flag parsing
+		for _, a := range args {
+			if a == "--help" || a == "-h" {
+				return cmd.Help()
+			}
+			if a == "setup" {
+				return claudeSetupCmd.RunE(claudeSetupCmd, args[1:])
+			}
+		}
 		// Check if setup has been done
 		home, _ := os.UserHomeDir()
 		envPath := filepath.Join(home, ".claude", "channels", "wahooks", ".env")
@@ -50,8 +60,12 @@ var claudeCmd = &cobra.Command{
 			"--dangerously-skip-permissions",
 		}
 
-		// Pass through any extra args
-		launchArgs = append(launchArgs, args...)
+		// Pass through any extra args (strip leading --)
+		for _, a := range args {
+			if a != "--" {
+				launchArgs = append(launchArgs, a)
+			}
+		}
 
 		// Replace this process with claude
 		return syscall.Exec(claudePath, launchArgs, os.Environ())
