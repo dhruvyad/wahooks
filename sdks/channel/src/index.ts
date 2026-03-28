@@ -437,9 +437,28 @@ function connectWebSocket() {
   console.error("[wahooks-channel] Connecting to event stream...");
 
   const ws = new WebSocket(wsUrl);
+  let alive = false;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
 
   ws.on("open", () => {
     console.error("[wahooks-channel] Connected to event stream");
+    alive = true;
+
+    // Heartbeat: ping every 30s, if no pong within 10s, force reconnect
+    heartbeat = setInterval(() => {
+      if (!alive) {
+        console.error("[wahooks-channel] Heartbeat timeout, reconnecting...");
+        clearInterval(heartbeat);
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+    }, 30000);
+  });
+
+  ws.on("pong", () => {
+    alive = true;
   });
 
   ws.on("message", async (data: WebSocket.RawData) => {
@@ -537,6 +556,7 @@ function connectWebSocket() {
   });
 
   ws.on("close", (code: number) => {
+    if (heartbeat) clearInterval(heartbeat);
     console.error(`[wahooks-channel] Connection closed (${code}), reconnecting in 5s...`);
     setTimeout(connectWebSocket, 5000);
   });
