@@ -101,6 +101,22 @@ client.send_location(connection_id, chat_id="1234@s.whatsapp.net", latitude=37.7
 client.send_contact(connection_id, chat_id="1234@s.whatsapp.net", contact_name="John Doe", contact_phone="1234567890")
 ```
 
+All send methods include human-like presence (read receipt, typing, delay) by default. To disable:
+
+```python
+client.send_message(connection_id, chat_id="...", text="Hi", skip_presence=True)
+client.send_image(connection_id, chat_id="...", url="...", skip_presence=True)
+```
+
+### Presence
+
+```python
+# Manual presence control
+client.mark_read(connection_id, chat_id="...")       # send read receipt
+client.start_typing(connection_id, chat_id="...")    # show "typing..."
+client.stop_typing(connection_id, chat_id="...")     # clear typing indicator
+```
+
 ### Webhooks
 
 ```python

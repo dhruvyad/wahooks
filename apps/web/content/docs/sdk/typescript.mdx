@@ -91,6 +91,22 @@ await client.sendLocation(connectionId, chatId, 37.7749, -122.4194, 'San Francis
 await client.sendContact(connectionId, chatId, 'John Doe', '1234567890');
 ```
 
+All send methods include human-like presence (read receipt, typing, delay) by default. To disable:
+
+```typescript
+await client.sendMessage(connectionId, chatId, text, { skipPresence: true });
+await client.sendImage(connectionId, chatId, { url: '...', skipPresence: true });
+```
+
+### Presence
+
+```typescript
+// Manual presence control
+await client.markRead(connectionId, chatId);       // send read receipt ✓✓
+await client.startTyping(connectionId, chatId);    // show "typing..."
+await client.stopTyping(connectionId, chatId);     // clear typing indicator
+```
+
 ### Webhooks
 
 ```typescript

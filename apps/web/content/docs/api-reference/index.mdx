@@ -70,6 +70,18 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 | `POST` | `/connections/:id/send-location` | Send a location pin |
 | `POST` | `/connections/:id/send-contact` | Send a contact card |
 
+All send endpoints include human-like presence by default (read receipt, typing indicator, random delay). Pass `skipPresence: true` in the request body to disable this when handling presence yourself.
+
+## Presence
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/connections/:id/mark-read` | Send read receipt (blue ticks) |
+| `POST` | `/connections/:id/typing` | Start typing indicator |
+| `POST` | `/connections/:id/typing/stop` | Stop typing indicator |
+
+All three accept `{ "chatId": "..." }` in the request body.
+
 ## Webhooks
 
 | Method | Endpoint | Description |
