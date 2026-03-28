@@ -51,6 +51,7 @@ var rootGroups = []commandGroup{
 var rootCmd = &cobra.Command{
 	Use:           "wahooks",
 	Short:         "WAHooks CLI — manage WhatsApp connections, webhooks, and billing",
+	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
