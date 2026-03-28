@@ -245,7 +245,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           to: { type: "string", description: "Chat ID (from the channel tag 'from' attribute)" },
           message_id: { type: "string", description: "Message ID to react to (from the channel tag 'message_id' attribute)" },
-          reaction: { type: "string", description: "Emoji reaction (e.g. 👍, ❤️, 😂, 👀)" },
+          reaction: { type: "string", description: "Emoji to react with (e.g. 👍, ❤️, 😂, 👀). Also accepts 'emoji' as an alias." },
         },
         required: ["to", "message_id", "reaction"],
       },
@@ -390,12 +390,13 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     case "wahooks_react": {
       const chatId = toChatId(args.to);
+      const reaction = args.reaction ?? args.emoji ?? "👍";
       await api("POST", `/connections/${connectionId}/react`, {
         chatId,
         messageId: args.message_id,
-        reaction: args.reaction,
+        reaction,
       });
-      return { content: [{ type: "text" as const, text: `Reacted ${args.reaction} to message` }] };
+      return { content: [{ type: "text" as const, text: `Reacted ${reaction} to message` }] };
     }
 
     case "wahooks_send_image":
