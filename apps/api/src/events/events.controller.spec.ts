@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bullmq';
 import { EventsController } from './events.controller';
+import { EventsGateway } from './events.gateway';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
 
@@ -36,6 +38,8 @@ describe('EventsController', () => {
         { provide: DRIZZLE_TOKEN, useValue: db },
         { provide: getQueueToken('webhook-delivery'), useValue: webhookQueue },
         { provide: WahaService, useValue: { getMaxSessions: jest.fn().mockReturnValue(2) } },
+        { provide: EventsGateway, useValue: { broadcastEvent: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('http://localhost:3001') } },
       ],
     }).compile();
 
