@@ -240,6 +240,15 @@ func ensureReminderDaemon(home string) {
 		return // not installed
 	}
 
+	// Find node binary — launchd doesn't use user PATH
+	nodeBin, err := exec.LookPath("node")
+	if err != nil {
+		return // node not found
+	}
+
+	// Ensure ~/.wahooks dir exists for log file
+	os.MkdirAll(filepath.Join(home, ".wahooks"), 0755)
+
 	// Check if plist exists
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
 		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -251,6 +260,7 @@ func ensureReminderDaemon(home string) {
     <key>ProgramArguments</key>
     <array>
         <string>%s</string>
+        <string>%s</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -261,7 +271,7 @@ func ensureReminderDaemon(home string) {
     <key>StandardErrorPath</key>
     <string>%s/.wahooks/reminders.log</string>
 </dict>
-</plist>`, plistName, reminderBin, home, home)
+</plist>`, plistName, nodeBin, reminderBin, home, home)
 
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		os.WriteFile(plistPath, []byte(plist), 0644)
