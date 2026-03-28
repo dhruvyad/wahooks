@@ -96,8 +96,17 @@ class WAHooks:
     def get_profile(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}/me")
 
-    def send_message(self, connection_id: str, chat_id: str, text: str) -> Dict[str, Any]:
-        return self._request("POST", f"/connections/{connection_id}/send", json={"chatId": chat_id, "text": text})
+    def send_message(self, connection_id: str, chat_id: str, text: str, *, skip_presence: bool = False) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/send", json={"chatId": chat_id, "text": text, "skipPresence": skip_presence})
+
+    def mark_read(self, connection_id: str, chat_id: str) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/mark-read", json={"chatId": chat_id})
+
+    def start_typing(self, connection_id: str, chat_id: str) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/typing", json={"chatId": chat_id})
+
+    def stop_typing(self, connection_id: str, chat_id: str) -> Dict[str, Any]:
+        return self._request("POST", f"/connections/{connection_id}/typing/stop", json={"chatId": chat_id})
 
     def send_image(self, connection_id: str, chat_id: str, *, url: Optional[str] = None, data: Optional[str] = None, mimetype: Optional[str] = None, caption: Optional[str] = None) -> Dict[str, Any]:
         """Send an image. Provide ``url`` (public URL) or ``data`` (base64) + ``mimetype``."""

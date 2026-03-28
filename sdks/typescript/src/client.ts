@@ -159,8 +159,20 @@ export class WAHooks {
     return this.request('GET', `/connections/${connectionId}/me`);
   }
 
-  async sendMessage(connectionId: string, chatId: string, text: string): Promise<SendResult> {
-    return this.request('POST', `/connections/${connectionId}/send`, { chatId, text });
+  async sendMessage(connectionId: string, chatId: string, text: string, options?: { skipPresence?: boolean }): Promise<SendResult> {
+    return this.request('POST', `/connections/${connectionId}/send`, { chatId, text, ...options });
+  }
+
+  async markRead(connectionId: string, chatId: string): Promise<{ success: boolean }> {
+    return this.request('POST', `/connections/${connectionId}/mark-read`, { chatId });
+  }
+
+  async startTyping(connectionId: string, chatId: string): Promise<{ success: boolean }> {
+    return this.request('POST', `/connections/${connectionId}/typing`, { chatId });
+  }
+
+  async stopTyping(connectionId: string, chatId: string): Promise<{ success: boolean }> {
+    return this.request('POST', `/connections/${connectionId}/typing/stop`, { chatId });
   }
 
   /** Send an image. Provide `url` (public URL) or `data` (base64) + `mimetype`. */

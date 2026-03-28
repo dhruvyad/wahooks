@@ -552,33 +552,10 @@ export class ConnectionsController {
   @Post(':id/send')
   async sendText(
     @Param('id') id: string,
-    @Body() body: { chatId: string; text: string },
+    @Body() body: { chatId: string; text: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
-    const [connection] = await this.db
-      .select()
-      .from(wahaSessions)
-      .where(eq(wahaSessions.id, id));
-
-    if (!connection) {
-      throw new NotFoundException('Connection not found');
-    }
-
-    if (connection.userId !== user.sub) {
-      throw new ForbiddenException('You do not own this connection');
-    }
-
-    const worker = await this.workersService.getWorkerForSession(id);
-
-    if (!worker) {
-      throw new ServiceUnavailableException(
-        'No worker assigned to this connection',
-      );
-    }
-
-    const wahaName = this.wahaService.resolveSessionName(
-      connection.sessionName,
-    );
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
 
     return this.wahaService.sendText(
       worker.internalIp,
@@ -586,6 +563,7 @@ export class ConnectionsController {
       wahaName,
       body.chatId,
       body.text,
+      { skipPresence: body.skipPresence },
     );
   }
 
@@ -626,6 +604,39 @@ export class ConnectionsController {
     const buffer = Buffer.concat(chunks);
 
     return new StreamableFile(buffer, { type: contentType });
+  }
+
+  @Post(':id/mark-read')
+  async markRead(
+    @Param('id') id: string,
+    @Body() body: { chatId: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    await this.wahaService.sendSeen(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    return { success: true };
+  }
+
+  @Post(':id/typing')
+  async startTyping(
+    @Param('id') id: string,
+    @Body() body: { chatId: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    await this.wahaService.startTyping(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    return { success: true };
+  }
+
+  @Post(':id/typing/stop')
+  async stopTyping(
+    @Param('id') id: string,
+    @Body() body: { chatId: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    await this.wahaService.stopTyping(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    return { success: true };
   }
 
   @Patch(':id')

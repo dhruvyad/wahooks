@@ -561,34 +561,37 @@ export class WahaService {
     sessionName: string,
     chatId: string,
     text: string,
+    options?: { skipPresence?: boolean },
   ): Promise<WahaSendTextResponse> {
     this.logger.log(
       `Sending text to ${chatId} via session "${sessionName}" on worker ${workerUrl}`,
     );
 
-    // Anti-spam: simulate human behavior
-    try {
-      await this.sendSeen(workerUrl, apiKey, sessionName, chatId);
-    } catch {
-      // Non-critical — continue sending
-    }
+    if (!options?.skipPresence) {
+      // Anti-spam: simulate human behavior
+      try {
+        await this.sendSeen(workerUrl, apiKey, sessionName, chatId);
+      } catch {
+        // Non-critical — continue sending
+      }
 
-    try {
-      await this.startTyping(workerUrl, apiKey, sessionName, chatId);
-    } catch {
-      // Non-critical — continue sending
-    }
+      try {
+        await this.startTyping(workerUrl, apiKey, sessionName, chatId);
+      } catch {
+        // Non-critical — continue sending
+      }
 
-    // Random delay: 1-3s base + ~50ms per character (capped at 8s)
-    const baseDelay = 1000 + Math.random() * 2000;
-    const typingDelay = Math.min(text.length * 50, 5000);
-    const totalDelay = baseDelay + typingDelay;
-    await new Promise((resolve) => setTimeout(resolve, totalDelay));
+      // Random delay: 1-3s base + ~50ms per character (capped at 8s)
+      const baseDelay = 1000 + Math.random() * 2000;
+      const typingDelay = Math.min(text.length * 50, 5000);
+      const totalDelay = baseDelay + typingDelay;
+      await new Promise((resolve) => setTimeout(resolve, totalDelay));
 
-    try {
-      await this.stopTyping(workerUrl, apiKey, sessionName, chatId);
-    } catch {
-      // Non-critical — continue sending
+      try {
+        await this.stopTyping(workerUrl, apiKey, sessionName, chatId);
+      } catch {
+        // Non-critical — continue sending
+      }
     }
 
     const url = this.buildUrl(workerUrl, '/api/sendText');

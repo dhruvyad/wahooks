@@ -356,9 +356,13 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   switch (req.params.name) {
     case "wahooks_reply":
     case "wahooks_send": {
+      const chatId = toChatId(args.to);
+      // Start typing, then send with skipPresence to avoid double seen/typing
+      api("POST", `/connections/${connectionId}/typing`, { chatId }).catch(() => {});
       await api("POST", `/connections/${connectionId}/send`, {
-        chatId: toChatId(args.to),
+        chatId,
         text: args.text,
+        skipPresence: true,
       });
       return { content: [{ type: "text" as const, text: `Sent to ${args.to}` }] };
     }
@@ -475,7 +479,12 @@ function connectWebSocket() {
 
       const chatId: string = payload.from ?? "";
       const isGroup = chatId.includes("@g.us");
-      const sender: string = payload.participant ?? chatId; // participant for groups, from for DMs
+      const sender: string = payload.participant ?? chatId;
+
+      // Send read receipt immediately
+      if (chatId && connectionId) {
+        api("POST", `/connections/${connectionId}/mark-read`, { chatId }).catch(() => {});
+      }
       const text: string = payload.body ?? payload.text ?? "";
       const hasMedia: boolean = payload.hasMedia === true;
       const media = payload.media as { url?: string; mimetype?: string } | undefined;
