@@ -586,7 +586,8 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     case "wahooks_schedule_reminder": {
       const id = `rem_${Date.now().toString(36)}`;
-      const oneTime = args.one_time === "true";
+      const rawOneTime = (args as Record<string, unknown>).one_time;
+      const oneTime = rawOneTime === true || rawOneTime === "true";
 
       // Calculate next run
       let nextRunAt: string;
