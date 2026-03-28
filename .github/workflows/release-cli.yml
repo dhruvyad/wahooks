@@ -38,9 +38,10 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
+          VERSION="${GITHUB_REF_NAME#cli-v}"
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          go build -ldflags="-s -w" -o "wahooks-${GOOS}-${GOARCH}${EXT}" .
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o "wahooks-${GOOS}-${GOARCH}${EXT}" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

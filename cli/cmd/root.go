@@ -19,7 +19,10 @@ var (
 	version = "dev"
 )
 
-func SetVersion(v string) { version = v }
+func SetVersion(v string) {
+	version = v
+	rootCmd.Version = v
+}
 
 // ─── Lipgloss styles ────────────────────────────────────────────────────
 
