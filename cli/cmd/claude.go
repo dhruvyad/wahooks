@@ -213,20 +213,7 @@ var claudeSetupCmd = &cobra.Command{
 			style.Success("@wahooks/channel already installed")
 		}
 
-		// 7. Install and start reminder daemon
-		if _, err := exec.LookPath("wahooks-reminders"); err != nil {
-			style.Info("Installing reminder daemon...")
-			installCmd := exec.Command("npm", "install", "-g", "@wahooks/reminder-daemon")
-			installCmd.Stdout = os.Stdout
-			installCmd.Stderr = os.Stderr
-			if err := installCmd.Run(); err != nil {
-				style.Dim("Reminder daemon not installed (optional)")
-			} else {
-				style.Success("Reminder daemon installed")
-			}
-		} else {
-			style.Success("Reminder daemon already installed")
-		}
+		// 7. Start reminder daemon (bundled with @wahooks/channel)
 		ensureReminderDaemon(home)
 
 		fmt.Println()
