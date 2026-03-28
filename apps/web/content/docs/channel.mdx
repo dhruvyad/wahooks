@@ -3,7 +3,102 @@ title: WhatsApp Channel for Claude Code
 description: "Chat with Claude Code via WhatsApp"
 ---
 
-The WAHooks channel lets you interact with [Claude Code](https://code.claude.com) directly from WhatsApp. Send a message on WhatsApp, and it appears in your Claude Code session. Claude's replies are sent back to you on WhatsApp.
+<iframe width="100%" style={{aspectRatio: '16/9'}} src="https://www.youtube.com/embed/8bS-gMBm95o" title="WAHooks WhatsApp Channel for Claude Code" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
+
+Chat with [Claude Code](https://code.claude.com) directly from WhatsApp. Send a message, and Claude replies — with full access to your codebase, terminal, and tools.
+
+## Setup
+
+Two commands. Takes under a minute.
+
+```bash
+wahooks claude setup    # authenticates, installs channel, configures everything
+wahooks claude          # launches Claude Code with WhatsApp
+```
+
+That's it. `wahooks claude setup` only needs to run once — it handles login, API token creation, npm install, and MCP registration automatically. After that, just run `wahooks claude` whenever you want to use it.
+
+### Prerequisites
+
+- A [WAHooks account](https://wahooks.com/signup) with a connected WhatsApp number
+- [Claude Code](https://code.claude.com) v2.1.80+
+- Node.js 18+
+- [WAHooks CLI](/docs/cli/installation)
+
+### Passing flags to Claude
+
+You can pass any Claude Code flags through:
+
+```bash
+wahooks claude --continue            # resume last session
+wahooks claude --resume abc-123      # resume specific session
+wahooks claude --model sonnet        # use a different model
+```
+
+## Features
+
+### Text, media, reactions, and replies
+
+Claude can send and receive all message types:
+
+| Tool | Description |
+|------|-------------|
+| `wahooks_reply` | Reply in the same chat. Supports `reply_to` to quote a specific message. |
+| `wahooks_react` | React with an emoji (👍, ❤️, 😂, etc.) |
+| `wahooks_send` | Send a text to any phone number or group |
+| `wahooks_send_image` | Send an image (URL or local file) |
+| `wahooks_send_document` | Send a document/file (URL or local file) |
+| `wahooks_send_video` | Send a video (URL or local file) |
+| `wahooks_send_audio` | Send audio/voice (URL or local file) |
+| `wahooks_send_location` | Send a location pin |
+| `wahooks_send_contact` | Send a contact card |
+
+### Receiving media
+
+When someone sends a photo, video, or file, the channel downloads it locally so Claude can view or process it:
+
+```xml
+<channel source="wahooks-channel" from="1234@lid" message_id="msg_2" has_media="true">
+Check this document
+[Attached: application/pdf] Saved to: /tmp/wahooks-media-1234.pdf
+</channel>
+```
+
+Claude can read the file, transform it, and send the result back.
+
+### Group chats
+
+The channel works with group messages. In groups, the `from` attribute is the group ID and `sender` identifies who sent the message. Claude replies to the group and can quote specific messages with `reply_to`.
+
+### Sender gating
+
+Restrict which phone numbers can message Claude:
+
+```bash
+# In ~/.claude/channels/wahooks/.env
+WAHOOKS_ALLOW=1234567890,9876543210
+```
+
+Messages from unlisted numbers are silently dropped. Leave empty to allow all.
+
+### Human-like behavior
+
+All messages follow WhatsApp's anti-ban guidelines automatically:
+- Read receipts sent immediately on message receive
+- Typing indicator shown before replying
+- Random delay based on message length
+- Stop typing before sending
+
+## Configuration
+
+Stored in `~/.claude/channels/wahooks/.env`:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WAHOOKS_API_KEY` | API token (`wh_...`) | Set by `wahooks claude setup` |
+| `WAHOOKS_API_URL` | API base URL | `https://api.wahooks.com` |
+| `WAHOOKS_CONNECTION` | Connection ID | Auto-detected |
+| `WAHOOKS_ALLOW` | Allowed phone numbers (comma-separated) | All |
 
 ## How it works
 
@@ -12,39 +107,28 @@ You (WhatsApp) → WAHA → WAHooks API → WebSocket → Channel → Claude Cod
 Claude Code    → wahooks_reply tool  → WAHooks API → WAHA  → You (WhatsApp)
 ```
 
-The channel runs as a local process alongside Claude Code. It connects to the WAHooks API via WebSocket for real-time message delivery — no webhooks, tunnels, or port forwarding needed.
+The channel runs as a local MCP server alongside Claude Code. It connects to the WAHooks API via WebSocket for real-time message delivery — no webhooks, tunnels, or port forwarding needed. The WebSocket auto-reconnects after network interruptions or laptop sleep.
 
-## Prerequisites
+## Troubleshooting
 
-- A [WAHooks account](https://wahooks.com/signup) with a connected WhatsApp number
-- [Claude Code](https://code.claude.com) v2.1.80+
-- Node.js 18+
-- [WAHooks CLI](/docs/cli/installation)
+**No messages appearing**
+- Restart with `wahooks claude` (the channel subprocess needs to be running)
+- Check for `[wahooks-channel] Connected to event stream` in the output
+- Verify your connection is `connected`: `wahooks connections list`
 
-## Quick setup (recommended)
+**"No connected WAHooks connections found"**
+- Create and link a connection: `wahooks connections quick`
 
-Two commands to get started:
+**"No API key found"**
+- Run `wahooks claude setup` again
 
-```bash
-wahooks claude setup    # login, install channel, create token, register MCP server
-wahooks claude          # launch Claude Code with WhatsApp active
-```
-
-That's it. Run `wahooks claude setup` once, then `wahooks claude` anytime you want to chat via WhatsApp.
-
-`wahooks claude setup` handles everything automatically:
-1. Opens browser for authentication (skipped if already logged in)
-2. Creates a dedicated API token for the channel
-3. Installs `@wahooks/channel` via npm (skipped if already installed)
-4. Saves channel config to `~/.claude/channels/wahooks/.env`
-5. Registers the MCP server in `~/.claude.json`
-6. Detects your active WhatsApp connection
-
-After setup, `wahooks claude` launches Claude Code with the channel active and permissions bypassed so WhatsApp users get immediate responses.
+**Messages from new session not arriving**
+- If you resumed a Claude session, the old channel subprocess may be stale — restart with `wahooks claude`
 
 ## Manual setup
 
-If you prefer to configure manually:
+<details>
+<summary>If you prefer to configure manually instead of using `wahooks claude setup`</summary>
 
 ### 1. Install and configure
 
@@ -59,7 +143,7 @@ wahooks-channel --configure wh_your_api_key
 claude mcp add -s user wahooks-channel wahooks-channel
 ```
 
-Or add manually to `~/.claude.json`:
+Or add to `~/.claude.json`:
 
 ```json
 {
@@ -74,134 +158,10 @@ Or add manually to `~/.claude.json`:
 }
 ```
 
-### 3. Start Claude Code
+### 3. Launch
 
-```bash
-wahooks claude
-```
-
-Or manually:
 ```bash
 claude --dangerously-load-development-channels server:wahooks-channel
 ```
 
-You should see:
-```
-[wahooks-channel] Using connection: abc123...
-[wahooks-channel] Webhook server listening on http://127.0.0.1:8790
-[wahooks-channel] Ready — WhatsApp messages will appear in Claude Code
-```
-
-### 4. Send a WhatsApp message
-
-Message your connected WhatsApp number. It will appear in Claude Code as:
-
-```xml
-<channel source="wahooks-channel" from="1234567890" message_id="msg_1">
-list the files in the current directory
-</channel>
-```
-
-Claude will process your request and reply via WhatsApp.
-
-## Configuration
-
-All configuration is stored in `~/.claude/channels/wahooks/.env` or can be set via environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `WAHOOKS_API_KEY` | Your WAHooks API token (`wh_...`) | Required |
-| `WAHOOKS_API_URL` | API base URL | `https://api.wahooks.com` |
-| `WAHOOKS_CONNECTION` | Connection ID to use | Auto-detected if only one |
-| `WAHOOKS_ALLOW` | Comma-separated allowed phone numbers | All (no filtering) |
-
-## Sender gating
-
-For security, restrict which phone numbers can send messages to Claude:
-
-```bash
-export WAHOOKS_ALLOW=1234567890,9876543210
-```
-
-Or add to your config file:
-```
-WAHOOKS_ALLOW=1234567890,9876543210
-```
-
-Messages from unlisted numbers are silently dropped.
-
-## Permission relay
-
-The channel supports [permission relay](https://code.claude.com/docs/en/channels-reference) — when Claude wants to run a tool (Bash, Write, etc.), it forwards the approval prompt to you on WhatsApp:
-
-```
-🔐 Claude wants to run: Bash
-Execute: git status
-
-Reply "yes abcde" to allow or "no abcde" to deny
-```
-
-Reply with the verdict and Claude continues.
-
-## Available tools
-
-When the channel is active, Claude has these tools:
-
-| Tool | Description |
-|------|-------------|
-| `wahooks_reply` | Reply to the sender. Supports `reply_to` to quote a specific message. |
-| `wahooks_react` | React to a message with an emoji (e.g. 👍, ❤️, 😂) |
-| `wahooks_send` | Send a text message to any phone number |
-| `wahooks_send_image` | Send an image (by URL or local `file_path`) with optional caption |
-| `wahooks_send_document` | Send a document/file (by URL or local `file_path`) with optional filename |
-| `wahooks_send_video` | Send a video (by URL or local `file_path`) with optional caption |
-| `wahooks_send_audio` | Send an audio/voice message (by URL or local `file_path`) |
-| `wahooks_send_location` | Send a location pin (latitude, longitude, name, address) |
-| `wahooks_send_contact` | Send a contact card (name, phone number) |
-
-## Multimodal conversations
-
-The channel supports sending and receiving media (images, documents, videos, audio).
-
-### Receiving media
-
-When someone sends you a photo, video, or file on WhatsApp, the channel message includes the media URL. Claude can see the media type and download the file if needed:
-
-```xml
-<channel source="wahooks-channel" from="1234567890" message_id="msg_2">
-Check this photo
-[media: image/jpeg https://api.wahooks.com/api/connections/.../media/photo.jpeg]
-</channel>
-```
-
-The media URL points to the WAHooks media proxy, which streams the file from the internal WAHA worker. The channel authenticates automatically.
-
-### Sending media
-
-Claude can send media back using the send tools. Each media tool accepts either a public URL or a local `file_path`:
-
-```
-# By URL
-wahooks_send_image(chat_id, url="https://example.com/chart.png", caption="Here's the chart")
-
-# By local file path
-wahooks_send_image(chat_id, file_path="/tmp/screenshot.png", caption="Screenshot attached")
-wahooks_send_document(chat_id, file_path="./report.pdf", filename="report.pdf")
-```
-
-This means Claude can generate a file locally (e.g. a chart, a code snippet, a PDF) and send it directly to you on WhatsApp.
-
-## Troubleshooting
-
-**No messages appearing in Claude Code**
-- Check the channel connected: look for `[wahooks-channel] Connected to event stream` in output
-- Make sure your WhatsApp connection is in `connected` status
-- Check sender gating: if `WAHOOKS_ALLOW` is set, verify the sender's number is listed
-
-**"No connected WAHooks connections found"**
-- Create a connection and scan the QR code first
-- Or set `WAHOOKS_CONNECTION` explicitly
-
-**"No API key found"**
-- Run `wahooks-channel --configure wh_your_key`
-- Or set `WAHOOKS_API_KEY` environment variable
+</details>
