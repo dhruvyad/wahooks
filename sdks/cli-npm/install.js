@@ -47,10 +47,22 @@ async function install() {
   const ext = goos === "windows" ? ".exe" : "";
   const assetName = `wahooks-${goos}-${goarch}${ext}`;
 
-  // Find latest CLI release
-  const releasesData = await fetch(`https://api.github.com/repos/${REPO}/releases`);
-  const releases = JSON.parse(releasesData.toString());
-  const cliRelease = releases.find((r) => r.tag_name.startsWith("cli-v"));
+  // Find latest CLI release (use /releases/latest first, fall back to listing)
+  let cliRelease;
+  try {
+    const latestData = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+    const latest = JSON.parse(latestData.toString());
+    if (latest.tag_name && latest.tag_name.startsWith("cli-v")) {
+      cliRelease = latest;
+    }
+  } catch {}
+  if (!cliRelease) {
+    const releasesData = await fetch(`https://api.github.com/repos/${REPO}/releases`);
+    const releases = JSON.parse(releasesData.toString());
+    const cliReleases = releases.filter((r) => r.tag_name.startsWith("cli-v"));
+    cliReleases.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+    cliRelease = cliReleases[0];
+  }
 
   if (!cliRelease) {
     throw new Error("No CLI release found. Please install from source: https://github.com/dhruvyad/wahooks/tree/main/cli");
