@@ -222,6 +222,21 @@ print(token["token"])  # "wh_a1b2c3..."
 client.revoke_token(token_id)
 ```
 
+### Billing
+
+```python
+# Get billing status (subscription, slots)
+status = client.get_billing_status()
+print(status["slots"])  # {"paid": 5, "used": 3, "available": 2}
+
+# Programmatically scale connection slots (charges immediately)
+result = client.set_slots(10)
+print(result)
+# {"slots": 10, "status": "upgraded", "proratedAmount": 1.25, "currency": "usd"}
+```
+
+`set_slots` charges (or credits) the prorated difference immediately against the card on file. Requires an active subscription — call `checkout` first to set up billing. Maximum 100 slots per account by default; contact support for higher limits.
+
 ## Error handling
 
 The SDK raises `WAHooksError` for non-2xx responses:

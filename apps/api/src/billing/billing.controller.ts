@@ -2,12 +2,14 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Inject,
   UseGuards,
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq, ne, and } from 'drizzle-orm';
@@ -158,6 +160,55 @@ export class BillingController {
       usedSlots: activeConnections.length,
       availableSlots: available,
     };
+  }
+
+  /**
+   * Programmatically set the number of connection slots.
+   * Charges (or credits) the prorated difference immediately.
+   * Requires an active subscription — call checkout first.
+   */
+  @Put('slots')
+  async updateSlots(
+    @CurrentUser() user: { sub: string },
+    @Body() body: { quantity: number },
+  ) {
+    const quantity = body.quantity;
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      throw new BadRequestException('quantity must be a positive integer');
+    }
+    if (quantity > 100) {
+      throw new ForbiddenException(
+        'Maximum 100 slots per account. Contact support to increase your limit.',
+      );
+    }
+
+    const stripeCustomerId = await this.getStripeCustomerId(user.sub);
+    if (!stripeCustomerId) {
+      throw new BadRequestException(
+        'No billing set up. Complete checkout first to add a payment method.',
+      );
+    }
+
+    try {
+      const result = await this.stripeService.updateSlots(
+        stripeCustomerId,
+        quantity,
+      );
+
+      this.logger.log(
+        `User ${user.sub} updated slots to ${quantity} (${result.status})`,
+      );
+
+      return result;
+    } catch (error: any) {
+      // Stripe returns 402 for payment failures via error_if_incomplete
+      if (error?.statusCode === 402 || error?.type === 'StripeCardError') {
+        throw new BadRequestException(
+          'Payment failed. Please update your payment method in the billing portal.',
+        );
+      }
+      throw error;
+    }
   }
 
   private async ensureStripeCustomer(userId: string): Promise<string> {

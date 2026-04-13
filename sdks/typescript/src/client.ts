@@ -9,6 +9,8 @@ import type {
   Chat,
   Profile,
   SendResult,
+  BillingStatus,
+  SlotUpdate,
 } from './types';
 
 const DEFAULT_BASE_URL = 'https://api.wahooks.com';
@@ -267,5 +269,21 @@ export class WAHooks {
 
   async revokeToken(tokenId: string): Promise<{ success: boolean }> {
     return this.request('DELETE', `/tokens/${tokenId}`);
+  }
+
+  // --- Billing ---
+
+  /** Get billing status: subscription details, paid/used/available slots. */
+  async getBillingStatus(): Promise<BillingStatus> {
+    return this.request('GET', '/billing/status');
+  }
+
+  /**
+   * Set the number of connection slots. Charges the prorated difference
+   * immediately. Requires an active subscription (complete checkout first).
+   * @param quantity - Number of slots (1–100). Contact support for higher limits.
+   */
+  async setSlots(quantity: number): Promise<SlotUpdate> {
+    return this.request('PUT', '/billing/slots', { quantity });
   }
 }

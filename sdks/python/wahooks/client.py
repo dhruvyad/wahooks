@@ -189,6 +189,25 @@ class WAHooks:
     def revoke_token(self, token_id: str) -> Dict[str, Any]:
         return self._request("DELETE", f"/tokens/{token_id}")
 
+    # --- Billing ---
+
+    def get_billing_status(self) -> Dict[str, Any]:
+        """Get billing status: subscription details, paid/used/available slots."""
+        return self._request("GET", "/billing/status")
+
+    def set_slots(self, quantity: int) -> Dict[str, Any]:
+        """Set the number of connection slots. Charges the prorated difference immediately.
+
+        Requires an active subscription (complete checkout first).
+
+        Args:
+            quantity: Number of slots (1-100). Contact support for higher limits.
+
+        Returns:
+            ``{"slots": 10, "status": "upgraded", "proratedAmount": 1.25, "currency": "usd"}``
+        """
+        return self._request("PUT", "/billing/slots", json={"quantity": quantity})
+
 
 class WAHooksEventStream:
     """Real-time event stream over WebSocket. Auto-reconnects on disconnect.

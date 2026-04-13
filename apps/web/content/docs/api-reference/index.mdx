@@ -147,11 +147,46 @@ The `media.url` points to the [media proxy endpoint](#connections) (`/connection
 
 See the [TypeScript SDK](/docs/sdk/typescript#real-time-events) or [Python SDK](/docs/sdk/python#real-time-events) for client libraries.
 
+## Billing
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/billing/status` | Subscription and slot status |
+| `GET` | `/billing/can-create` | Check if a new connection can be created |
+| `PUT` | `/billing/slots` | Set number of connection slots (charges immediately) |
+| `POST` | `/billing/checkout` | Create Stripe checkout session (first-time setup) |
+| `POST` | `/billing/portal` | Open Stripe customer portal |
+
+### Programmatic slot management
+
+After completing checkout once (to add a payment method), you can scale slots entirely from code:
+
+```bash
+# Set to 10 slots — charges prorated difference immediately
+curl -X PUT https://api.wahooks.com/api/billing/slots \
+  -H "Authorization: Bearer wh_..." \
+  -H "Content-Type: application/json" \
+  -d '{"quantity": 10}'
+```
+
+Response:
+
+```json
+{
+  "slots": 10,
+  "status": "upgraded",
+  "proratedAmount": 2.25,
+  "currency": "usd"
+}
+```
+
+- `status`: `"upgraded"`, `"downgraded"`, or `"unchanged"`
+- `proratedAmount`: the amount charged (positive) or credited (negative) immediately
+- Maximum 100 slots per account by default. Contact support for higher limits.
+- If payment fails, the request returns 400 and the subscription remains unchanged.
+
 ## Other
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | Health check (no auth required) |
-| `GET` | `/billing/status` | Subscription and slot status |
-| `POST` | `/billing/checkout` | Create Stripe checkout session |
-| `POST` | `/billing/portal` | Open Stripe customer portal |

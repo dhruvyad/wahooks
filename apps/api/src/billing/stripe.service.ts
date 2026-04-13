@@ -164,6 +164,83 @@ export class StripeService {
     };
   }
 
+  /**
+   * Programmatically update the number of paid connection slots.
+   * Charges immediately (prorated) or fails with a 402 if payment cannot be collected.
+   */
+  async updateSlots(
+    customerId: string,
+    quantity: number,
+  ): Promise<{
+    slots: number;
+    status: string;
+    proratedAmount: number;
+    currency: string;
+  }> {
+    // Find the active subscription
+    const subs = await this.stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      limit: 1,
+    });
+
+    if (subs.data.length === 0) {
+      throw new Error('No active subscription. Complete checkout first.');
+    }
+
+    const sub = subs.data[0];
+    const item = sub.items.data[0];
+
+    if (!item) {
+      throw new Error('Subscription has no items');
+    }
+
+    const currentQty = item.quantity ?? 0;
+    if (quantity === currentQty) {
+      return {
+        slots: currentQty,
+        status: 'unchanged',
+        proratedAmount: 0,
+        currency: item.price?.currency ?? 'usd',
+      };
+    }
+
+    // Preview the proration cost
+    const preview = await this.stripe.invoices.createPreview({
+      customer: customerId,
+      subscription: sub.id,
+      subscription_details: {
+        items: [{ id: item.id, quantity }],
+        proration_behavior: 'always_invoice',
+      },
+    });
+
+    // The prorated amount (positive = charge, negative = credit)
+    const proratedAmount = (preview.amount_due ?? 0) / 100;
+
+    // Update the subscription:
+    // - always_invoice: immediately creates and pays a prorated invoice
+    // - error_if_incomplete: returns HTTP 402 if payment fails (subscription stays unchanged)
+    const updated = await this.stripe.subscriptions.update(sub.id, {
+      items: [{ id: item.id, quantity }],
+      proration_behavior: 'always_invoice',
+      payment_behavior: 'error_if_incomplete',
+    });
+
+    const newQty = updated.items.data[0]?.quantity ?? quantity;
+
+    this.logger.log(
+      `Updated slots for customer ${customerId}: ${currentQty} → ${newQty} (prorated: ${proratedAmount})`,
+    );
+
+    return {
+      slots: newQty,
+      status: quantity > currentQty ? 'upgraded' : 'downgraded',
+      proratedAmount,
+      currency: item.price?.currency ?? 'usd',
+    };
+  }
+
   constructWebhookEvent(body: Buffer, signature: string): Stripe.Event {
     const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET', '');
     return this.stripe.webhooks.constructEvent(body, signature, webhookSecret);

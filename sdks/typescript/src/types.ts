@@ -74,3 +74,26 @@ export interface ScannableConnection {
   status: string;
   qr: string | null;
 }
+
+export interface BillingStatus {
+  subscription: {
+    active: boolean;
+    status: string | null;
+    cancelAtPeriodEnd: boolean;
+    currentPeriodEnd: string | null;
+    monthlyAmount: number;
+    currency: string;
+  };
+  slots: {
+    paid: number;
+    used: number;
+    available: number;
+  };
+}
+
+export interface SlotUpdate {
+  slots: number;
+  status: 'upgraded' | 'downgraded' | 'unchanged';
+  proratedAmount: number;
+  currency: string;
+}

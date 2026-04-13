@@ -210,6 +210,21 @@ console.log(token.token); // "wh_a1b2c3..."
 await client.revokeToken(tokenId);
 ```
 
+### Billing
+
+```typescript
+// Get billing status (subscription, slots)
+const status = await client.getBillingStatus();
+console.log(status.slots); // { paid: 5, used: 3, available: 2 }
+
+// Programmatically scale connection slots (charges immediately)
+const result = await client.setSlots(10);
+console.log(result);
+// { slots: 10, status: "upgraded", proratedAmount: 1.25, currency: "usd" }
+```
+
+`setSlots` charges (or credits) the prorated difference immediately against the card on file. Requires an active subscription — call `checkout` first to set up billing. Maximum 100 slots per account by default; contact support for higher limits.
+
 ## Error handling
 
 The SDK throws `WAHooksError` for non-2xx responses:
@@ -242,6 +257,8 @@ import type {
   Chat,
   Profile,
   SendResult,
+  BillingStatus,
+  SlotUpdate,
   WAHooksOptions,
 } from '@wahooks/sdk';
 ```
