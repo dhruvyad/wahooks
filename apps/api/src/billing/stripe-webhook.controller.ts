@@ -149,6 +149,12 @@ export class StripeWebhookController {
       return;
     }
 
+    // Admin users bypass slot enforcement
+    if (user.isAdmin) {
+      this.logger.log(`User ${user.email} is admin — skipping slot enforcement`);
+      return;
+    }
+
     // Get active connections ordered by creation (newest first)
     const activeConnections = await this.db
       .select()
