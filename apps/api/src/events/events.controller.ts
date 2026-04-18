@@ -69,20 +69,24 @@ export class EventsController {
       return { received: true };
     }
 
-    // 2. Broadcast to WebSocket clients (rewrite internal media URLs to proxy)
-    const broadcastPayload = { ...(event.payload as any) };
-    if (broadcastPayload.media?.url) {
-      const filename = broadcastPayload.media.url.split('/').pop();
+    // 2. Rewrite internal WAHA media URLs to the externally-resolvable proxy URL.
+    // Applies to both WebSocket broadcasts AND outbound webhook deliveries so
+    // customers can fetch media without exposing internal WAHA worker hostnames.
+    const rewrittenPayload = { ...(event.payload as any) };
+    if (rewrittenPayload.media?.url) {
+      const filename = rewrittenPayload.media.url.split('/').pop();
       const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
-      broadcastPayload.media = {
-        ...broadcastPayload.media,
+      rewrittenPayload.media = {
+        ...rewrittenPayload.media,
         url: `${apiUrl}/api/connections/${session.id}/media/${filename}`,
       };
     }
+    const rewrittenEvent = { ...event, payload: rewrittenPayload };
+
     this.eventsGateway.broadcastEvent(session.id, session.userId, {
       event: event.event,
       connectionId: session.id,
-      payload: broadcastPayload,
+      payload: rewrittenPayload,
       timestamp: new Date().toISOString(),
     });
 
@@ -117,7 +121,7 @@ export class EventsController {
         .values({
           webhookConfigId: config.id,
           eventType: event.event,
-          payload: event,
+          payload: rewrittenEvent,
           status: 'pending',
         })
         .returning();
@@ -127,7 +131,7 @@ export class EventsController {
         url: config.url,
         signingSecret: config.signingSecret,
         eventType: event.event,
-        payload: event,
+        payload: rewrittenEvent,
         sessionId: session.id,
         logId: log.id,
       });
