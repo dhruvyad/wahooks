@@ -624,6 +624,9 @@ function connectWebSocket() {
       // Only handle "message" events (skip "message.any", "message.ack" to avoid duplicates)
       if (eventType !== "message") return;
 
+      // Ignore events from the user's other connections — this channel is bound to one
+      if (event.connectionId && event.connectionId !== connectionId) return;
+
       // Skip outbound messages (sent by us)
       if (payload.fromMe) return;
 
