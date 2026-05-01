@@ -8,6 +8,9 @@ import os
 import httpx
 from fastmcp import FastMCP, Context
 from fastmcp.server.auth.providers.supabase import SupabaseProvider
+from fastmcp.server.dependencies import get_access_token
+from mcp import McpError
+from mcp.types import ErrorData, INVALID_REQUEST
 
 API_BASE = os.environ.get("WAHOOKS_API_URL", "https://api.wahooks.com")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://fvatjlbtyegsqjuwbxxx.supabase.co")
@@ -36,13 +39,20 @@ mcp = FastMCP(
 
 
 async def _client_for_ctx(ctx: Context) -> httpx.AsyncClient:
-    """Get an HTTP client authenticated as the current user via OAuth."""
-    try:
-        request = ctx.get_http_request()
-        auth_header = request.headers.get("authorization", "")
-        token = auth_header.replace("Bearer ", "") if auth_header else ""
-    except Exception:
-        token = ""
+    """Get an HTTP client authenticated as the current user via OAuth.
+
+    Pulls the Supabase JWT from FastMCP's auth context (set by SupabaseProvider
+    after the OAuth handshake) and forwards it to the WAHooks API as a Bearer
+    token. The API's AuthGuard accepts Supabase JWTs natively.
+    """
+    access_token = get_access_token()
+    token = access_token.token if access_token else ""
+
+    if not token:
+        raise McpError(ErrorData(
+            code=INVALID_REQUEST,
+            message="Not authenticated. Complete OAuth login before calling tools.",
+        ))
 
     return httpx.AsyncClient(
         base_url=f"{API_BASE}/api",
