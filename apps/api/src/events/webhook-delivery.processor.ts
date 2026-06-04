@@ -16,7 +16,9 @@ interface WebhookJob {
   logId: string;
 }
 
-@Processor('webhook-delivery')
+// Concurrency: each worker handles up to 20 jobs in flight. Webhook delivery is
+// I/O-bound (a single slow customer endpoint shouldn't block the whole queue).
+@Processor('webhook-delivery', { concurrency: 20 })
 export class WebhookDeliveryProcessor extends WorkerHost {
   private readonly logger = new Logger(WebhookDeliveryProcessor.name);
 
