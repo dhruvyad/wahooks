@@ -49,6 +49,10 @@ export class WebhooksController {
 
   /**
    * Create a new webhook config for a connection.
+   *
+   * Idempotent on (sessionId, url): if an active config with the same URL
+   * already exists for this session, return it instead of creating a duplicate.
+   * Prevents runaway fan-out when client integrations re-register on every boot.
    */
   @Post('connections/:connectionId/webhooks')
   async createWebhook(
@@ -57,6 +61,33 @@ export class WebhooksController {
     @CurrentUser() user: { sub: string },
   ) {
     await this.verifyConnectionOwnership(connectionId, user.sub);
+
+    const [existing] = await this.db
+      .select()
+      .from(webhookConfigs)
+      .where(
+        and(
+          eq(webhookConfigs.sessionId, connectionId),
+          eq(webhookConfigs.url, dto.url),
+          eq(webhookConfigs.active, true),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      // Update events list if it changed, but keep the same row + signing secret.
+      const eventsChanged =
+        JSON.stringify(existing.events ?? []) !== JSON.stringify(dto.events ?? []);
+      if (eventsChanged) {
+        const [updated] = await this.db
+          .update(webhookConfigs)
+          .set({ events: dto.events, updatedAt: new Date() })
+          .where(eq(webhookConfigs.id, existing.id))
+          .returning();
+        return updated;
+      }
+      return existing;
+    }
 
     const signingSecret = randomBytes(32).toString('hex');
 
