@@ -1,4 +1,6 @@
-import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, UseGuards, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { eq, ne, sql, and } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
@@ -9,7 +11,12 @@ import { DRIZZLE_TOKEN } from '../database/database.module';
 @Controller('infrastructure')
 @UseGuards(AuthGuard, AdminGuard)
 export class WorkersController {
-  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: any) {}
+  private readonly logger = new Logger(WorkersController.name);
+
+  constructor(
+    @Inject(DRIZZLE_TOKEN) private readonly db: any,
+    @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
+  ) {}
 
   @Get()
   async getInfrastructureStatus(@CurrentUser() user: { sub: string }) {
@@ -77,6 +84,37 @@ export class WorkersController {
     const totalCapacity = workerInfo.reduce((sum: number, w: any) => sum + w.maxSessions, 0);
     const totalUsed = workerInfo.reduce((sum: number, w: any) => sum + w.currentSessions, 0);
 
+    // Webhook delivery queue stats (BullMQ → Redis). Counts only — cheap.
+    let webhookQueue = {
+      waiting: 0,
+      active: 0,
+      delayed: 0,
+      failed: 0,
+      completed: 0,
+      reachable: false as boolean,
+    };
+    try {
+      const counts = await this.webhookQueue.getJobCounts(
+        'waiting',
+        'active',
+        'delayed',
+        'failed',
+        'completed',
+      );
+      webhookQueue = {
+        waiting: counts.waiting ?? 0,
+        active: counts.active ?? 0,
+        delayed: counts.delayed ?? 0,
+        failed: counts.failed ?? 0,
+        completed: counts.completed ?? 0,
+        reachable: true,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to read webhook queue counts: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     return {
       workers: workerInfo,
       summary: {
@@ -93,6 +131,8 @@ export class WorkersController {
         total: userTotal,
         byStatus: userSessionsByStatus,
       },
+      webhookQueue,
+      timestamp: new Date().toISOString(),
     };
   }
 }

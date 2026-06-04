@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 
@@ -11,6 +12,15 @@ interface Worker {
   maxSessions: number;
   utilization: number;
   actualSessions: number;
+}
+
+interface WebhookQueue {
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+  completed: number;
+  reachable: boolean;
 }
 
 interface InfraStatus {
@@ -27,6 +37,15 @@ interface InfraStatus {
     total: number;
     byStatus: Record<string, number>;
   };
+  webhookQueue: WebhookQueue;
+  timestamp: string;
+}
+
+interface QueueSample {
+  t: number; // unix ms
+  waiting: number;
+  active: number;
+  failed: number;
 }
 
 function UtilizationBar({ value, max }: { value: number; max: number }) {
@@ -51,6 +70,53 @@ function UtilizationBar({ value, max }: { value: number; max: number }) {
   );
 }
 
+function Sparkline({
+  samples,
+  field,
+  color,
+}: {
+  samples: QueueSample[];
+  field: "waiting" | "active" | "failed";
+  color: string;
+}) {
+  const W = 320;
+  const H = 60;
+  if (samples.length < 2) {
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-12 w-full text-text-tertiary">
+        <text x="6" y="20" fontSize="10" fill="currentColor">
+          Collecting samples…
+        </text>
+      </svg>
+    );
+  }
+
+  const values = samples.map((s) => s[field]);
+  const max = Math.max(...values, 1);
+  const min = 0;
+  const dx = W / Math.max(samples.length - 1, 1);
+  const points = samples
+    .map((s, i) => {
+      const x = i * dx;
+      const y = H - ((s[field] - min) / (max - min || 1)) * (H - 6) - 3;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-12 w-full" preserveAspectRatio="none">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function StatusDot({ status }: { status: string }) {
   const color =
     status === "active"
@@ -68,6 +134,40 @@ export default function InfrastructurePage() {
     () => apiFetch("/api/infrastructure"),
     { revalidateInterval: 15000 }
   );
+
+  // Rolling buffer of queue samples while the page is open (last 30 min at 15s = 120 samples).
+  const MAX_SAMPLES = 120;
+  const [samples, setSamples] = useState<QueueSample[]>([]);
+  const lastTs = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!data?.webhookQueue || !data.webhookQueue.reachable) return;
+    if (data.timestamp === lastTs.current) return;
+    lastTs.current = data.timestamp;
+    setSamples((prev) => {
+      const next = [
+        ...prev,
+        {
+          t: Date.parse(data.timestamp),
+          waiting: data.webhookQueue.waiting,
+          active: data.webhookQueue.active,
+          failed: data.webhookQueue.failed,
+        },
+      ];
+      return next.length > MAX_SAMPLES ? next.slice(-MAX_SAMPLES) : next;
+    });
+  }, [data]);
+
+  // Trend over the visible window.
+  const trend = (() => {
+    if (samples.length < 2) return null;
+    const first = samples[0].waiting;
+    const last = samples[samples.length - 1].waiting;
+    const delta = last - first;
+    const minutes = (samples[samples.length - 1].t - samples[0].t) / 60_000;
+    const ratePerMin = minutes > 0 ? delta / minutes : 0;
+    return { delta, ratePerMin, minutes };
+  })();
 
   return (
     <div className="animate-fade-in max-w-4xl">
@@ -130,6 +230,76 @@ export default function InfrastructurePage() {
               max={data.summary.totalCapacity}
             />
           </div>
+
+          {/* Webhook delivery queue */}
+          <h2 className="mt-6 text-sm font-semibold text-text-primary">
+            Webhook Delivery Queue
+          </h2>
+          {!data.webhookQueue.reachable ? (
+            <p className="mt-2 text-sm text-status-error-text">
+              Queue unreachable (Redis connection failed)
+            </p>
+          ) : (
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border border-border-primary bg-bg-secondary p-4">
+                  <p className="text-2xl font-bold text-text-primary">
+                    {data.webhookQueue.waiting.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-text-tertiary">Waiting</p>
+                </div>
+                <div className="rounded-lg border border-border-primary bg-bg-secondary p-4">
+                  <p className="text-2xl font-bold text-wa-green">
+                    {data.webhookQueue.active}
+                  </p>
+                  <p className="text-xs text-text-tertiary">Active</p>
+                </div>
+                <div className="rounded-lg border border-border-primary bg-bg-secondary p-4">
+                  <p className="text-2xl font-bold text-status-warning-text">
+                    {data.webhookQueue.delayed}
+                  </p>
+                  <p className="text-xs text-text-tertiary">Delayed (retry)</p>
+                </div>
+                <div className="rounded-lg border border-border-primary bg-bg-secondary p-4">
+                  <p className="text-2xl font-bold text-status-error-text">
+                    {data.webhookQueue.failed.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-text-tertiary">Failed (DLQ)</p>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-lg border border-border-primary bg-bg-secondary p-4">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-xs font-medium text-text-secondary">
+                    Waiting over time
+                  </p>
+                  {trend && (
+                    <p className="text-[11px] text-text-tertiary">
+                      {trend.delta === 0
+                        ? "flat"
+                        : trend.delta > 0
+                          ? `+${trend.delta.toLocaleString()} jobs in ${trend.minutes.toFixed(1)}m`
+                          : `${trend.delta.toLocaleString()} jobs in ${trend.minutes.toFixed(1)}m`}
+                      <span className="ml-2">
+                        ({trend.ratePerMin > 0 ? "+" : ""}
+                        {trend.ratePerMin.toFixed(1)}/min
+                        {trend.ratePerMin < 0 ? " — clearing" : trend.ratePerMin > 0 ? " — growing" : ""})
+                      </span>
+                    </p>
+                  )}
+                </div>
+                <Sparkline
+                  samples={samples}
+                  field="waiting"
+                  color="#25D366"
+                />
+                <p className="mt-1 text-[10px] text-text-tertiary">
+                  Last {samples.length} samples (15s interval, max {MAX_SAMPLES}).
+                  Resets on page reload.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Workers */}
           <h2 className="mt-6 text-sm font-semibold text-text-primary">
