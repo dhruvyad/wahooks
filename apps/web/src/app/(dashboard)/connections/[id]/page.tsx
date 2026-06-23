@@ -121,6 +121,7 @@ export default function ConnectionDetailPage() {
   const [restarting, setRestarting] = useState(false);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(false);
   const [profile, setProfile] = useState<WaProfile | null>(null);
 
   // Send message state
@@ -251,16 +252,59 @@ export default function ConnectionDetailPage() {
   useEffect(() => {
     if (connection?.status !== "connected") return;
 
-    async function fetchConnectedData() {
-      const [meData, chatsData] = await Promise.all([
-        apiFetch(`/api/connections/${id}/me`).catch(() => null),
-        apiFetch(`/api/connections/${id}/chats`).catch(() => []),
-      ]);
-      if (meData) setProfile(meData);
-      setChats(chatsData ?? []);
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30; // ~2 min at 4s — bounds polling for genuinely-empty accounts
+
+    // Profile only needs to be fetched once.
+    apiFetch(`/api/connections/${id}/me`)
+      .then((meData) => {
+        if (!cancelled && meData) setProfile(meData);
+      })
+      .catch(() => {});
+
+    // WAHA's NOWEB engine finishes syncing chats a few seconds AFTER the session
+    // reaches WORKING. A single fetch on connect usually returns an empty list,
+    // which left the chat viewer blank until a manual refresh. Poll until chats
+    // sync in (or the account is confirmed to have none).
+    async function loadChats(): Promise<boolean> {
+      try {
+        const data = await apiFetch(`/api/connections/${id}/chats`);
+        if (!cancelled && Array.isArray(data) && data.length > 0) {
+          setChats(data);
+          return true;
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+      return false;
     }
 
-    fetchConnectedData();
+    setChatsLoading(true);
+    loadChats().then((done) => {
+      if (cancelled) return;
+      if (done) {
+        setChatsLoading(false);
+        return;
+      }
+      interval = setInterval(async () => {
+        attempts += 1;
+        const got = await loadChats();
+        // Drop the spinner after the initial sync window so a genuinely-empty
+        // account shows the empty state instead of spinning forever.
+        if (!cancelled && attempts >= 4) setChatsLoading(false);
+        if (got || attempts >= MAX_ATTEMPTS) {
+          if (interval) clearInterval(interval);
+          if (!cancelled) setChatsLoading(false);
+        }
+      }, 4000);
+    });
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
   }, [connection?.status, id]);
 
   // ESC key handler for fullscreen
@@ -634,7 +678,7 @@ export default function ConnectionDetailPage() {
           </div>
 
           {/* Mini Chat Viewer */}
-          {chats.length > 0 && (
+          {chats.length > 0 ? (
             <div
               className={`overflow-hidden bg-bg-secondary ${
                 fullscreen
@@ -990,6 +1034,22 @@ export default function ConnectionDetailPage() {
                   )}
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border-secondary bg-bg-secondary p-8 text-center">
+              {chatsLoading ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-border-primary border-t-wa-green" />
+                  <p className="text-sm text-text-tertiary">
+                    Syncing your chats…
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-text-tertiary">
+                  No chats yet. Once you send or receive a message, your chats
+                  will appear here.
+                </p>
+              )}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
 
@@ -144,17 +144,17 @@ export default function InfrastructurePage() {
     if (!data?.webhookQueue || !data.webhookQueue.reachable) return;
     if (data.timestamp === lastTs.current) return;
     lastTs.current = data.timestamp;
-    setSamples((prev) => {
-      const next = [
-        ...prev,
-        {
-          t: Date.parse(data.timestamp),
-          waiting: data.webhookQueue.waiting,
-          active: data.webhookQueue.active,
-          failed: data.webhookQueue.failed,
-        },
-      ];
-      return next.length > MAX_SAMPLES ? next.slice(-MAX_SAMPLES) : next;
+    const sample = {
+      t: Date.parse(data.timestamp),
+      waiting: data.webhookQueue.waiting,
+      active: data.webhookQueue.active,
+      failed: data.webhookQueue.failed,
+    };
+    startTransition(() => {
+      setSamples((prev) => {
+        const next = [...prev, sample];
+        return next.length > MAX_SAMPLES ? next.slice(-MAX_SAMPLES) : next;
+      });
     });
   }, [data]);
 
