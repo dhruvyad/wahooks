@@ -69,6 +69,15 @@ export class EventsController {
       return { received: true };
     }
 
+    // 1b. session.status events carry the live connection state. Reflect it in
+    // the DB immediately so SDK/web pollers (GET /connections, GET /:id) see the
+    // scan → working transition in ~100ms instead of waiting up to 3 minutes for
+    // the health cron to reconcile. WAHA pushes these because we subscribe to '*'.
+    if (event.event === 'session.status') {
+      const p = event.payload as any;
+      await this.applySessionStatus(session, p?.status, p?.me?.id);
+    }
+
     // 2. Rewrite internal WAHA media URLs to the externally-resolvable proxy URL.
     // Applies to both WebSocket broadcasts AND outbound webhook deliveries so
     // customers can fetch media without exposing internal WAHA worker hostnames.
@@ -142,5 +151,49 @@ export class EventsController {
     }
 
     return { received: true };
+  }
+
+  /**
+   * Map a live WAHA engine status onto our DB session status and persist it if
+   * it changed. Deliberately narrow: we only act on the three states that have
+   * an unambiguous DB equivalent.
+   *
+   * WAHA STOPPED is intentionally NOT handled here — our 'stopped' status means
+   * "soft-deleted by the user", which is different from WAHA pausing a session.
+   * The health cron owns the STOPPED → reset reconciliation.
+   */
+  private async applySessionStatus(
+    session: any,
+    wahaStatus: string | undefined,
+    meId: string | undefined,
+  ): Promise<void> {
+    const map: Record<string, string> = {
+      WORKING: 'working',
+      SCAN_QR_CODE: 'scan_qr',
+      FAILED: 'failed',
+    };
+    const newStatus = wahaStatus ? map[wahaStatus] : undefined;
+    if (!newStatus) return;
+
+    // Opportunistically capture the phone number if WAHA included it and we
+    // don't have it yet. If absent, the QR endpoint / health cron backfill it.
+    const phoneFromEvent = meId ? meId.replace('@c.us', '') : undefined;
+
+    const needsStatus = session.status !== newStatus;
+    const needsPhone = newStatus === 'working' && !session.phoneNumber && !!phoneFromEvent;
+    if (!needsStatus && !needsPhone) return;
+
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (needsStatus) updates.status = newStatus;
+    if (needsPhone) updates.phoneNumber = phoneFromEvent;
+
+    await this.db
+      .update(wahaSessions)
+      .set(updates)
+      .where(eq(wahaSessions.id, session.id));
+
+    this.logger.log(
+      `session.status: ${session.sessionName} ${session.status} → ${newStatus} (via WAHA event)`,
+    );
   }
 }

@@ -116,6 +116,8 @@ describe('EventsController', () => {
       const event = { event: 'session.status', session: 'u_user-123_s_abc', payload: { status: 'WORKING' } };
 
       db.where.mockResolvedValueOnce([session]);
+      // session.status WORKING on a non-working session triggers a DB status update
+      db.where.mockResolvedValueOnce([]);
       db.where.mockResolvedValueOnce([wildcardConfig]);
       db.returning.mockResolvedValueOnce([logEntry]);
 
@@ -126,6 +128,56 @@ describe('EventsController', () => {
         webhookConfigId: 'wh-wildcard',
         eventType: 'session.status',
       }));
+    });
+
+    it('should update DB status immediately on a session.status WORKING event', async () => {
+      const session = {
+        id: 'sess-1',
+        sessionName: 'u_user-123_s_abc',
+        userId: 'user-123',
+        status: 'scan_qr',
+        phoneNumber: null,
+      };
+      const event = {
+        event: 'session.status',
+        session: 'u_user-123_s_abc',
+        payload: { status: 'WORKING', me: { id: '1234567890@c.us' } },
+      };
+
+      db.where.mockResolvedValueOnce([session]); // session lookup
+      db.where.mockResolvedValueOnce([]); // applySessionStatus update
+      db.where.mockResolvedValueOnce([]); // webhook configs lookup (none)
+
+      const result = await controller.ingestWahaEvent(event);
+
+      expect(result).toEqual({ received: true });
+      expect(db.update).toHaveBeenCalled();
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'working', phoneNumber: '1234567890' }),
+      );
+    });
+
+    it('should not write to DB when session.status matches current DB status', async () => {
+      const session = {
+        id: 'sess-1',
+        sessionName: 'u_user-123_s_abc',
+        userId: 'user-123',
+        status: 'working',
+        phoneNumber: '1234567890',
+      };
+      const event = {
+        event: 'session.status',
+        session: 'u_user-123_s_abc',
+        payload: { status: 'WORKING', me: { id: '1234567890@c.us' } },
+      };
+
+      db.where.mockResolvedValueOnce([session]); // session lookup
+      db.where.mockResolvedValueOnce([]); // webhook configs lookup (none)
+
+      const result = await controller.ingestWahaEvent(event);
+
+      expect(result).toEqual({ received: true });
+      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('should not enqueue jobs when no configs match the event type', async () => {
