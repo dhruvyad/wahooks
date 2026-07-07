@@ -252,6 +252,118 @@ var connChatsCmd = &cobra.Command{
 	},
 }
 
+var connMessagesCmd = &cobra.Command{
+	Use:   "messages <id> <chat-id>",
+	Short: "Read a chat's message history (newest last)",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		chatId := normalizeChatId(args[1])
+		path := fmt.Sprintf("/api/connections/%s/chats/%s/messages", args[0], chatId)
+		limit, _ := cmd.Flags().GetInt("limit")
+		before, _ := cmd.Flags().GetString("before")
+		sep := "?"
+		if limit > 0 {
+			path += fmt.Sprintf("%slimit=%d", sep, limit)
+			sep = "&"
+		}
+		if before != "" {
+			path += sep + "before=" + before
+		}
+
+		resp, err := client.Do("GET", path, nil)
+		if err != nil {
+			return err
+		}
+
+		var page struct {
+			Messages []map[string]interface{} `json:"messages"`
+			NextBefore *string                `json:"nextBefore"`
+		}
+		if err := resp.JSON(&page); err != nil || len(page.Messages) == 0 {
+			resp.Print()
+			return nil
+		}
+
+		fmt.Println()
+		// API returns newest-first; print oldest-first so it reads like a transcript.
+		for i := len(page.Messages) - 1; i >= 0; i-- {
+			m := page.Messages[i]
+			ts := int64(0)
+			if t, ok := m["timestamp"].(float64); ok {
+				ts = int64(t)
+			}
+			when := time.Unix(ts, 0).Format("2006-01-02 15:04")
+			who := "Them"
+			if fromMe, _ := m["fromMe"].(bool); fromMe {
+				who = "You"
+			} else if pn, _ := m["senderPushName"].(string); pn != "" {
+				who = pn
+			}
+			text, _ := m["text"].(string)
+			mtype, _ := m["type"].(string)
+			if text == "" && mtype != "" && mtype != "text" {
+				text = "[" + mtype + "]"
+			}
+			color.New(color.Faint).Printf("  [%s] ", when)
+			fmt.Printf("%s: %s\n", color.New(color.FgCyan).Sprint(who), text)
+		}
+
+		fmt.Println()
+		style.Count(len(page.Messages), "message")
+		if page.NextBefore != nil {
+			style.Dim("  more history: --before %s", *page.NextBefore)
+		}
+		return nil
+	},
+}
+
+var connContactsCmd = &cobra.Command{
+	Use:   "contacts <id>",
+	Short: "List contacts (people) for a connection",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path := "/api/connections/" + args[0] + "/contacts"
+		if limit, _ := cmd.Flags().GetInt("limit"); limit > 0 {
+			path += fmt.Sprintf("?limit=%d", limit)
+		}
+		resp, err := client.Do("GET", path, nil)
+		if err != nil {
+			return err
+		}
+
+		var contacts []map[string]interface{}
+		if err := resp.JSON(&contacts); err != nil || len(contacts) == 0 {
+			resp.Print()
+			return nil
+		}
+
+		fmt.Println()
+		for _, c := range contacts {
+			if isGroup, _ := c["isGroup"].(bool); isGroup {
+				continue
+			}
+			name, _ := c["name"].(string)
+			phone, _ := c["phoneNumber"].(string)
+			jid, _ := c["jid"].(string)
+			if name == "" {
+				name = phone
+			}
+			if name == "" {
+				name = jid
+			}
+			fmt.Printf("  %s %s", color.New(color.FgCyan).Sprint("•"), name)
+			if phone != "" {
+				color.New(color.Faint).Printf(" (%s)", phone)
+			}
+			fmt.Println()
+		}
+
+		fmt.Println()
+		style.Count(len(contacts), "contact")
+		return nil
+	},
+}
+
 var connSendCmd = &cobra.Command{
 	Use:   "send <id> <phone> <message>",
 	Short: "Send a text message via a connection",
@@ -517,6 +629,9 @@ var connDeleteCmd = &cobra.Command{
 func init() {
 	connQRCmd.Flags().Bool("poll", false, "Poll until QR is available")
 	connChatsCmd.Flags().Int("limit", 20, "Max chats to display")
+	connMessagesCmd.Flags().Int("limit", 30, "Max messages to fetch")
+	connMessagesCmd.Flags().String("before", "", "Pagination cursor for older messages")
+	connContactsCmd.Flags().Int("limit", 100, "Max contacts to fetch")
 
 	connectionsCmd.AddCommand(connListCmd)
 	connectionsCmd.AddCommand(connCreateCmd)
@@ -524,6 +639,8 @@ func init() {
 	connectionsCmd.AddCommand(connQRCmd)
 	connectionsCmd.AddCommand(connMeCmd)
 	connectionsCmd.AddCommand(connChatsCmd)
+	connectionsCmd.AddCommand(connMessagesCmd)
+	connectionsCmd.AddCommand(connContactsCmd)
 	connectionsCmd.AddCommand(connSendCmd)
 	connectionsCmd.AddCommand(connSendImageCmd)
 	connectionsCmd.AddCommand(connSendDocCmd)

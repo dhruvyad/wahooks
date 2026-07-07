@@ -212,6 +212,30 @@ func runE2E(cmd *cobra.Command, args []string) error {
 		bad("GET /chats failed")
 	}
 
+	resp, _ = client.Do("GET", "/api/connections/"+connID+"/contacts", nil)
+	if resp != nil {
+		ok(fmt.Sprintf("GET /contacts: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
+	} else {
+		bad("GET /contacts failed")
+	}
+
+	// Read messages for the first chat, if any exist.
+	var e2eChats []map[string]interface{}
+	if r, _ := client.Do("GET", "/api/connections/"+connID+"/chats", nil); r != nil {
+		if err := r.JSON(&e2eChats); err == nil && len(e2eChats) > 0 {
+			if chatID, _ := e2eChats[0]["id"].(string); chatID != "" {
+				resp, _ = client.Do("GET", "/api/connections/"+connID+"/chats/"+chatID+"/messages?limit=5", nil)
+				if resp != nil {
+					ok(fmt.Sprintf("GET /messages: HTTP %d (%dms)", resp.StatusCode, resp.Duration.Milliseconds()))
+				} else {
+					bad("GET /messages failed")
+				}
+			}
+		} else {
+			skip("GET /messages (no chats to read)")
+		}
+	}
+
 	// ───────────────────────────────────────────────────────
 	// 9. Create webhook
 	// ───────────────────────────────────────────────────────
