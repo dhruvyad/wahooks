@@ -831,7 +831,7 @@ export class ConnectionsController {
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
 
-    return this.wahaService.sendText(
+    const raw = await this.wahaService.sendText(
       worker.internalIp,
       worker.apiKeyEnc,
       wahaName,
@@ -839,6 +839,27 @@ export class ConnectionsController {
       body.text,
       { skipPresence: body.skipPresence, replyTo: body.replyTo },
     );
+    return this.normalizeSendResult(raw);
+  }
+
+  /**
+   * Add a top-level, edit-ready `id` (and `timestamp`) to WAHA's raw send response.
+   * WAHA returns the Baileys `key` ({ remoteJid, id, fromMe }); the edit endpoint needs
+   * the serialized form `{fromMe}_{chatId}_{id}`. Additive — raw fields are preserved.
+   */
+  private normalizeSendResult(raw: any): any {
+    const key = raw?.key;
+    if (key?.id && key?.remoteJid) {
+      const fromMe = key.fromMe ? 'true' : 'false';
+      const jid = String(key.remoteJid).replace('@s.whatsapp.net', '@c.us');
+      const ts = Number(raw?.messageTimestamp);
+      return {
+        ...raw,
+        id: `${fromMe}_${jid}_${key.id}`,
+        timestamp: Number.isFinite(ts) ? ts : undefined,
+      };
+    }
+    return raw;
   }
 
   @Post(':id/react')

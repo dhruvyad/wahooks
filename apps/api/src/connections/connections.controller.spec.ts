@@ -457,6 +457,18 @@ describe('ConnectionsController', () => {
         ).rejects.toThrow('required');
       });
 
+      it('send returns an edit-ready serialized message id', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).sendText = jest.fn().mockResolvedValueOnce({
+          key: { remoteJid: '12066368280@s.whatsapp.net', fromMe: true, id: 'ABC123' },
+          messageTimestamp: '1783453600',
+        });
+        const res: any = await controller.sendText('sess-1', { chatId: '12066368280@c.us', text: 'hi' }, user);
+        expect(res.id).toBe('true_12066368280@c.us_ABC123');
+        expect(res.timestamp).toBe(1783453600);
+      });
+
       it('shapes contacts', async () => {
         db.where.mockResolvedValueOnce([connection]);
         workersService.getWorkerForSession.mockResolvedValueOnce(worker);
