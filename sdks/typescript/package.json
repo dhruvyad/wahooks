@@ -1,15 +1,23 @@
 {
   "name": "@wahooks/sdk",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Official WAHooks SDK for TypeScript/JavaScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["wahooks", "whatsapp", "api", "webhook", "sdk"],
+  "keywords": [
+    "wahooks",
+    "whatsapp",
+    "api",
+    "webhook",
+    "sdk"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

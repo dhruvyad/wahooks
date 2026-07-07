@@ -249,6 +249,8 @@ const mcp = new Server(
       "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
       "Reminders: use wahooks_schedule_reminder to schedule tasks (one-time or recurring via cron). Use wahooks_list_reminders and wahooks_cancel_reminder to manage them.",
       "When a reminder fires, it arrives as a <channel> event with type=\"reminder\". Execute the task described and send results to the specified chatId.",
+      "Read history: use wahooks_get_chats to list conversations, wahooks_get_messages to read a chat's message history (for questions like 'what did they say earlier' or 'summarize my chat with X'), and wahooks_get_contacts to look up contact names/numbers. Pass a chat_id or a phone number to wahooks_get_messages; page older messages with the returned 'before' cursor.",
+      "Live status updates: wahooks_send/wahooks_reply return a message_id. For long tasks, send a brief 'working on it…' first, then use wahooks_edit_message to update THAT message with progress/results as you go (within ~15 min) instead of sending many messages.",
     ].join(" "),
   }
 );
@@ -427,6 +429,53 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["reminder_id"],
       },
     },
+    {
+      name: "wahooks_get_chats",
+      description: "List recent WhatsApp conversations with names and last-message previews. Use this to find a chat before reading its history.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          limit: { type: "number", description: "Max chats to return (default 20)" },
+          unread_only: { type: "boolean", description: "Only return chats marked unread" },
+        },
+      },
+    },
+    {
+      name: "wahooks_get_messages",
+      description: "Read a chat's message history (newest last). Use for questions like 'what did they say earlier' or 'summarize my chat with X'. Pass a chat_id (from a channel event or wahooks_get_chats) or a phone number.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          chat_id: { type: "string", description: "Chat ID / JID, or a phone number" },
+          limit: { type: "number", description: "Max messages to return (default 30)" },
+          before: { type: "string", description: "Pagination cursor from a previous call to fetch older messages" },
+        },
+        required: ["chat_id"],
+      },
+    },
+    {
+      name: "wahooks_get_contacts",
+      description: "List WhatsApp contacts (people) with names and phone numbers. Use to look up who someone is or find a number.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          limit: { type: "number", description: "Max contacts to return (default 100)" },
+        },
+      },
+    },
+    {
+      name: "wahooks_edit_message",
+      description: "Edit the text of a message you already sent. Great for live status updates: send 'working on it…', then edit that message with the result as you progress. Note: WhatsApp only allows editing your OWN messages within ~15 minutes of sending — after that, send a new message instead. wahooks_send/wahooks_reply return the message_id to use here.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          message_id: { type: "string", description: "The id of the message to edit (returned by wahooks_send/wahooks_reply)" },
+          chat_id: { type: "string", description: "Chat ID / JID the message is in, or a phone number" },
+          text: { type: "string", description: "The new message text" },
+        },
+        required: ["message_id", "chat_id", "text"],
+      },
+    },
   ],
 }));
 
@@ -457,8 +506,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         skipPresence: true,
       };
       if (args.reply_to) sendBody.replyTo = args.reply_to;
-      await api("POST", `/connections/${connectionId}/send`, sendBody);
-      return { content: [{ type: "text" as const, text: `Sent to ${args.to}` }] };
+      const sent = await api<{ id?: string }>("POST", `/connections/${connectionId}/send`, sendBody);
+      const idNote = sent?.id ? ` (message_id: ${sent.id} — edit within ~15 min with wahooks_edit_message)` : "";
+      return { content: [{ type: "text" as const, text: `Sent to ${args.to}${idNote}` }] };
     }
 
     case "wahooks_react": {
@@ -574,6 +624,79 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       writeReminders(reminders);
       console.error(`[wahooks-channel] Cancelled reminder ${id}`);
       return { content: [{ type: "text" as const, text: `Reminder ${id} cancelled.` }] };
+    }
+
+    case "wahooks_get_chats": {
+      const limit = Number(args.limit) > 0 ? Number(args.limit) : 20;
+      const rawUnread = (args as Record<string, unknown>).unread_only;
+      const unreadOnly = rawUnread === true || rawUnread === "true";
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (unreadOnly) qs.set("unread_only", "true");
+      const chats = await api<any[]>("GET", `/connections/${connectionId}/chats?${qs}`);
+      if (!chats.length) {
+        return { content: [{ type: "text" as const, text: "No chats found." }] };
+      }
+      const lines = chats.map((c) => {
+        const kind = c.isGroup ? "group" : "dm";
+        const unread = c.unread ? " [unread]" : "";
+        const last = c.lastMessage?.body
+          ? ` — last: "${String(c.lastMessage.body).replace(/\s+/g, " ").slice(0, 80)}"`
+          : "";
+        return `• ${c.name || c.id} (${kind})${unread}\n  id: ${c.id}${last}`;
+      });
+      return { content: [{ type: "text" as const, text: `Chats:\n${lines.join("\n")}` }] };
+    }
+
+    case "wahooks_get_messages": {
+      const chatId = toChatId(args.chat_id);
+      const limit = Number(args.limit) > 0 ? Number(args.limit) : 30;
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (args.before) qs.set("before", args.before);
+      const page = await api<{ messages: any[]; nextBefore: string | null; historyStartsAt: number | null }>(
+        "GET",
+        `/connections/${connectionId}/chats/${encodeURIComponent(chatId)}/messages?${qs}`,
+      );
+      if (!page.messages.length) {
+        return { content: [{ type: "text" as const, text: `No messages in ${args.chat_id}.` }] };
+      }
+      // API returns newest-first; present oldest-first so it reads like a transcript.
+      const chrono = [...page.messages].reverse();
+      const lines = chrono.map((m) => {
+        const when = new Date((m.timestamp ?? 0) * 1000).toISOString().slice(0, 16).replace("T", " ");
+        const who = m.fromMe ? "You" : (m.senderPushName || m.senderJid || "Them");
+        const media = m.media ? ` [${m.type}: ${m.media.mimetype ?? "media"}]` : "";
+        const body = m.text ? String(m.text).replace(/\n/g, " ⏎ ") : (m.media ? "" : "(no text)");
+        return `[${when}] ${who}: ${body}${media}`;
+      });
+      const footer = page.nextBefore
+        ? `\n\n(more history available — call again with before="${page.nextBefore}")`
+        : `\n\n(start of history)`;
+      return { content: [{ type: "text" as const, text: `Messages in ${args.chat_id}:\n${lines.join("\n")}${footer}` }] };
+    }
+
+    case "wahooks_edit_message": {
+      const chatId = toChatId(args.chat_id);
+      try {
+        await api("PUT", `/connections/${connectionId}/messages/${encodeURIComponent(args.message_id)}`, {
+          chatId,
+          text: args.text,
+        });
+        return { content: [{ type: "text" as const, text: `Edited message ${args.message_id}` }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Could not edit message (WhatsApp only allows editing your own messages within ~15 min). Send a new message instead. ${err instanceof Error ? err.message : ""}` }] };
+      }
+    }
+
+    case "wahooks_get_contacts": {
+      const limit = Number(args.limit) > 0 ? Number(args.limit) : 100;
+      const contacts = await api<any[]>("GET", `/connections/${connectionId}/contacts?limit=${limit}`);
+      if (!contacts.length) {
+        return { content: [{ type: "text" as const, text: "No contacts found." }] };
+      }
+      const lines = contacts
+        .filter((c) => !c.isGroup)
+        .map((c) => `• ${c.name || c.phoneNumber || c.jid}${c.phoneNumber ? ` (${c.phoneNumber})` : ""}\n  jid: ${c.jid}`);
+      return { content: [{ type: "text" as const, text: `Contacts:\n${lines.join("\n")}` }] };
     }
 
     default:

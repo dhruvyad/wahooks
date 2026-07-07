@@ -355,6 +355,25 @@ export class WahaService {
   }
 
   /**
+   * Edit the text of a previously-sent message. WhatsApp only allows editing your
+   * own messages within ~15 minutes; WAHA returns an error otherwise.
+   */
+  async editMessage(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    messageId: string,
+    text: string,
+  ): Promise<any> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}`,
+    );
+    return this.request<any>('PUT', url, this.buildHeaders(apiKey), { text });
+  }
+
+  /**
    * Fetch a single message by id. WAHA keys messages under a chat, so chatId is required.
    */
   async getMessage(

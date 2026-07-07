@@ -58,6 +58,7 @@ describe('ConnectionsController', () => {
       getContacts: jest.fn(),
       getMessages: jest.fn(),
       getMessage: jest.fn(),
+      editMessage: jest.fn(),
     } as any;
 
     configService = {
@@ -430,6 +431,30 @@ describe('ConnectionsController', () => {
     describe('getMessage / contacts', () => {
       it('requires chatId', async () => {
         await expect(controller.getMessage('sess-1', 'mid', user)).rejects.toThrow('chatId');
+      });
+
+      it('edits a message via wahaService.editMessage', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).editMessage.mockResolvedValueOnce({});
+        const res = await controller.editMessage('sess-1', 'msg-1', { chatId: '111@g.us', text: 'updated' }, user);
+        expect(res).toEqual({ success: true });
+        expect((wahaService as any).editMessage).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '111@g.us', 'msg-1', 'updated');
+      });
+
+      it('surfaces a friendly error when edit fails (e.g. >15 min)', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).editMessage.mockRejectedValueOnce(new Error('too old'));
+        await expect(
+          controller.editMessage('sess-1', 'msg-1', { chatId: '111@g.us', text: 'x' }, user),
+        ).rejects.toThrow('15 minutes');
+      });
+
+      it('requires chatId and text for edit', async () => {
+        await expect(
+          controller.editMessage('sess-1', 'msg-1', { chatId: '', text: 'x' } as any, user),
+        ).rejects.toThrow('required');
       });
 
       it('shapes contacts', async () => {

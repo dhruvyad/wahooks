@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Param,
@@ -690,6 +691,35 @@ export class ConnectionsController {
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new NotFoundException('Message not found');
+    }
+  }
+
+  @Put(':id/messages/:messageId')
+  async editMessage(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() body: { chatId: string; text: string },
+    @CurrentUser() user: { sub: string },
+  ) {
+    if (!body?.chatId || typeof body?.text !== 'string') {
+      throw new BadRequestException('chatId and text are required');
+    }
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    try {
+      await this.wahaService.editMessage(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+        body.chatId,
+        messageId,
+        body.text,
+      );
+      return { success: true };
+    } catch {
+      // WhatsApp only allows editing your own messages within ~15 minutes.
+      throw new BadRequestException(
+        'Could not edit message. WhatsApp only allows editing your own messages within ~15 minutes of sending.',
+      );
     }
   }
 

@@ -140,6 +140,18 @@ class WAHooks:
             params={"limit": limit, "offset": offset},
         )
 
+    def edit_message(self, connection_id: str, message_id: str, chat_id: str, text: str) -> Dict[str, Any]:
+        """Edit the text of a message you already sent.
+
+        WhatsApp only allows editing your own messages within ~15 minutes of sending;
+        raises ``WAHooksError`` otherwise.
+        """
+        return self._request(
+            "PUT",
+            f"/connections/{connection_id}/messages/{message_id}",
+            json={"chatId": chat_id, "text": text},
+        )
+
     def get_profile(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}/me")
 

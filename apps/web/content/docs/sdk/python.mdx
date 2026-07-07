@@ -247,6 +247,12 @@ resp = httpx.get(url, headers={"Authorization": f"Bearer {api_key}"})
 
 # Contacts (people)
 contacts = client.get_contacts(connection_id)
+
+# Edit a message you sent — great for live status updates.
+# send_message returns the message id.
+sent = client.send_message(connection_id, chat_id="...", text="Working on it…")
+client.edit_message(connection_id, sent["id"], chat_id="...", text="Done ✅ — here is the result")
+# WhatsApp only allows editing your own messages within ~15 minutes.
 ```
 
 <Callout type="warn">

@@ -53,6 +53,43 @@ Claude can send and receive all message types:
 | `wahooks_send_location` | Send a location pin |
 | `wahooks_send_contact` | Send a contact card |
 
+### Reading history
+
+Claude can pull conversation history and contacts — so it can answer things like "summarize my chat with Mom" or "what did the group decide yesterday?":
+
+| Tool | Description |
+|------|-------------|
+| `wahooks_get_chats` | List conversations with names + last-message previews (`limit`, `unread_only`) |
+| `wahooks_get_messages` | Read a chat's message history. Pass a `chat_id` or phone number; page older messages with the returned `before` cursor |
+| `wahooks_get_contacts` | List contacts (people) with names and phone numbers |
+
+<Callout type="warn">
+  History reads WhatsApp's live store: media may be unavailable for older messages, history
+  reaches back only to the sync at pairing time, and there is no server-side search.
+</Callout>
+
+### Editing messages (live status updates)
+
+| Tool | Description |
+|------|-------------|
+| `wahooks_edit_message` | Edit the text of a message Claude already sent |
+
+`wahooks_send` / `wahooks_reply` return a `message_id`. For a long task, Claude can send a quick
+"working on it…", then **edit that same message** with progress and the final result — instead of
+flooding the chat with new messages:
+
+```
+You: research the best flights to Tokyo next month
+Claude → sends "🔎 Working on it…"       (message_id returned)
+Claude → edits →  "🔎 Checking 40 routes…"
+Claude → edits →  "✅ Cheapest: ANA $612, Mar 12–19. Full options below 👇"
+```
+
+<Callout type="warn">
+  WhatsApp only allows editing your **own** messages within **~15 minutes** of sending. After
+  that, `wahooks_edit_message` fails and Claude should send a new message instead.
+</Callout>
+
 ### Receiving media
 
 When someone sends a photo, video, or file, the channel downloads it locally so Claude can view or process it:

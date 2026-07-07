@@ -234,6 +234,12 @@ const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } })
 
 // Contacts (people)
 const contacts = await client.getContacts(connectionId);
+
+// Edit a message you sent — great for live status updates.
+// sendMessage returns the message id.
+const sent = await client.sendMessage(connectionId, chatId, 'Working on it…');
+await client.editMessage(connectionId, sent.id, chatId, 'Done ✅ — here is the result');
+// WhatsApp only allows editing your own messages within ~15 minutes.
 ```
 
 <Callout type="warn">

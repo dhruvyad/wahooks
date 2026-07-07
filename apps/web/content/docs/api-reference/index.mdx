@@ -118,8 +118,11 @@ message's timestamp — use it to distinguish "no messages" from "history doesn'
 | `POST` | `/connections/:id/send-location` | Send a location pin |
 | `POST` | `/connections/:id/send-contact` | Send a contact card |
 | `POST` | `/connections/:id/react` | React to a message with an emoji |
+| `PUT` | `/connections/:id/messages/:messageId` | Edit a sent message's text (`{ chatId, text }`) |
 
 The `send` endpoint accepts an optional `replyTo` field (message ID) to quote a specific message.
+
+Editing is subject to WhatsApp's rules: you can only edit **your own** messages, within **~15 minutes** of sending. Later edits return 400. The `send` endpoints return the new message's `id`, which you pass to the edit endpoint.
 
 All send endpoints include human-like presence by default (read receipt, typing indicator, random delay). Pass `skipPresence: true` in the request body to disable this when handling presence yourself.
 

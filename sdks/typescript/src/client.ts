@@ -201,6 +201,14 @@ export class WAHooks {
     return this.request('GET', `/connections/${connectionId}/contacts${suffix}`);
   }
 
+  /**
+   * Edit the text of a message you already sent. WhatsApp only allows editing your
+   * own messages within ~15 minutes of sending; throws WAHooksError otherwise.
+   */
+  async editMessage(connectionId: string, messageId: string, chatId: string, text: string): Promise<{ success: boolean }> {
+    return this.request('PUT', `/connections/${connectionId}/messages/${encodeURIComponent(messageId)}`, { chatId, text });
+  }
+
   async getProfile(connectionId: string): Promise<Profile> {
     return this.request('GET', `/connections/${connectionId}/me`);
   }
