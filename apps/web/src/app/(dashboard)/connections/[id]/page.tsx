@@ -164,10 +164,13 @@ export default function ConnectionDetailPage() {
     setMessages([]);
 
     apiFetch(`/api/connections/${id}/chats/${encodeURIComponent(selectedChat.id)}/messages`)
-      .then((msgs: any) => {
-        if (!cancelled && Array.isArray(msgs)) {
-          // Messages come newest first, reverse for display
-          setMessages(msgs.reverse());
+      .then((res: any) => {
+        // Endpoint returns { messages, nextBefore, historyStartsAt }; older builds
+        // returned a bare array — handle both.
+        const list = Array.isArray(res) ? res : (res?.messages ?? []);
+        if (!cancelled && Array.isArray(list)) {
+          // Messages come newest first, reverse for chronological display
+          setMessages([...list].reverse());
           setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
         }
       })
@@ -804,7 +807,8 @@ export default function ConnectionDetailPage() {
                           <>
                             {messages.map((msg, i) => {
                               const isMe = msg.fromMe;
-                              const body = msg.body || "";
+                              // Canonical messages use `text`; optimistic/legacy use `body`.
+                              const body = msg.text || msg.body || "";
                               if (!body) return null;
                               const time = msg.timestamp
                                 ? new Date(msg.timestamp * 1000).toLocaleTimeString([], {
