@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Param,
+  Query,
   Body,
   Inject,
   UseGuards,
@@ -12,6 +13,7 @@ import {
   NotFoundException,
   ForbiddenException,
   ServiceUnavailableException,
+  BadRequestException,
   Header,
   StreamableFile,
 } from '@nestjs/common';
@@ -48,6 +50,117 @@ export class ConnectionsController {
 
   private mapConnection(conn: any): any {
     return { ...conn, status: this.mapStatus(conn.status) };
+  }
+
+  // --- Read-API shaping helpers (normalize WAHA payloads into our canonical types) ---
+
+  private clampLimit(raw: string | undefined, def: number, max: number): number {
+    const n = parseInt(raw ?? '', 10);
+    if (!Number.isFinite(n) || n <= 0) return def;
+    return Math.min(n, max);
+  }
+
+  /** Opaque cursor = base64url of a numeric offset. */
+  private encodeCursor(offset: number): string {
+    return Buffer.from(String(offset)).toString('base64url');
+  }
+
+  private decodeCursor(before: string | undefined): number {
+    if (!before) return 0;
+    const n = parseInt(Buffer.from(before, 'base64url').toString('utf8'), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  /** Rewrite an internal WAHA media URL to our authenticated media-proxy URL. */
+  private mediaProxyUrl(sessionId: string, wahaMediaUrl: string): string {
+    const filename = wahaMediaUrl.split('/').pop();
+    const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
+    return `${apiUrl}/api/connections/${sessionId}/media/${filename}`;
+  }
+
+  private normalizeJid(jid: string | null | undefined): string | null {
+    if (!jid) return null;
+    // Strip device suffix: "918383880642:3@s.whatsapp.net" -> "918383880642@s.whatsapp.net"
+    return jid.replace(/:\d+@/, '@');
+  }
+
+  private deriveMessageType(raw: any): string {
+    if (raw?.location) return 'location';
+    if (raw?.vCards) return 'contact';
+    const mime: string | undefined = raw?.media?.mimetype;
+    if (raw?.hasMedia && mime) {
+      if (mime.startsWith('image/')) return 'image';
+      if (mime.startsWith('video/')) return 'video';
+      if (mime.startsWith('audio/')) return 'audio';
+      return 'document';
+    }
+    return 'text';
+  }
+
+  private mapMessage(raw: any, sessionId: string, chatIdFallback?: string): any {
+    const participant =
+      raw?._data?.participant ?? raw?._data?.key?.participant ?? null;
+    const senderJid = raw?.fromMe
+      ? null
+      : this.normalizeJid(participant ?? raw?.from ?? null);
+    const quoted = raw?.replyTo;
+    const quotedMessageId =
+      typeof quoted === 'string' ? quoted : (quoted?.id ?? null);
+    const media =
+      raw?.hasMedia && raw?.media?.url
+        ? {
+            url: this.mediaProxyUrl(sessionId, raw.media.url),
+            mimetype: raw.media.mimetype,
+            filename: raw.media.filename,
+            size: raw.media.size,
+          }
+        : null;
+
+    return {
+      id: raw?.id,
+      chatId: raw?.from ?? chatIdFallback ?? null,
+      timestamp: raw?.timestamp,
+      fromMe: !!raw?.fromMe,
+      senderJid,
+      senderPushName: raw?._data?.pushName ?? raw?._data?.notifyName ?? null,
+      type: this.deriveMessageType(raw),
+      text: raw?.body ?? null,
+      quotedMessageId,
+      media,
+    };
+  }
+
+  private mapChat(raw: any): any {
+    const id: string = raw?.id;
+    const lm = raw?.lastMessage;
+    return {
+      id,
+      name: raw?.name ?? null,
+      isGroup: typeof id === 'string' && id.endsWith('@g.us'),
+      lastMessage: lm
+        ? { body: lm.body ?? null, timestamp: lm.timestamp, fromMe: !!lm.fromMe }
+        : null,
+      unread: !!(
+        raw?._chat?.markedAsUnread || (raw?._chat?.unreadMentionCount ?? 0) > 0
+      ),
+    };
+  }
+
+  private mapContact(raw: any): any {
+    const id: string = raw?.id;
+    const phoneRaw: string | undefined = raw?.phoneNumber;
+    let phoneNumber: string | null = null;
+    if (phoneRaw) {
+      phoneNumber = phoneRaw.replace(/@.*/, '');
+    } else if (typeof id === 'string' && id.endsWith('@c.us')) {
+      phoneNumber = id.replace('@c.us', '');
+    }
+    return {
+      jid: id,
+      name: raw?.name ?? null,
+      phoneNumber,
+      isGroup: typeof id === 'string' && id.endsWith('@g.us'),
+    };
   }
 
   @Get()
@@ -411,6 +524,9 @@ export class ConnectionsController {
   async getChats(
     @Param('id') id: string,
     @CurrentUser() user: { sub: string },
+    @Query('limit') limitRaw?: string,
+    @Query('offset') offsetRaw?: string,
+    @Query('unread_only') unreadOnly?: string,
   ) {
     const [connection] = await this.db
       .select()
@@ -435,12 +551,59 @@ export class ConnectionsController {
       connection.sessionName,
     );
 
+    const limit = this.clampLimit(limitRaw, 50, 100);
+    const offset = Math.max(0, parseInt(offsetRaw ?? '0', 10) || 0);
+
     try {
-      return await this.wahaService.getChats(
+      const raw = await this.wahaService.getChatsOverview(
         worker.internalIp,
         worker.apiKeyEnc,
         wahaName,
+        limit,
+        offset,
       );
+      let chats = (raw ?? []).map((c) => this.mapChat(c));
+      if (unreadOnly === 'true' || unreadOnly === '1') {
+        chats = chats.filter((c) => c.unread);
+      }
+      return chats;
+    } catch {
+      return [];
+    }
+  }
+
+  @Get(':id/contacts')
+  async getContacts(
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string },
+    @Query('limit') limitRaw?: string,
+    @Query('offset') offsetRaw?: string,
+  ) {
+    const [connection] = await this.db
+      .select()
+      .from(wahaSessions)
+      .where(eq(wahaSessions.id, id));
+
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userId !== user.sub)
+      throw new ForbiddenException('You do not own this connection');
+
+    const worker = await this.workersService.getWorkerForSession(id);
+    if (!worker) return [];
+
+    const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
+    const limit = this.clampLimit(limitRaw, 500, 2000);
+    const offset = Math.max(0, parseInt(offsetRaw ?? '0', 10) || 0);
+
+    try {
+      const raw = await this.wahaService.getContacts(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+        limit,
+        offset,
+      );
+      return (raw ?? []).map((c) => this.mapContact(c));
     } catch {
       return [];
     }
@@ -451,6 +614,8 @@ export class ConnectionsController {
     @Param('id') id: string,
     @Param('chatId') chatId: string,
     @CurrentUser() user: { sub: string },
+    @Query('limit') limitRaw?: string,
+    @Query('before') before?: string,
   ) {
     const [connection] = await this.db
       .select()
@@ -465,26 +630,105 @@ export class ConnectionsController {
       throw new ForbiddenException('You do not own this connection');
     }
 
-    const worker = await this.workersService.getWorkerForSession(id);
+    const empty = { messages: [], nextBefore: null, historyStartsAt: null };
 
-    if (!worker) {
-      return [];
-    }
+    const worker = await this.workersService.getWorkerForSession(id);
+    if (!worker) return empty;
 
     const wahaName = this.wahaService.resolveSessionName(
       connection.sessionName,
     );
 
+    const limit = this.clampLimit(limitRaw, 50, 200);
+    const offset = this.decodeCursor(before);
+
     try {
-      return await this.wahaService.getMessages(
+      const raw = await this.wahaService.getMessages(
         worker.internalIp,
         worker.apiKeyEnc,
         wahaName,
         chatId,
+        limit,
+        offset,
+      );
+      const rows = raw ?? [];
+      const messages = rows.map((m) => this.mapMessage(m, id, chatId));
+      // Messages are newest-first. A short page means we hit the bottom of history.
+      const reachedEnd = rows.length < limit;
+      const oldest = messages.length ? messages[messages.length - 1] : null;
+      return {
+        messages,
+        nextBefore: reachedEnd ? null : this.encodeCursor(offset + limit),
+        historyStartsAt: reachedEnd && oldest ? oldest.timestamp : null,
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  @Get(':id/messages/:messageId')
+  async getMessage(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: { sub: string },
+    @Query('chatId') chatId?: string,
+  ) {
+    if (!chatId) {
+      throw new BadRequestException('chatId query param is required');
+    }
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    try {
+      const raw = await this.wahaService.getMessage(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+        chatId,
+        messageId,
+      );
+      if (!raw) throw new NotFoundException('Message not found');
+      return this.mapMessage(raw, id, chatId);
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      throw new NotFoundException('Message not found');
+    }
+  }
+
+  @Get(':id/messages/:messageId/media')
+  async getMessageMedia(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: { sub: string },
+    @Query('chatId') chatId?: string,
+  ): Promise<StreamableFile> {
+    if (!chatId) {
+      throw new BadRequestException('chatId query param is required');
+    }
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+
+    let raw: any;
+    try {
+      raw = await this.wahaService.getMessage(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+        chatId,
+        messageId,
       );
     } catch {
-      return [];
+      throw new NotFoundException('Message not found');
     }
+
+    const wahaMediaUrl: string | undefined = raw?.media?.url;
+    if (!raw?.hasMedia || !wahaMediaUrl) {
+      throw new NotFoundException('Message has no media');
+    }
+
+    const filename = wahaMediaUrl.split('/').pop();
+    if (!filename) throw new NotFoundException('Media not found');
+
+    // Media lives on the worker's local disk and keys expire — a 404 here means
+    // it has aged out (proxy-only; no durable blob store in this phase).
+    return this.streamWorkerFile(worker, wahaName, filename);
   }
 
   @Get(':id/me')
@@ -597,8 +841,15 @@ export class ConnectionsController {
     }
 
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    return this.streamWorkerFile(worker, wahaName, filename);
+  }
 
-    // Fetch from WAHA worker's internal file endpoint
+  /** Fetch a media file from a WAHA worker's local file endpoint and return it as a stream. */
+  private async streamWorkerFile(
+    worker: any,
+    wahaName: string,
+    filename: string,
+  ): Promise<StreamableFile> {
     const wahaUrl = `http://${worker.internalIp}:3000/api/files/${encodeURIComponent(wahaName)}/${encodeURIComponent(filename)}`;
     const wahaRes = await fetch(wahaUrl, {
       headers: { 'X-Api-Key': worker.apiKeyEnc },
@@ -610,7 +861,6 @@ export class ConnectionsController {
 
     const contentType = wahaRes.headers.get('content-type') || 'application/octet-stream';
 
-    // Convert web ReadableStream to Node Buffer
     const chunks: Uint8Array[] = [];
     const reader = wahaRes.body.getReader();
     let done = false;
@@ -619,9 +869,8 @@ export class ConnectionsController {
       done = result.done;
       if (result.value) chunks.push(result.value);
     }
-    const buffer = Buffer.concat(chunks);
 
-    return new StreamableFile(buffer, { type: contentType });
+    return new StreamableFile(Buffer.concat(chunks), { type: contentType });
   }
 
   @Post(':id/mark-read')

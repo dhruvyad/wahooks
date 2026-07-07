@@ -11,6 +11,9 @@ import type {
   SendResult,
   BillingStatus,
   SlotUpdate,
+  Message,
+  MessagePage,
+  Contact,
 } from './types';
 
 const DEFAULT_BASE_URL = 'https://api.wahooks.com';
@@ -153,8 +156,49 @@ export class WAHooks {
     return this.request('GET', `/connections/${connectionId}/qr`);
   }
 
-  async getChats(connectionId: string): Promise<Chat[]> {
-    return this.request('GET', `/connections/${connectionId}/chats`);
+  /** List chats, enriched with name, isGroup, lastMessage preview, and unread. */
+  async getChats(connectionId: string, options?: { limit?: number; offset?: number; unreadOnly?: boolean }): Promise<Chat[]> {
+    const qs = new URLSearchParams();
+    if (options?.limit != null) qs.set('limit', String(options.limit));
+    if (options?.offset != null) qs.set('offset', String(options.offset));
+    if (options?.unreadOnly) qs.set('unread_only', 'true');
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return this.request('GET', `/connections/${connectionId}/chats${suffix}`);
+  }
+
+  /**
+   * Get a page of messages for a chat, newest-first. Pass the returned `nextBefore`
+   * as `before` to page into older history. `historyStartsAt` is set only once
+   * history is exhausted.
+   */
+  async getMessages(connectionId: string, chatId: string, options?: { limit?: number; before?: string }): Promise<MessagePage> {
+    const qs = new URLSearchParams();
+    if (options?.limit != null) qs.set('limit', String(options.limit));
+    if (options?.before) qs.set('before', options.before);
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return this.request('GET', `/connections/${connectionId}/chats/${encodeURIComponent(chatId)}/messages${suffix}`);
+  }
+
+  /** Get a single message by id. `chatId` is required (WAHA keys messages under a chat). */
+  async getMessage(connectionId: string, messageId: string, chatId: string): Promise<Message> {
+    return this.request('GET', `/connections/${connectionId}/messages/${encodeURIComponent(messageId)}?chatId=${encodeURIComponent(chatId)}`);
+  }
+
+  /**
+   * Authenticated media-proxy URL for a message's media. Fetch it with the same
+   * `Authorization: Bearer` header. May 404 for older messages (media keys expire).
+   */
+  getMediaUrl(connectionId: string, messageId: string, chatId: string): string {
+    return `${this.baseUrl}/api/connections/${connectionId}/messages/${encodeURIComponent(messageId)}/media?chatId=${encodeURIComponent(chatId)}`;
+  }
+
+  /** List contacts (people): jid, name, phoneNumber, isGroup. */
+  async getContacts(connectionId: string, options?: { limit?: number; offset?: number }): Promise<Contact[]> {
+    const qs = new URLSearchParams();
+    if (options?.limit != null) qs.set('limit', String(options.limit));
+    if (options?.offset != null) qs.set('offset', String(options.offset));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return this.request('GET', `/connections/${connectionId}/contacts${suffix}`);
   }
 
   async getProfile(connectionId: string): Promise<Profile> {

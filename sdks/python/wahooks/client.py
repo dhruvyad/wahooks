@@ -54,8 +54,10 @@ class WAHooks:
     def __exit__(self, *args: Any) -> None:
         self.close()
 
-    def _request(self, method: str, path: str, json: Any = None) -> Any:
-        response = self._http.request(method, path, json=json)
+    def _request(self, method: str, path: str, json: Any = None, params: Optional[Dict[str, Any]] = None) -> Any:
+        # Drop None-valued query params
+        clean_params = {k: v for k, v in (params or {}).items() if v is not None} or None
+        response = self._http.request(method, path, json=json, params=clean_params)
         data = response.json() if response.content else None
         if not response.is_success:
             message = data.get("message", response.reason_phrase) if isinstance(data, dict) else response.reason_phrase
@@ -90,8 +92,53 @@ class WAHooks:
     def get_qr(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}/qr")
 
-    def get_chats(self, connection_id: str) -> List[Dict[str, Any]]:
-        return self._request("GET", f"/connections/{connection_id}/chats")
+    def get_chats(self, connection_id: str, *, limit: Optional[int] = None, offset: Optional[int] = None, unread_only: bool = False) -> List[Dict[str, Any]]:
+        """List chats, enriched with ``name``, ``isGroup``, ``lastMessage`` preview, and ``unread``.
+
+        Set ``unread_only=True`` to return only chats marked unread (best-effort).
+        """
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        if unread_only:
+            params["unread_only"] = "true"
+        return self._request("GET", f"/connections/{connection_id}/chats", params=params)
+
+    def get_messages(self, connection_id: str, chat_id: str, *, limit: int = 50, before: Optional[str] = None) -> Dict[str, Any]:
+        """Get a page of messages for a chat, newest-first.
+
+        Returns ``{"messages": [...], "nextBefore": str|None, "historyStartsAt": int|None}``.
+        Pass the returned ``nextBefore`` as ``before`` to fetch the next (older) page.
+        ``historyStartsAt`` is set (to the oldest message timestamp) only once history is exhausted.
+        """
+        return self._request(
+            "GET",
+            f"/connections/{connection_id}/chats/{chat_id}/messages",
+            params={"limit": limit, "before": before},
+        )
+
+    def get_message(self, connection_id: str, message_id: str, chat_id: str) -> Dict[str, Any]:
+        """Get a single message by id. ``chat_id`` is required (WAHA keys messages under a chat)."""
+        return self._request(
+            "GET",
+            f"/connections/{connection_id}/messages/{message_id}",
+            params={"chatId": chat_id},
+        )
+
+    def get_media_url(self, connection_id: str, message_id: str, chat_id: str) -> str:
+        """Return the authenticated media-proxy URL for a message's media.
+
+        Fetch it with the same ``Authorization: Bearer`` header as other calls. It may 404
+        for older messages (media keys expire; no durable blob store in this phase).
+        """
+        base = self.base_url
+        return f"{base}/api/connections/{connection_id}/messages/{message_id}/media?chatId={chat_id}"
+
+    def get_contacts(self, connection_id: str, *, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Dict[str, Any]]:
+        """List contacts (people): ``jid``, ``name``, ``phoneNumber``, ``isGroup``."""
+        return self._request(
+            "GET",
+            f"/connections/{connection_id}/contacts",
+            params={"limit": limit, "offset": offset},
+        )
 
     def get_profile(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}/me")

@@ -222,6 +222,38 @@ print(token["token"])  # "wh_a1b2c3..."
 client.revoke_token(token_id)
 ```
 
+### Message history & contacts
+
+```python
+# Enriched chats: name, isGroup, lastMessage preview, unread
+chats = client.get_chats(connection_id, limit=50, unread_only=False)
+print(chats[0]["name"], (chats[0].get("lastMessage") or {}).get("body"))
+
+# Page through a chat's messages (newest-first)
+page = client.get_messages(connection_id, chat_id, limit=50)
+messages = page["messages"]
+while page["nextBefore"]:
+    page = client.get_messages(connection_id, chat_id, before=page["nextBefore"])
+    messages.extend(page["messages"])
+# page["historyStartsAt"] is set (oldest timestamp) once history is exhausted
+
+# A single message by id (chat_id required)
+msg = client.get_message(connection_id, message_id, chat_id)
+
+# Download a message's media (same Bearer auth as other calls)
+import httpx
+url = client.get_media_url(connection_id, message_id, chat_id)
+resp = httpx.get(url, headers={"Authorization": f"Bearer {api_key}"})
+
+# Contacts (people)
+contacts = client.get_contacts(connection_id)
+```
+
+<Callout type="warn">
+  These read the live WAHA store. Media may 404 for older messages (keys expire), history
+  reaches back only to WhatsApp's sync at pairing, and there's no server-side search.
+</Callout>
+
 ### Billing
 
 ```python

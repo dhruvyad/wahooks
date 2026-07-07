@@ -54,7 +54,11 @@ describe('ConnectionsController', () => {
       getSession: jest.fn().mockRejectedValue(new Error('Not found')),
       resolveSessionName: jest.fn().mockImplementation((name: string) => name),
       logoutSession: jest.fn(),
-    };
+      getChatsOverview: jest.fn(),
+      getContacts: jest.fn(),
+      getMessages: jest.fn(),
+      getMessage: jest.fn(),
+    } as any;
 
     configService = {
       get: jest.fn().mockReturnValue('http://localhost:3001'),
@@ -321,6 +325,124 @@ describe('ConnectionsController', () => {
       const result = await controller.deleteConnection('sess-1', user);
 
       expect(result).toEqual(updated);
+    });
+  });
+
+  describe('read APIs', () => {
+    const connection = { id: 'sess-1', userId: 'user-123', sessionName: 'u_user-123_s_abc', status: 'working' };
+    const worker = { internalIp: '10.0.0.1', apiKeyEnc: 'key' };
+
+    describe('getChats (enriched)', () => {
+      it('shapes overview into ChatSummary and filters unread_only', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getChatsOverview.mockResolvedValueOnce([
+          { id: '111@g.us', name: 'Group A', lastMessage: { body: 'hi', timestamp: 100, fromMe: true }, _chat: { markedAsUnread: true } },
+          { id: '222@c.us', name: 'Bob', lastMessage: { body: 'yo', timestamp: 90, fromMe: false }, _chat: { unreadMentionCount: 0, markedAsUnread: false } },
+        ]);
+
+        const all = await controller.getChats('sess-1', user);
+        expect(all).toHaveLength(2);
+        expect(all[0]).toEqual({
+          id: '111@g.us', name: 'Group A', isGroup: true,
+          lastMessage: { body: 'hi', timestamp: 100, fromMe: true }, unread: true,
+        });
+        expect(all[1].isGroup).toBe(false);
+
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getChatsOverview.mockResolvedValueOnce([
+          { id: '111@g.us', name: 'Group A', lastMessage: null, _chat: { markedAsUnread: true } },
+          { id: '222@c.us', name: 'Bob', lastMessage: null, _chat: { markedAsUnread: false } },
+        ]);
+        const unread = await controller.getChats('sess-1', user, undefined, undefined, 'true');
+        expect(unread).toHaveLength(1);
+        expect(unread[0].id).toBe('111@g.us');
+      });
+
+      it('returns [] when no worker assigned', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(null);
+        expect(await controller.getChats('sess-1', user)).toEqual([]);
+      });
+
+      it('403 when not owner', async () => {
+        db.where.mockResolvedValueOnce([{ ...connection, userId: 'other' }]);
+        await expect(controller.getChats('sess-1', user)).rejects.toThrow(ForbiddenException);
+      });
+    });
+
+    describe('getMessages (paginated + shaped)', () => {
+      const rawMsg = (id: string, ts: number) => ({
+        id, timestamp: ts, from: '111@g.us', fromMe: false, body: `m${id}`,
+        hasMedia: false, media: null, replyTo: null,
+        _data: { participant: '918383880642:3@s.whatsapp.net', pushName: 'Alice' },
+      });
+
+      it('maps messages and sets nextBefore when a full page returns', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getMessages.mockResolvedValueOnce([rawMsg('a', 200), rawMsg('b', 190)]);
+
+        const page = await controller.getMessages('sess-1', '111@g.us', user, '2');
+        expect(page.messages).toHaveLength(2);
+        expect(page.messages[0]).toMatchObject({
+          id: 'a', chatId: '111@g.us', fromMe: false, type: 'text', text: 'ma',
+          senderJid: '918383880642@s.whatsapp.net', senderPushName: 'Alice', quotedMessageId: null, media: null,
+        });
+        expect(page.nextBefore).toBe(Buffer.from('2').toString('base64url'));
+        expect(page.historyStartsAt).toBeNull();
+      });
+
+      it('sets historyStartsAt and null cursor when the page is short (end of history)', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getMessages.mockResolvedValueOnce([rawMsg('a', 200)]);
+
+        const page = await controller.getMessages('sess-1', '111@g.us', user, '50');
+        expect(page.nextBefore).toBeNull();
+        expect(page.historyStartsAt).toBe(200);
+      });
+
+      it('decodes an opaque before cursor into an offset', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getMessages.mockResolvedValueOnce([]);
+        const cursor = Buffer.from('50').toString('base64url');
+        await controller.getMessages('sess-1', '111@g.us', user, '50', cursor);
+        expect((wahaService as any).getMessages).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '111@g.us', 50, 50);
+      });
+
+      it('rewrites media url to the proxy and derives image type', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getMessages.mockResolvedValueOnce([
+          { id: 'x', timestamp: 5, from: '111@g.us', fromMe: true, body: 'cap', hasMedia: true,
+            media: { url: 'http://localhost:3000/api/files/default/pic.jpeg', mimetype: 'image/jpeg' }, replyTo: null, _data: {} },
+        ]);
+        const page = await controller.getMessages('sess-1', '111@g.us', user);
+        expect(page.messages[0].type).toBe('image');
+        expect(page.messages[0].media.url).toBe('http://localhost:3001/api/connections/sess-1/media/pic.jpeg');
+        expect(page.messages[0].senderJid).toBeNull(); // fromMe
+      });
+    });
+
+    describe('getMessage / contacts', () => {
+      it('requires chatId', async () => {
+        await expect(controller.getMessage('sess-1', 'mid', user)).rejects.toThrow('chatId');
+      });
+
+      it('shapes contacts', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getContacts.mockResolvedValueOnce([
+          { id: '0@c.us', name: 'WhatsApp' },
+          { id: '127814753849550@lid', phoneNumber: '918383880642@s.whatsapp.net' },
+        ]);
+        const contacts = await controller.getContacts('sess-1', user);
+        expect(contacts[0]).toEqual({ jid: '0@c.us', name: 'WhatsApp', phoneNumber: '0', isGroup: false });
+        expect(contacts[1]).toEqual({ jid: '127814753849550@lid', name: null, phoneNumber: '918383880642', isGroup: false });
+      });
     });
   });
 });

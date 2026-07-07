@@ -210,6 +210,37 @@ console.log(token.token); // "wh_a1b2c3..."
 await client.revokeToken(tokenId);
 ```
 
+### Message history & contacts
+
+```typescript
+// Enriched chats: name, isGroup, lastMessage preview, unread
+const chats = await client.getChats(connectionId, { limit: 50, unreadOnly: false });
+console.log(chats[0].name, chats[0].lastMessage?.body);
+
+// Page through a chat's messages (newest-first)
+let page = await client.getMessages(connectionId, chatId, { limit: 50 });
+console.log(page.messages);
+while (page.nextBefore) {
+  page = await client.getMessages(connectionId, chatId, { before: page.nextBefore });
+}
+// page.historyStartsAt is set (oldest timestamp) once history is exhausted
+
+// A single message by id (chatId required)
+const msg = await client.getMessage(connectionId, messageId, chatId);
+
+// Download a message's media (same Bearer auth as other calls)
+const url = client.getMediaUrl(connectionId, messageId, chatId);
+const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+
+// Contacts (people)
+const contacts = await client.getContacts(connectionId);
+```
+
+<Callout type="warn">
+  These read the live WAHA store. Media may 404 for older messages (keys expire), history
+  reaches back only to WhatsApp's sync at pairing, and there's no server-side search.
+</Callout>
+
 ### Billing
 
 ```typescript
@@ -257,6 +288,10 @@ import type {
   Chat,
   Profile,
   SendResult,
+  Message,
+  MessageMedia,
+  MessagePage,
+  Contact,
   BillingStatus,
   SlotUpdate,
   WAHooksOptions,

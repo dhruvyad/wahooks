@@ -308,14 +308,67 @@ export class WahaService {
     workerUrl: string,
     apiKey: string,
     sessionName: string,
+    limit = 20,
   ): Promise<WahaChatResponse[]> {
     const url = this.buildUrl(
       workerUrl,
-      `/api/${encodeURIComponent(sessionName)}/chats?limit=20&sortBy=conversationTimestamp&sortOrder=desc`,
+      `/api/${encodeURIComponent(sessionName)}/chats?limit=${limit}&sortBy=conversationTimestamp&sortOrder=desc`,
     );
     const headers = this.buildHeaders(apiKey);
 
     return this.request<WahaChatResponse[]>('GET', url, headers);
+  }
+
+  /**
+   * Chats with name, picture, and last-message preview in a single call.
+   * Backs the enriched GET /connections/:id/chats endpoint.
+   */
+  async getChatsOverview(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<any[]> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/chats/overview?limit=${limit}&offset=${offset}`,
+    );
+    return this.request<any[]>('GET', url, this.buildHeaders(apiKey));
+  }
+
+  /**
+   * List all contacts (people) known to the session.
+   */
+  async getContacts(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    limit = 500,
+    offset = 0,
+  ): Promise<any[]> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/contacts/all?session=${encodeURIComponent(sessionName)}&limit=${limit}&offset=${offset}`,
+    );
+    return this.request<any[]>('GET', url, this.buildHeaders(apiKey));
+  }
+
+  /**
+   * Fetch a single message by id. WAHA keys messages under a chat, so chatId is required.
+   */
+  async getMessage(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    messageId: string,
+  ): Promise<any> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}?downloadMedia=false`,
+    );
+    return this.request<any>('GET', url, this.buildHeaders(apiKey));
   }
 
   async getProfilePicture(
@@ -502,10 +555,11 @@ export class WahaService {
     sessionName: string,
     chatId: string,
     limit: number = 50,
+    offset: number = 0,
   ): Promise<any[]> {
     const url = this.buildUrl(
       workerUrl,
-      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&downloadMedia=false`,
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&offset=${offset}&downloadMedia=false`,
     );
     const headers = this.buildHeaders(apiKey);
 

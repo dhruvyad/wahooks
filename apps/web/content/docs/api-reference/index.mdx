@@ -54,9 +54,57 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 | `DELETE` | [`/connections/:id`](/docs/api-reference/connections/delete) | Delete a connection |
 | `POST` | [`/connections/:id/restart`](/docs/api-reference/connections/restart) | Restart a connection |
 | `GET` | [`/connections/:id/qr`](/docs/api-reference/connections/qr) | Get QR code for linking |
-| `GET` | [`/connections/:id/chats`](/docs/api-reference/connections/chats) | Get recent chats |
+| `GET` | [`/connections/:id/chats`](/docs/api-reference/connections/chats) | List chats (enriched: name, isGroup, lastMessage, unread) |
 | `GET` | [`/connections/:id/me`](/docs/api-reference/connections/profile) | Get WhatsApp profile info |
 | `GET` | `/connections/:id/media/:filename` | Proxy a media file from the WAHA worker (streams the file) |
+
+## Message history & contacts (read)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/connections/:id/chats` | List chats — `?limit=&offset=&unread_only=true`. Each item: `id`, `name`, `isGroup`, `lastMessage {body,timestamp,fromMe}`, `unread` |
+| `GET` | `/connections/:id/chats/:chatId/messages` | Page of messages, newest-first — `?limit=&before=<cursor>` |
+| `GET` | `/connections/:id/messages/:messageId?chatId=` | A single message by id (`chatId` required) |
+| `GET` | `/connections/:id/messages/:messageId/media?chatId=` | Stream that message's media (`chatId` required) |
+| `GET` | `/connections/:id/contacts` | List contacts — `?limit=&offset=`. Each item: `jid`, `name`, `phoneNumber`, `isGroup` |
+
+**Message shape** (returned by the message endpoints):
+
+```json
+{
+  "id": "true_111@g.us_ABC",
+  "chatId": "111@g.us",
+  "timestamp": 1782419739,
+  "fromMe": false,
+  "senderJid": "918383880642@s.whatsapp.net",
+  "senderPushName": "Alice",
+  "type": "text",
+  "text": "hello",
+  "quotedMessageId": null,
+  "media": null
+}
+```
+
+`type` is one of `text`, `image`, `video`, `audio`, `document`, `location`, `contact`. When
+`media` is present, `media.url` is a WAHooks media-proxy URL you fetch with the same
+`Authorization: Bearer` header.
+
+**Pagination.** `GET /chats/:chatId/messages` returns:
+
+```json
+{ "messages": [ /* newest-first */ ], "nextBefore": "MTA0", "historyStartsAt": null }
+```
+
+Pass the returned `nextBefore` as `?before=` to fetch the next (older) page. When
+`nextBefore` is `null` you've reached the end, and `historyStartsAt` is set to the oldest
+message's timestamp — use it to distinguish "no messages" from "history doesn't reach further".
+
+<Callout type="warn">
+  These endpoints proxy WAHA's live NOWEB store. **Media can return 404 for older messages** —
+  WhatsApp media keys expire and blobs live on the worker's local disk (no durable store in this
+  phase). History reaches back only as far as WhatsApp's sync at pairing time. Server-side
+  message search is not available.
+</Callout>
 
 ## Messaging
 

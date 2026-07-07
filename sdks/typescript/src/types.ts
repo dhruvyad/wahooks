@@ -53,9 +53,49 @@ export interface ApiTokenCreated extends ApiToken {
 
 export interface Chat {
   id: string;
-  name?: string;
+  name?: string | null;
+  isGroup?: boolean;
+  lastMessage?: { body: string | null; timestamp: number; fromMe: boolean } | null;
+  unread?: boolean;
   conversationTimestamp?: number;
   [key: string]: unknown;
+}
+
+export interface MessageMedia {
+  url: string;
+  mimetype?: string;
+  filename?: string;
+  size?: number;
+}
+
+export interface Message {
+  id: string;
+  chatId: string;
+  timestamp: number;
+  fromMe: boolean;
+  senderJid: string | null;
+  senderPushName: string | null;
+  type: string;
+  text: string | null;
+  quotedMessageId: string | null;
+  media: MessageMedia | null;
+  edited?: boolean;
+  deleted?: boolean;
+}
+
+export interface MessagePage {
+  messages: Message[];
+  nextBefore: string | null;
+  historyStartsAt: number | null;
+}
+
+export interface Contact {
+  jid: string;
+  name: string | null;
+  phoneNumber: string | null;
+  isGroup: boolean;
+  groupSubject?: string;
+  participantCount?: number;
 }
 
 export interface Profile {

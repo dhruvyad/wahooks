@@ -81,6 +81,67 @@ export interface WebhookEventLog {
   createdAt: string;
 }
 
+// --- Message history / contacts (read APIs) ---
+
+// Media metadata attached to a message. `url` is the WAHooks media-proxy URL
+// (authenticated, same Bearer token as other endpoints), not the internal WAHA URL.
+export interface MessageMedia {
+  url: string;
+  mimetype?: string;
+  filename?: string;
+  size?: number;
+}
+
+// Canonical message shape returned by the history read endpoints. This is the
+// single schema WAHooks normalizes WAHA's raw payload into; a future webhook
+// change should converge on it too.
+export interface Message {
+  id: string;
+  chatId: string;
+  timestamp: number; // WhatsApp message timestamp (unix seconds)
+  fromMe: boolean;
+  senderJid: string | null; // who sent it — crucial for groups
+  senderPushName: string | null;
+  type: string; // "text" | "image" | "video" | "audio" | "document" | "location" | "contact" | ...
+  text: string | null; // body or caption
+  quotedMessageId: string | null;
+  media: MessageMedia | null;
+  edited?: boolean;
+  deleted?: boolean; // tombstone if the message was revoked
+}
+
+// A page of messages, newest-first. `nextBefore` is an opaque cursor for the
+// next (older) page, or null when history is exhausted. `historyStartsAt`
+// lets consumers distinguish "no messages" from "history doesn't reach further".
+export interface MessagePage {
+  messages: Message[];
+  nextBefore: string | null;
+  historyStartsAt: number | null;
+}
+
+// A WhatsApp contact (person). Groups are surfaced via chats, not contacts.
+export interface Contact {
+  jid: string;
+  name: string | null;
+  phoneNumber: string | null;
+  isGroup: boolean;
+  groupSubject?: string;
+  participantCount?: number;
+}
+
+// Enriched chat summary returned by GET /connections/:id/chats.
+export interface ChatSummary {
+  id: string;
+  name: string | null;
+  isGroup: boolean;
+  lastMessage: {
+    body: string | null;
+    timestamp: number;
+    fromMe: boolean;
+  } | null;
+  unread: boolean;
+}
+
 // Billing constants
 export const BILLING = {
   PRICE_PER_CONNECTION_MONTH: 0.25,
