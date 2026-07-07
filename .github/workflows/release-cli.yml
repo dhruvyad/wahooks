@@ -68,8 +68,10 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew formula
+        # Needs a PAT with push access to the separate dhruvyad/homebrew-tap repo;
+        # the default GITHUB_TOKEN is scoped to this repo only and 403s cross-repo.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#cli-v}"
 
