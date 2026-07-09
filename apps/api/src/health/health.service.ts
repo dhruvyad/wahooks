@@ -11,6 +11,14 @@ import { WorkersService } from '../workers/workers.service';
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
 
+  // Bounded, in-pod recovery tracking. A worker replacement briefly leaves
+  // sessions FAILED/STOPPED even though their WhatsApp auth is still valid; we
+  // restart them from persisted auth (no logout) rather than giving up. Keyed by
+  // session id; cleared once a session recovers. Resets on pod restart, which is
+  // desirable — a fresh pod should retry everything.
+  private readonly recoveryAttempts = new Map<string, number>();
+  private readonly MAX_RECOVERY_ATTEMPTS = 5;
+
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     private readonly wahaService: WahaService,
@@ -71,7 +79,7 @@ export class HealthService {
     if (!workerReachable) {
       // Worker is unreachable (likely still booting). Try to create pending sessions.
       for (const dbSession of dbSessions) {
-        if (dbSession.status === 'stopped' || dbSession.status === 'failed') {
+        if (dbSession.status === 'stopped') {
           continue;
         }
         await this.tryAutoCreateSession(worker, dbSession);
@@ -92,8 +100,10 @@ export class HealthService {
       );
       const wahaStatus = wahaSessionMap.get(wahaName);
 
-      // Skip stopped/failed sessions — don't auto-create
-      if (dbSession.status === 'stopped' || dbSession.status === 'failed') {
+      // Only truly stopped (soft-deleted) sessions are skipped. Everything else —
+      // including "failed" — is a recovery target and must be registered as
+      // expected so the orphan sweep below never stops it.
+      if (dbSession.status === 'stopped') {
         continue;
       }
 
@@ -190,6 +200,8 @@ export class HealthService {
 
     switch (wahaStatus) {
       case 'WORKING':
+        // Recovered (or healthy) — stop tracking recovery attempts.
+        this.recoveryAttempts.delete(dbSession.id);
         if (dbStatus !== 'working' || !dbSession.phoneNumber) {
           const updates: Record<string, any> = { status: 'working', updatedAt: new Date() };
 
@@ -220,6 +232,8 @@ export class HealthService {
         break;
 
       case 'SCAN_QR_CODE':
+        // A definitive state (WhatsApp wants a fresh link) — recovery is done.
+        this.recoveryAttempts.delete(dbSession.id);
         if (dbStatus !== 'scan_qr') {
           this.logger.log(
             `Session "${sessionName}" is SCAN_QR_CODE in WAHA but "${dbStatus}" in DB, updating to "scan_qr"`,
@@ -232,70 +246,24 @@ export class HealthService {
         break;
 
       case 'FAILED':
-        if (dbStatus === 'failed') {
-          // Already tried restarting once; don't loop. User can manually restart.
-          break;
-        }
-        this.logger.warn(
-          `Session "${sessionName}" is FAILED in WAHA, marking as failed and attempting logout + restart`,
-        );
-        // Mark as failed first to prevent restart loops
-        await this.db
-          .update(wahaSessions)
-          .set({ status: 'failed', updatedAt: new Date() })
-          .where(eq(wahaSessions.id, dbSession.id));
-        try {
-          const apiUrl = this.configService.get<string>(
-            'API_URL',
-            'http://localhost:3001',
-          );
-          const webhookUrl = `${apiUrl}/api/events/waha`;
-          await this.wahaService.resetSession(
-            worker.internalIp,
-            worker.apiKeyEnc,
-            wahaName,
-            webhookUrl,
-          );
-          this.logger.log(
-            `Reset initiated for failed session "${sessionName}" on worker ${worker.id}`,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to restart session "${sessionName}": ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+        // Recover from persisted auth WITHOUT logging out (preserves the WhatsApp
+        // link). A restart from valid auth returns to WORKING; a genuinely
+        // logged-out session stays FAILED/goes to SCAN_QR. Only after exhausting
+        // bounded retries do we mark it failed — and even then we never logout,
+        // so a manual restart or future worker bounce can still recover it.
+        await this.recoverSession(worker, dbSession, wahaName, 'restart');
         break;
 
       case 'STOPPED':
-        if (dbStatus === 'pending' || dbStatus === 'working' || dbStatus === 'scan_qr') {
-          this.logger.warn(
-            `Session "${sessionName}" is STOPPED in WAHA but "${dbStatus}" in DB, resetting`,
-          );
-          try {
-            const apiUrl = this.configService.get<string>(
-              'API_URL',
-              'http://localhost:3001',
-            );
-            const webhookUrl = `${apiUrl}/api/events/waha`;
-            await this.wahaService.resetSession(
-              worker.internalIp,
-              worker.apiKeyEnc,
-              wahaName,
-              webhookUrl,
-            );
-            this.logger.log(
-              `Reset initiated for stopped session "${sessionName}" on worker ${worker.id}`,
-            );
-          } catch (error) {
-            this.logger.error(
-              `Failed to restart stopped session "${sessionName}": ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+        // WAHA has the session but it isn't running while the DB expects it up
+        // (common right after a worker replacement). Start it from persisted auth.
+        if (dbStatus !== 'stopped') {
+          await this.recoverSession(worker, dbSession, wahaName, 'start');
         }
         break;
 
       case 'STARTING':
-        // Transitional state, no action needed
+        // Transitional state, no action needed (and don't count it as a failure)
         break;
 
       default:
@@ -303,6 +271,67 @@ export class HealthService {
           `Session "${sessionName}" has unknown WAHA status: ${wahaStatus}`,
         );
         break;
+    }
+  }
+
+  /**
+   * Bring a FAILED/STOPPED session back up from its persisted auth, without ever
+   * logging out (which would destroy a still-valid WhatsApp link and force a
+   * re-scan). Retries are bounded per pod lifetime; once exhausted we mark the
+   * session `failed` so the user can re-link, but we still preserve the auth.
+   */
+  private async recoverSession(
+    worker: any,
+    dbSession: any,
+    wahaName: string,
+    action: 'restart' | 'start',
+  ): Promise<void> {
+    // Don't act on workers that are being drained/torn down.
+    if (worker.status === 'draining' || worker.status === 'stopped') {
+      return;
+    }
+
+    const attempts = this.recoveryAttempts.get(dbSession.id) ?? 0;
+
+    if (attempts >= this.MAX_RECOVERY_ATTEMPTS) {
+      // Recovery exhausted — the WhatsApp auth is most likely genuinely gone.
+      // Surface it for re-linking, but do NOT logout: keep the auth so a manual
+      // restart or a future worker bounce can still recover it.
+      if (dbSession.status !== 'failed') {
+        this.logger.warn(
+          `Session "${dbSession.sessionName}" unrecoverable after ${attempts} attempts — marking failed for re-link (auth preserved)`,
+        );
+        await this.db
+          .update(wahaSessions)
+          .set({ status: 'failed', updatedAt: new Date() })
+          .where(eq(wahaSessions.id, dbSession.id));
+      }
+      return;
+    }
+
+    this.recoveryAttempts.set(dbSession.id, attempts + 1);
+    this.logger.warn(
+      `Session "${dbSession.sessionName}" needs recovery — ${action} attempt ${attempts + 1}/${this.MAX_RECOVERY_ATTEMPTS} from persisted auth`,
+    );
+
+    try {
+      if (action === 'restart') {
+        await this.wahaService.restartSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+        );
+      } else {
+        await this.wahaService.startSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Recovery ${action} failed for "${dbSession.sessionName}": ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
