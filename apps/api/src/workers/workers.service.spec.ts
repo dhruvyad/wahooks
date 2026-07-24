@@ -132,6 +132,30 @@ describe('WorkersService', () => {
     });
   });
 
+  describe('provisionNewWorker', () => {
+    it('provisions unconditionally without reusing an existing worker', async () => {
+      orchestrator.provisionWorker.mockResolvedValue({
+        podName: 'waha-1',
+        internalIp: '10.0.0.99',
+        apiKey: 'new-key',
+      });
+      db.mockResult([{ id: 'worker-new', internalIp: '10.0.0.99', apiKeyEnc: 'new-key' }]);
+
+      const result = await service.provisionNewWorker();
+
+      // No "find available worker" SELECT — goes straight to provisioning.
+      expect(orchestrator.provisionWorker).toHaveBeenCalledTimes(1);
+      expect(db.insert).toHaveBeenCalled();
+      expect(result).toEqual({ id: 'worker-new', internalIp: '10.0.0.99', apiKey: 'new-key' });
+    });
+
+    it('throws (and does not double-provision) when a provision is already in progress', async () => {
+      (service as any).provisioningInProgress = true;
+      await expect(service.provisionNewWorker()).rejects.toThrow('already in progress');
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+    });
+  });
+
   describe('assignSession', () => {
     it('should call transaction with correct updates', async () => {
       let txUpdateCount = 0;
@@ -205,6 +229,29 @@ describe('WorkersService', () => {
       await service.checkScaling();
 
       expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+    });
+
+    it('proactively pre-warms a new worker when free slots drop to the threshold', async () => {
+      // 49/50 → 1 slot free (<= 10 proactive threshold, but > 0): should pre-warm.
+      const worker = {
+        id: 'worker-1', status: 'active', currentSessions: 49, maxSessions: 50,
+        internalIp: '10.0.0.1', apiKeyEnc: 'key', podName: 'waha-0',
+      };
+      db.mockResult([worker]);        // active workers
+      db.mockResult([{ count: 49 }]); // reconcile count
+      db.mockResult([]);              // reconcile update (ignored)
+      db.mockResult([worker]);        // re-fetch active
+      db.mockResult([]);              // draining
+      orchestrator.provisionWorker.mockResolvedValue({
+        podName: 'waha-1', internalIp: '10.0.0.2', apiKey: 'k2',
+      });
+      db.mockResult([{ id: 'worker-2', internalIp: '10.0.0.2', apiKeyEnc: 'k2' }]); // insert
+
+      await service.checkScaling();
+
+      // The bug was that proactive routed through findOrProvisionWorker, which
+      // returned the 49/50 worker (still "available") and never provisioned.
+      expect(orchestrator.provisionWorker).toHaveBeenCalledTimes(1);
     });
 
     it('should provision new worker when no workers have capacity', async () => {

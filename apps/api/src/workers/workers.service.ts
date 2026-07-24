@@ -58,15 +58,30 @@ export class WorkersService {
       };
     }
 
-    // Prevent concurrent provisioning — if already provisioning, throw
-    // so the caller can return the connection as 'pending'
+    // No worker has capacity — provision a brand-new one.
+    return this.provisionNewWorker();
+  }
+
+  /**
+   * Provision a brand-new worker unconditionally — does NOT reuse an existing
+   * partially-full worker. Used for proactive pre-warming (so a second machine
+   * is ready before the current one fills) and as the fallback inside
+   * findOrProvisionWorker when no worker has capacity.
+   *
+   * Throws if a provision is already in progress so the caller can back off
+   * (e.g. return the connection as 'pending' or skip this scaling tick).
+   */
+  async provisionNewWorker(): Promise<{
+    id: string;
+    internalIp: string;
+    apiKey: string;
+  }> {
     if (this.provisioningInProgress) {
       throw new Error('Worker provisioning already in progress');
     }
 
-    // No available workers — provision a new one
     this.provisioningInProgress = true;
-    this.logger.log('No available workers found, provisioning new worker...');
+    this.logger.log('Provisioning new worker...');
 
     try {
       const result = await this.orchestrator.provisionWorker();
@@ -327,12 +342,15 @@ export class WorkersService {
         return;
       }
     } else if (remainingSlots <= PROACTIVE_THRESHOLD && !this.provisioningInProgress) {
-      // Proactive: capacity getting low, pre-warm a new worker
+      // Proactive: capacity getting low, pre-warm a NEW worker. Must provision
+      // unconditionally — findOrProvisionWorker would just hand back the current
+      // worker (which still has a free slot) and never add a machine, so the
+      // pre-warm never happened and #51 hit a cold start.
       this.logger.log(
         `Proactive scale-up: only ${remainingSlots} slots remaining across ${workers.length} workers (threshold: ${PROACTIVE_THRESHOLD}) — provisioning`,
       );
       try {
-        await this.findOrProvisionWorker();
+        await this.provisionNewWorker();
       } catch (error) {
         this.logger.warn(
           `Proactive scale-up failed: ${error instanceof Error ? error.message : String(error)}`,
