@@ -86,6 +86,9 @@ export class WorkersService {
     try {
       const result = await this.orchestrator.provisionWorker();
 
+      // Upsert on pod_name: a StatefulSet reuses ordinals, so a pod like waha-1
+      // may already have a (stopped) row from an earlier drain. Reactivate it
+      // instead of hitting the unique-podName constraint.
       const [inserted] = await this.db
         .insert(wahaWorkers)
         .values({
@@ -94,6 +97,16 @@ export class WorkersService {
           apiKeyEnc: result.apiKey,
           status: 'active',
           maxSessions: this.maxSessionsPerWorker,
+        })
+        .onConflictDoUpdate({
+          target: wahaWorkers.podName,
+          set: {
+            internalIp: result.internalIp,
+            apiKeyEnc: result.apiKey,
+            status: 'active',
+            currentSessions: 0,
+            updatedAt: new Date(),
+          },
         })
         .returning();
 

@@ -15,6 +15,10 @@ export class K8sOrchestrator implements ContainerOrchestrator {
   private readonly statefulSetName: string;
   private readonly headlessService: string;
   private readonly wahaApiKey: string;
+  // A new pod may need a fresh Hetzner node (autoscaler): VM boot + k3s join +
+  // image pull commonly takes 2-4 min, so 120s was far too short and left pods
+  // orphaned. 5 min covers a cold node add with margin.
+  private readonly readyTimeoutMs = 300_000;
 
   constructor(private readonly configService: ConfigService) {
     const kc = new k8s.KubeConfig();
@@ -37,9 +41,28 @@ export class K8sOrchestrator implements ContainerOrchestrator {
     );
 
     const currentReplicas = sts.spec?.replicas ?? 0;
+
+    // Idempotency: if the highest-ordinal pod isn't Ready yet, a previous
+    // provision is still in flight (typically waiting on a new node). Adopt that
+    // pod — wait for it and return it — instead of scaling up again, which would
+    // orphan pods and over-provision nodes. This is what let a slow node add
+    // spiral into waha-1, waha-2, waha-3… each unregistered.
+    if (currentReplicas >= 1) {
+      const highestPod = `${this.statefulSetName}-${currentReplicas - 1}`;
+      const status = await this.getWorkerStatus(highestPod);
+      if (status !== 'running') {
+        this.logger.log(
+          `Highest pod ${highestPod} is "${status}" — adopting the in-flight provision instead of scaling up`,
+        );
+        await this.waitForPodReady(highestPod, this.readyTimeoutMs);
+        const internalIp = `${highestPod}.${this.headlessService}.${this.namespace}.svc.cluster.local`;
+        this.logger.log(`Pod ${highestPod} is Ready at ${internalIp}`);
+        return { podName: highestPod, internalIp, apiKey: this.wahaApiKey };
+      }
+    }
+
     const newReplicas = currentReplicas + 1;
-    const podOrdinal = currentReplicas; // new pod will be waha-{currentReplicas}
-    const podName = `${this.statefulSetName}-${podOrdinal}`;
+    const podName = `${this.statefulSetName}-${currentReplicas}`; // new pod = waha-{currentReplicas}
 
     await this.appsV1.patchNamespacedStatefulSet(
       this.statefulSetName,
@@ -57,7 +80,7 @@ export class K8sOrchestrator implements ContainerOrchestrator {
       `Scaled ${this.statefulSetName} to ${newReplicas} replicas, waiting for ${podName} to be Ready`,
     );
 
-    await this.waitForPodReady(podName);
+    await this.waitForPodReady(podName, this.readyTimeoutMs);
 
     const internalIp = `${podName}.${this.headlessService}.${this.namespace}.svc.cluster.local`;
 
