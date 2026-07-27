@@ -31,23 +31,8 @@ export class HealthService {
     private readonly configService: ConfigService,
   ) {}
 
-  // EMERGENCY FREEZE 2026-07-27: session-recovery in progress. This cron restarts
-  // WAHA sessions it sees as FAILED/STOPPED; for a session whose per-session store
-  // DB was dropped, a restart rebuilds the socket from the (missing/empty) store and
-  // mints a BLANK identity — permanently losing a customer number that cannot be
-  // re-scanned. Frozen by default until every affected session's `creds` row is
-  // persisted. Unfreeze with RECOVERY_FREEZE=false, then revert this guard.
-  private frozen(name: string): boolean {
-    if (process.env.RECOVERY_FREEZE !== 'false') {
-      this.logger.warn(`${name} skipped — RECOVERY_FREEZE active (session recovery)`);
-      return true;
-    }
-    return false;
-  }
-
   @Cron('*/3 * * * *') // Every 3 minutes instead of every minute
   async pollWorkerHealth(): Promise<void> {
-    if (this.frozen('pollWorkerHealth')) return;
     this.logger.log('Starting worker health poll...');
 
     const activeWorkers = await this.db
@@ -396,7 +381,6 @@ export class HealthService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupOrphanedWahaDatabases(): Promise<void> {
-    if (this.frozen('cleanupOrphanedWahaDatabases')) return;
     this.logger.log('Checking for orphaned WAHA databases...');
     try {
       // Get all waha_noweb_* databases
@@ -457,7 +441,6 @@ export class HealthService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async checkScaling(): Promise<void> {
-    if (this.frozen('checkScaling')) return;
     this.logger.log('Running scaling check...');
     try {
       await this.workersService.checkScaling();
