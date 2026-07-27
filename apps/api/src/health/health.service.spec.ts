@@ -57,6 +57,12 @@ describe('HealthService', () => {
     service = module.get<HealthService>(HealthService);
   });
 
+  // pollWorkerHealth issues its DB queries in this order:
+  //   1. active workers            (.where(eq(status,'active')))
+  //   2. GLOBAL active session names for the orphan-safety set (.where(ne(status,'stopped')))
+  //   3+. per-worker session reconcile / updates
+  // Tests thread `db.where.mockResolvedValueOnce(...)` in that order.
+
   describe('pollWorkerHealth', () => {
     it('should return early when no active workers exist', async () => {
       db.where.mockResolvedValueOnce([]);
@@ -82,11 +88,13 @@ describe('HealthService', () => {
         { id: 'sess-id-a', sessionName: 'session-a', status: 'scan_qr', workerId: 'worker-1' },
       ];
 
-      // First where: active workers
+      // 1: active workers
       db.where.mockResolvedValueOnce([worker]);
+      // 2: global active session names (orphan-safety set)
+      db.where.mockResolvedValueOnce([{ sessionName: 'session-a' }]);
       // listSessions for the worker
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
-      // DB sessions for worker
+      // 3: DB sessions for worker
       db.where.mockResolvedValueOnce(dbSessions);
       // reconcileSessionStatus update call
       db.where.mockResolvedValueOnce(undefined);
@@ -105,13 +113,14 @@ describe('HealthService', () => {
         { id: 'worker-fail', internalIp: '10.0.0.2', apiKeyEnc: 'key' },
       ];
 
-      db.where.mockResolvedValueOnce(workers);
+      db.where.mockResolvedValueOnce(workers); // 1: active workers
+      db.where.mockResolvedValueOnce([]); // 2: global active names
 
       // First worker: listSessions throws
       wahaService.listSessions!.mockRejectedValueOnce(new Error('Connection refused'));
       // Second worker: listSessions succeeds with no sessions
       wahaService.listSessions!.mockResolvedValueOnce([]);
-      db.where.mockResolvedValueOnce([]); // dbSessions for worker-fail
+      db.where.mockResolvedValueOnce([]); // dbSessions for worker-ok (unreachable path)
 
       // Should not throw
       await expect(service.pollWorkerHealth()).resolves.not.toThrow();
@@ -129,6 +138,7 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker]) // active workers
+        .mockResolvedValueOnce([{ sessionName: 's1' }]) // global active names
         .mockResolvedValueOnce(dbSessions) // db sessions for worker
         .mockResolvedValueOnce(undefined); // update call
 
@@ -146,6 +156,7 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }]) // global active names
         .mockResolvedValueOnce(dbSessions);
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
@@ -165,6 +176,7 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }]) // global active names (failed is non-stopped)
         .mockResolvedValueOnce(dbSessions);
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
@@ -183,6 +195,7 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }]) // global active names
         .mockResolvedValueOnce(dbSessions);
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
@@ -200,6 +213,7 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([]) // global active names (s1 is stopped → not active anywhere)
         .mockResolvedValueOnce(dbSessions);
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
@@ -218,7 +232,10 @@ describe('HealthService', () => {
       // 5 attempts (MAX) — each restarts, none mark failed
       for (let i = 0; i < 5; i++) {
         db.where.mockReset();
-        db.where.mockResolvedValueOnce([worker]).mockResolvedValueOnce([dbSession]);
+        db.where
+          .mockResolvedValueOnce([worker]) // active workers
+          .mockResolvedValueOnce([{ sessionName: 's1' }]) // global active names
+          .mockResolvedValueOnce([dbSession]); // db sessions for worker
         wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
         await service.pollWorkerHealth();
       }
@@ -231,6 +248,7 @@ describe('HealthService', () => {
       db.where.mockReset();
       db.where
         .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }]) // global active names
         .mockResolvedValueOnce([dbSession])
         .mockResolvedValueOnce(undefined);
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
@@ -252,6 +270,7 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker]) // active workers
+        .mockResolvedValueOnce([]) // global active names (nothing active anywhere)
         .mockResolvedValueOnce([]); // db sessions for worker (none → both are orphans)
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
@@ -272,7 +291,27 @@ describe('HealthService', () => {
 
       db.where
         .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's-live' }]) // global active names
         .mockResolvedValueOnce(dbSessions);
+
+      wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
+
+      await service.pollWorkerHealth();
+
+      expect(wahaService.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('does NOT delete a stray duplicate of a session that is active on ANOTHER worker (incident regression)', async () => {
+      // Worker w2 has a stray copy of "s-dup" (no DB record pointing at w2), but the
+      // session is genuinely active on w1. Deleting the w2 copy would drop the shared
+      // per-session store/auth DB and break the live session — the exact prod incident.
+      const w2 = { id: 'w2', internalIp: '10.0.0.2', apiKeyEnc: 'key', status: 'active' };
+      const wahaSessionsList = [{ name: 's-dup', status: 'WORKING' as const }];
+
+      db.where
+        .mockResolvedValueOnce([w2]) // active workers (only w2 in this poll)
+        .mockResolvedValueOnce([{ sessionName: 's-dup' }]) // GLOBAL active names — s-dup active on w1
+        .mockResolvedValueOnce([]); // db sessions for w2 (no record for s-dup here)
 
       wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
 

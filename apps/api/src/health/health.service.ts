@@ -45,9 +45,26 @@ export class HealthService {
       return;
     }
 
+    // Names of every session that belongs to ANY non-stopped session, across ALL
+    // workers. A WAHA session is a true orphan — safe to DELETE — only if its name
+    // is in nobody's active set. This is critical: a session can transiently exist
+    // on the "wrong" worker (a stray duplicate of an active session), and deleting
+    // it would drop the per-session store/auth DB (shared by name across pods),
+    // breaking the live session. So orphan deletion keys off this GLOBAL set, not
+    // the per-worker one.
+    const allActive = await this.db
+      .select({ sessionName: wahaSessions.sessionName })
+      .from(wahaSessions)
+      .where(ne(wahaSessions.status, 'stopped'));
+    const globalActiveNames = new Set<string>(
+      allActive.map((s: { sessionName: string }) =>
+        this.wahaService.resolveSessionName(s.sessionName),
+      ),
+    );
+
     for (const worker of activeWorkers) {
       try {
-        await this.checkWorkerSessions(worker);
+        await this.checkWorkerSessions(worker, globalActiveNames);
         // Reconcile counter after each worker check to fix any drift
         await this.workersService.reconcileWorkerCounter(worker.id);
       } catch (error) {
@@ -60,7 +77,10 @@ export class HealthService {
     this.logger.log('Worker health poll complete');
   }
 
-  private async checkWorkerSessions(worker: any): Promise<void> {
+  private async checkWorkerSessions(
+    worker: any,
+    globalActiveNames: Set<string>,
+  ): Promise<void> {
     let wahaSessions_: Awaited<ReturnType<WahaService['listSessions']>> = [];
     let workerReachable = false;
 
@@ -96,9 +116,9 @@ export class HealthService {
       wahaSessions_.map((s) => [s.name, s.status]),
     );
 
-    // Build set of expected WAHA session names from active DB sessions
-    const expectedWahaNames = new Set<string>();
-
+    // Reconcile this worker's DB sessions against what WAHA actually reports.
+    // Orphan detection below uses the GLOBAL active-name set (all workers), so we
+    // no longer maintain a per-worker "expected" set here.
     for (const dbSession of dbSessions) {
       const wahaName = this.wahaService.resolveSessionName(
         dbSession.sessionName,
@@ -106,13 +126,10 @@ export class HealthService {
       const wahaStatus = wahaSessionMap.get(wahaName);
 
       // Only truly stopped (soft-deleted) sessions are skipped. Everything else —
-      // including "failed" — is a recovery target and must be registered as
-      // expected so the orphan sweep below never stops it.
+      // including "failed" — is a recovery target.
       if (dbSession.status === 'stopped') {
         continue;
       }
-
-      expectedWahaNames.add(wahaName);
 
       if (!wahaStatus) {
         await this.tryAutoCreateSession(worker, dbSession);
@@ -127,9 +144,16 @@ export class HealthService {
     // DELETE them (not just stop) so they leave the session list permanently
     // instead of being re-stopped every poll; rate-limited so a large backlog
     // clears gradually. The `default` session (WAHA Core leftover) is never touched.
+    //
+    // CRITICAL: the orphan test keys off `globalActiveNames` (every non-stopped
+    // session across ALL workers), NOT this worker's `expectedWahaNames`. A session
+    // can transiently exist on the "wrong" worker as a stray duplicate of one that
+    // is active on another worker; that copy is absent from this worker's DB set but
+    // must NOT be deleted, because WAHA's DELETE drops the per-session store/auth DB
+    // (keyed by session name, shared across pods) and would destroy the live session.
     let orphansDeleted = 0;
     for (const [wahaName] of wahaSessionMap) {
-      if (expectedWahaNames.has(wahaName) || wahaName === 'default') {
+      if (globalActiveNames.has(wahaName) || wahaName === 'default') {
         continue;
       }
       if (orphansDeleted >= this.MAX_ORPHAN_DELETIONS_PER_POLL) {
