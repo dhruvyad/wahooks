@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq, lt, and, sql, ne } from 'drizzle-orm';
+import { eq, lt, and, sql, ne, inArray } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import {
@@ -171,6 +171,11 @@ export class WorkersService {
   /**
    * Reconcile a worker's currentSessions counter with actual DB records.
    * Fixes drift caused by failed creates, partial deletes, etc.
+   *
+   * Counts only LIVE sessions (working, scan_qr, pending) — a `failed` session
+   * holds no active WhatsApp connection, so it must not consume a capacity slot
+   * (maxSessions caps concurrent active load, not total session objects). This
+   * keeps scaling / worker-selection driven by real load, not dead connections.
    */
   async reconcileWorkerCounter(workerId: string): Promise<void> {
     const actualCount = await this.db
@@ -179,7 +184,7 @@ export class WorkersService {
       .where(
         and(
           eq(wahaSessions.workerId, workerId),
-          ne(wahaSessions.status, 'stopped'),
+          inArray(wahaSessions.status, ['working', 'scan_qr', 'pending']),
         ),
       );
 

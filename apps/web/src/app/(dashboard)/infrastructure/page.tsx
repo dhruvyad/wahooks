@@ -8,10 +8,10 @@ interface Worker {
   id: string;
   podName: string;
   status: string;
-  currentSessions: number;
+  currentSessions: number; // live sessions — what counts toward capacity
+  failedSessions: number; // present on the pod but idle, not counted
   maxSessions: number;
   utilization: number;
-  actualSessions: number;
 }
 
 interface WebhookQueue {
@@ -30,6 +30,7 @@ interface InfraStatus {
     drainingWorkers: number;
     totalCapacity: number;
     totalUsed: number;
+    totalFailed: number;
     remainingSlots: number;
     utilization: number;
   };
@@ -207,7 +208,14 @@ export default function InfrastructurePage() {
                   /{data.summary.totalCapacity}
                 </span>
               </p>
-              <p className="text-xs text-text-tertiary">Sessions Used</p>
+              <p className="text-xs text-text-tertiary">
+                Live sessions
+                {data.summary.totalFailed > 0 && (
+                  <span className="text-status-warning-text">
+                    {" "}· {data.summary.totalFailed} failed
+                  </span>
+                )}
+              </p>
             </div>
             <div className="rounded-lg border border-border-primary bg-bg-secondary p-4">
               <p className="text-2xl font-bold text-wa-green">
@@ -326,6 +334,11 @@ export default function InfrastructurePage() {
                     </div>
                     <span className="text-sm text-text-secondary">
                       {w.currentSessions}/{w.maxSessions} sessions
+                      {w.failedSessions > 0 && (
+                        <span className="text-status-warning-text">
+                          {" "}· {w.failedSessions} failed
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="mt-2">

@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, UseGuards, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, ne, sql, and } from 'drizzle-orm';
+import { eq, ne, sql, and, inArray } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
@@ -42,35 +42,47 @@ export class WorkersController {
       )
       .groupBy(wahaSessions.workerId, wahaSessions.status);
 
-    // Get total session counts per worker (all users)
+    // Per-worker session counts split into live (working/scan_qr/pending —
+    // what counts toward capacity) and failed (present on the pod but idle, not
+    // counted). `stopped` is soft-deleted and excluded entirely.
     const allSessions = await this.db
       .select({
         workerId: wahaSessions.workerId,
+        status: wahaSessions.status,
         count: sql`count(*)`,
       })
       .from(wahaSessions)
       .where(ne(wahaSessions.status, 'stopped'))
-      .groupBy(wahaSessions.workerId);
+      .groupBy(wahaSessions.workerId, wahaSessions.status);
 
-    const totalSessionMap: Record<string, number> = {};
+    const liveMap: Record<string, number> = {};
+    const failedMap: Record<string, number> = {};
     for (const row of allSessions) {
-      if (row.workerId) {
-        totalSessionMap[row.workerId] = Number(row.count);
+      if (!row.workerId) continue;
+      const n = Number(row.count);
+      if (row.status === 'failed') {
+        failedMap[row.workerId] = (failedMap[row.workerId] ?? 0) + n;
+      } else {
+        liveMap[row.workerId] = (liveMap[row.workerId] ?? 0) + n;
       }
     }
 
-    // Build per-worker info
-    const workerInfo = workers.map((w: any) => ({
-      id: w.id,
-      podName: w.podName,
-      status: w.status,
-      currentSessions: w.currentSessions,
-      maxSessions: w.maxSessions,
-      utilization: w.maxSessions > 0
-        ? Math.round((w.currentSessions / w.maxSessions) * 100)
-        : 0,
-      actualSessions: totalSessionMap[w.id] ?? 0,
-    }));
+    // Build per-worker info. `currentSessions` is the capacity-driving live count
+    // (matches the reconciled counter); `failedSessions` is shown separately.
+    const workerInfo = workers.map((w: any) => {
+      const live = liveMap[w.id] ?? 0;
+      return {
+        id: w.id,
+        podName: w.podName,
+        status: w.status,
+        currentSessions: live,
+        failedSessions: failedMap[w.id] ?? 0,
+        maxSessions: w.maxSessions,
+        utilization: w.maxSessions > 0
+          ? Math.round((live / w.maxSessions) * 100)
+          : 0,
+      };
+    });
 
     // Build per-user session summary
     const userSessionsByStatus: Record<string, number> = {};
@@ -83,6 +95,7 @@ export class WorkersController {
 
     const totalCapacity = workerInfo.reduce((sum: number, w: any) => sum + w.maxSessions, 0);
     const totalUsed = workerInfo.reduce((sum: number, w: any) => sum + w.currentSessions, 0);
+    const totalFailed = workerInfo.reduce((sum: number, w: any) => sum + w.failedSessions, 0);
 
     // Webhook delivery queue stats (BullMQ → Redis). Counts only — cheap.
     let webhookQueue = {
@@ -122,6 +135,7 @@ export class WorkersController {
         drainingWorkers: workerInfo.filter((w: any) => w.status === 'draining').length,
         totalCapacity,
         totalUsed,
+        totalFailed,
         remainingSlots: totalCapacity - totalUsed,
         utilization: totalCapacity > 0
           ? Math.round((totalUsed / totalCapacity) * 100)

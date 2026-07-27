@@ -32,6 +32,7 @@ describe('HealthService', () => {
       restartSession: jest.fn(),
       resetSession: jest.fn(),
       stopSession: jest.fn(),
+      deleteSession: jest.fn(),
       logoutSession: jest.fn(),
       createSession: jest.fn(),
       startSession: jest.fn(),
@@ -237,6 +238,47 @@ describe('HealthService', () => {
 
       expect(wahaService.restartSession).toHaveBeenCalledTimes(5);
       expect(db.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+  });
+
+  describe('orphan cleanup', () => {
+    it('deletes orphan WAHA sessions (no active DB record) and never touches "default" or stops them', async () => {
+      const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
+      // WAHA has an orphan session + the special "default"; DB has no records for them.
+      const wahaSessionsList = [
+        { name: 'u_x_s_orphan', status: 'STOPPED' as const },
+        { name: 'default', status: 'STOPPED' as const },
+      ];
+
+      db.where
+        .mockResolvedValueOnce([worker]) // active workers
+        .mockResolvedValueOnce([]); // db sessions for worker (none → both are orphans)
+
+      wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
+
+      await service.pollWorkerHealth();
+
+      expect(wahaService.deleteSession).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_x_s_orphan');
+      expect(wahaService.deleteSession).not.toHaveBeenCalledWith('10.0.0.1', 'key', 'default');
+      expect(wahaService.deleteSession).toHaveBeenCalledTimes(1);
+      // No longer merely stops orphans
+      expect(wahaService.stopSession).not.toHaveBeenCalled();
+    });
+
+    it('does not delete a session that has an active DB record', async () => {
+      const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
+      const wahaSessionsList = [{ name: 's-live', status: 'WORKING' as const }];
+      const dbSessions = [{ id: 'sid1', sessionName: 's-live', status: 'working', phoneNumber: '123' }];
+
+      db.where
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce(dbSessions);
+
+      wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
+
+      await service.pollWorkerHealth();
+
+      expect(wahaService.deleteSession).not.toHaveBeenCalled();
     });
   });
 

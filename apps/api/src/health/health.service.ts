@@ -19,6 +19,11 @@ export class HealthService {
   private readonly recoveryAttempts = new Map<string, number>();
   private readonly MAX_RECOVERY_ATTEMPTS = 5;
 
+  // Orphan cleanup deletes lingering soft-deleted WAHA sessions from the pod.
+  // Rate-limited per worker per poll so a large backlog clears gradually without
+  // hammering the WAHA API.
+  private readonly MAX_ORPHAN_DELETIONS_PER_POLL = 25;
+
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     private readonly wahaService: WahaService,
@@ -117,21 +122,36 @@ export class HealthService {
       await this.reconcileSessionStatus(worker, dbSession, wahaStatus);
     }
 
-    // Clean up orphan WAHA sessions that have no matching active DB record
+    // Clean up orphan WAHA sessions — ones with no active (non-stopped) DB record.
+    // These are soft-deleted / abandoned sessions still lingering on the pod.
+    // DELETE them (not just stop) so they leave the session list permanently
+    // instead of being re-stopped every poll; rate-limited so a large backlog
+    // clears gradually. The `default` session (WAHA Core leftover) is never touched.
+    let orphansDeleted = 0;
     for (const [wahaName] of wahaSessionMap) {
-      if (!expectedWahaNames.has(wahaName)) {
-        this.logger.warn(
-          `Orphan WAHA session "${wahaName}" on worker ${worker.id} — stopping`,
+      if (expectedWahaNames.has(wahaName) || wahaName === 'default') {
+        continue;
+      }
+      if (orphansDeleted >= this.MAX_ORPHAN_DELETIONS_PER_POLL) {
+        this.logger.log(
+          `Orphan-deletion cap (${this.MAX_ORPHAN_DELETIONS_PER_POLL}) reached on worker ${worker.id} — remaining orphans will clear next poll`,
         );
-        try {
-          await this.wahaService.stopSession(
-            worker.internalIp,
-            worker.apiKeyEnc,
-            wahaName,
-          );
-        } catch {
-          // Ignore — session may already be stopped
-        }
+        break;
+      }
+      orphansDeleted++;
+      this.logger.log(
+        `Deleting orphan WAHA session "${wahaName}" on worker ${worker.id} (no active DB record)`,
+      );
+      try {
+        await this.wahaService.deleteSession(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          wahaName,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete orphan "${wahaName}" on worker ${worker.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
   }
