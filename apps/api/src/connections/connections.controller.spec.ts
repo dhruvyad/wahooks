@@ -122,6 +122,45 @@ describe('ConnectionsController', () => {
     });
   });
 
+  describe('getOrCreateScannable', () => {
+    // Walk a drizzle SQL tree via queryChunks only — columns are leaves, so a
+    // column's table backref can't drag in unrelated sibling columns.
+    const flatten = (node: any, acc: any[] = [], seen = new Set()): any[] => {
+      if (!node || typeof node !== 'object' || seen.has(node)) return acc;
+      seen.add(node);
+      acc.push(node);
+      if (Array.isArray(node.queryChunks)) {
+        node.queryChunks.forEach((c: any) => flatten(c, acc, seen));
+      }
+      return acc;
+    };
+    const whereConditions = () => db.where.mock.calls.flatMap((c: any[]) => flatten(c[0]));
+    const mentionsPhoneNumber = () => whereConditions().some((o: any) => o.name === 'phone_number');
+    const mentionsNotExists = () =>
+      whereConditions().some(
+        (o: any) => Array.isArray(o.value) && o.value.join(' ').includes('not exists'),
+      );
+
+    // With no idle session the flow falls through to createConnection, which
+    // blows up on the chainable db mock — irrelevant here; the assertion is
+    // the idle-reuse filter captured by db.where.
+
+    it('reuses any idle session by default (status filter only)', async () => {
+      await expect(controller.getOrCreateScannable(user)).rejects.toThrow();
+      expect(db.where).toHaveBeenCalled();
+      expect(mentionsPhoneNumber()).toBe(false);
+      expect(mentionsNotExists()).toBe(false);
+    });
+
+    it('virgin_only excludes phone-linked and webhook-bearing sessions from reuse', async () => {
+      await expect(
+        controller.getOrCreateScannable(user, { virgin_only: true }),
+      ).rejects.toThrow();
+      expect(mentionsPhoneNumber()).toBe(true);
+      expect(mentionsNotExists()).toBe(true);
+    });
+  });
+
   describe('createConnection', () => {
     it('should insert a session, provision worker, create/start WAHA session, and return updated record when user has available slots', async () => {
       const created = { id: 'sess-new', userId: 'user-123', sessionName: 'u_user123_s_uuid', status: 'pending' };
