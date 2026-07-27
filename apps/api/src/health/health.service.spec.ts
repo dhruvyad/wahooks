@@ -25,6 +25,9 @@ describe('HealthService', () => {
   }
 
   beforeEach(async () => {
+    // Crons are frozen-by-default during the session-recovery incident; run them
+    // normally in tests. A dedicated test below asserts the freeze behavior.
+    process.env.RECOVERY_FREEZE = 'false';
     db = chainable();
 
     wahaService = {
@@ -318,6 +321,29 @@ describe('HealthService', () => {
       await service.pollWorkerHealth();
 
       expect(wahaService.deleteSession).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recovery freeze', () => {
+    afterEach(() => {
+      process.env.RECOVERY_FREEZE = 'false';
+    });
+
+    it('skips pollWorkerHealth when RECOVERY_FREEZE is not explicitly disabled', async () => {
+      delete process.env.RECOVERY_FREEZE; // default => frozen
+      db.where.mockResolvedValueOnce([{ id: 'w1' }]);
+
+      await service.pollWorkerHealth();
+
+      expect(wahaService.listSessions).not.toHaveBeenCalled();
+    });
+
+    it('skips checkScaling when frozen', async () => {
+      process.env.RECOVERY_FREEZE = 'true';
+
+      await service.checkScaling();
+
+      expect(workersService.checkScaling).not.toHaveBeenCalled();
     });
   });
 
