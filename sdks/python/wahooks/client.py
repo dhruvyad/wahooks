@@ -72,13 +72,23 @@ class WAHooks:
     def create_connection(self) -> Dict[str, Any]:
         return self._request("POST", "/connections")
 
-    def get_or_create_scannable_connection(self) -> Dict[str, Any]:
+    def get_or_create_scannable_connection(self, virgin_only: bool = False) -> Dict[str, Any]:
         """Get a connection ready to scan. Reuses an idle one if available, or creates new.
 
         Returns ``{"id": "...", "status": "scan_qr", "qr": "iVBOR..."}``
         — one call instead of list + filter + restart/create.
+
+        ``virgin_only=True`` restricts reuse to sessions that were never
+        phone-linked and have no webhook configs. Required when one WAHooks
+        account serves multiple end users: a recycled session keeps its webhook
+        configs, so its QR would attach a new end user's phone to another end
+        user's delivery pipeline.
         """
-        return self._request("POST", "/connections/get-or-create")
+        return self._request(
+            "POST",
+            "/connections/get-or-create",
+            json={"virgin_only": True} if virgin_only else None,
+        )
 
     def get_connection(self, connection_id: str) -> Dict[str, Any]:
         return self._request("GET", f"/connections/{connection_id}")

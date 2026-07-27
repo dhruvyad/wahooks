@@ -19,9 +19,9 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq, and, ne, inArray, desc } from 'drizzle-orm';
+import { eq, and, ne, inArray, desc, isNull, notExists } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { wahaSessions } from '@wahooks/db';
+import { wahaSessions, webhookConfigs } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -182,20 +182,40 @@ export class ConnectionsController {
   /**
    * Get a connection ready to scan, reusing an idle one if available.
    * Returns { id, status, qr } — one call, one response.
+   *
+   * `virgin_only` restricts reuse to sessions that were never phone-linked and
+   * have no webhook configs. Multi-tenant consumers (one WAHooks account, many
+   * end users) must set it: a recycled session keeps its webhook configs, and
+   * the phone link happens at scan time — so handing a previously-linked
+   * session's QR to a new end user attaches their phone to another end user's
+   * delivery pipeline.
    */
   @Post('get-or-create')
-  async getOrCreateScannable(@CurrentUser() user: { sub: string }) {
+  async getOrCreateScannable(
+    @CurrentUser() user: { sub: string },
+    @Body() body?: { virgin_only?: boolean },
+  ) {
     // 1. Look for an existing idle connection (scan_qr, pending, or failed)
     const idleStatuses: ('scan_qr' | 'pending' | 'failed')[] = ['scan_qr', 'pending', 'failed'];
+    const idleWhere = [
+      eq(wahaSessions.userId, user.sub),
+      inArray(wahaSessions.status, idleStatuses),
+    ];
+    if (body?.virgin_only) {
+      idleWhere.push(
+        isNull(wahaSessions.phoneNumber),
+        notExists(
+          this.db
+            .select({ id: webhookConfigs.id })
+            .from(webhookConfigs)
+            .where(eq(webhookConfigs.sessionId, wahaSessions.id)),
+        ),
+      );
+    }
     const [idle] = await this.db
       .select()
       .from(wahaSessions)
-      .where(
-        and(
-          eq(wahaSessions.userId, user.sub),
-          inArray(wahaSessions.status, idleStatuses),
-        ),
-      )
+      .where(and(...idleWhere))
       .orderBy(desc(wahaSessions.createdAt))
       .limit(1);
 

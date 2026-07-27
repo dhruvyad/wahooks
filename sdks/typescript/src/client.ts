@@ -135,9 +135,14 @@ export class WAHooks {
   /**
    * Get a connection ready to scan. Reuses an idle one if available, or creates new.
    * Returns { id, status, qr } — one call instead of list + filter + restart/create.
+   *
+   * `virginOnly` restricts reuse to sessions that were never phone-linked and
+   * have no webhook configs. Required when one WAHooks account serves multiple
+   * end users: a recycled session keeps its webhook configs, so its QR would
+   * attach a new end user's phone to another end user's delivery pipeline.
    */
-  async getOrCreateScannableConnection(): Promise<ScannableConnection> {
-    return this.request('POST', '/connections/get-or-create');
+  async getOrCreateScannableConnection(virginOnly = false): Promise<ScannableConnection> {
+    return this.request('POST', '/connections/get-or-create', virginOnly ? { virgin_only: true } : undefined);
   }
 
   async getConnection(id: string): Promise<Connection> {
