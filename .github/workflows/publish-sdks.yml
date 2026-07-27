@@ -54,6 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # OIDC trusted publishing — no NPM_TOKEN needed
     steps:
       - uses: actions/checkout@v4
 
@@ -61,6 +62,10 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      # npm trusted publishing (OIDC) requires npm >= 11.5.1
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Install and build
         working-directory: sdks/typescript
@@ -78,12 +83,10 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish to npm
+      - name: Publish to npm (OIDC)
         if: steps.version-check.outputs.exists == 'false'
         working-directory: sdks/typescript
-        run: npm publish --access=public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access=public --provenance
 
   publish-python:
     needs: check-versions
@@ -91,6 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # OIDC trusted publishing — no PYPI_TOKEN needed
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +103,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install build tools
-        run: pip install build twine
+        run: pip install build
 
       - name: Build
         working-directory: sdks/python
@@ -116,13 +120,11 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish to PyPI
+      - name: Publish to PyPI (OIDC)
         if: steps.version-check.outputs.exists == 'false'
-        working-directory: sdks/python
-        run: twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdks/python/dist/
 
   publish-cli-npm:
     needs: check-versions
@@ -130,6 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # OIDC trusted publishing — no NPM_TOKEN needed
     steps:
       - uses: actions/checkout@v4
 
@@ -137,6 +140,9 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Check if version exists
         id: version-check
@@ -150,12 +156,10 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish to npm
+      - name: Publish to npm (OIDC)
         if: steps.version-check.outputs.exists == 'false'
         working-directory: sdks/cli-npm
-        run: npm publish --access=public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access=public --provenance
 
   publish-channel:
     needs: check-versions
@@ -163,6 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # OIDC trusted publishing — no NPM_TOKEN needed
     steps:
       - uses: actions/checkout@v4
 
@@ -170,6 +175,9 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Install and build
         working-directory: sdks/channel
@@ -187,9 +195,7 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish to npm
+      - name: Publish to npm (OIDC)
         if: steps.version-check.outputs.exists == 'false'
         working-directory: sdks/channel
-        run: npm publish --access=public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access=public --provenance
