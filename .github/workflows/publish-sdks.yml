@@ -63,9 +63,10 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      # npm trusted publishing (OIDC) requires npm >= 11.5.1
+      # npm trusted publishing (OIDC) needs npm >= 11.5.1. Pin to 11.x — npm@latest
+      # (12.x) requires node >= 22 and would break on the runner's node 20.
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - name: Install and build
         working-directory: sdks/typescript
@@ -142,7 +143,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11 # OIDC needs >= 11.5.1; npm@latest (12.x) needs node >= 22
 
       - name: Check if version exists
         id: version-check
@@ -177,7 +178,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11 # OIDC needs >= 11.5.1; npm@latest (12.x) needs node >= 22
 
       - name: Install and build
         working-directory: sdks/channel
