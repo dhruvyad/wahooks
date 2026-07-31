@@ -247,7 +247,7 @@ export class HealthService {
         // Recovered (or healthy) — stop tracking recovery attempts.
         this.recoveryAttempts.delete(dbSession.id);
         if (dbStatus !== 'working' || !dbSession.phoneNumber) {
-          const updates: Record<string, any> = { status: 'working', updatedAt: new Date() };
+          const updates: Record<string, any> = { status: 'working', statusReason: null, updatedAt: new Date() };
 
           // Fetch phone number if we don't have it yet
           if (!dbSession.phoneNumber) {
@@ -347,7 +347,15 @@ export class HealthService {
         );
         await this.db
           .update(wahaSessions)
-          .set({ status: 'failed', updatedAt: new Date() })
+          .set({
+            status: 'failed',
+            statusReason: JSON.stringify({
+              via: 'health_cron',
+              reason: `recovery_exhausted after ${attempts} restart attempts (WAHA ${action === 'restart' ? 'FAILED' : 'STOPPED'})`,
+              at: new Date().toISOString(),
+            }),
+            updatedAt: new Date(),
+          })
           .where(eq(wahaSessions.id, dbSession.id));
       }
       return;

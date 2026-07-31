@@ -18,6 +18,10 @@ export const wahaSessions = pgTable("waha_sessions", {
   })
     .notNull()
     .default("pending"),
+  // Evidence for the last non-working transition (WAHA status history / the
+  // health cron's recovery-exhaustion marker). Pod logs rotate in minutes, so
+  // without this every session death is unexplainable after the fact.
+  statusReason: text("status_reason"),
   engine: text("engine", { enum: ["NOWEB", "WEBJS", "GOWS"] })
     .notNull()
     .default("NOWEB"),
