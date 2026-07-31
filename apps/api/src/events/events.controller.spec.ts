@@ -71,11 +71,14 @@ describe('EventsController', () => {
 
       expect(result).toEqual({ received: true });
       expect(db.insert).toHaveBeenCalled();
+      // Delivered envelopes carry connectionId so consumers can map events to
+      // the connection they registered against (session names are internal).
+      const delivered = { ...event, connectionId: 'sess-1' };
       expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({
           webhookConfigId: 'wh-1',
           eventType: 'message',
-          payload: event,
+          payload: delivered,
           status: 'pending',
         }),
       );
@@ -84,7 +87,7 @@ describe('EventsController', () => {
         url: 'https://example.com/hook',
         signingSecret: 'secret-123',
         eventType: 'message',
-        payload: event,
+        payload: delivered,
         sessionId: 'sess-1',
         logId: 'log-1',
       });

@@ -75,7 +75,7 @@ export class EventsController {
     // the health cron to reconcile. WAHA pushes these because we subscribe to '*'.
     if (event.event === 'session.status') {
       const p = event.payload as any;
-      await this.applySessionStatus(session, p?.status, p?.me?.id);
+      await this.applySessionStatus(session, p?.status, (event as any)?.me?.id ?? p?.me?.id, p?.statuses);
     }
 
     // 2. Rewrite internal WAHA media URLs to the externally-resolvable proxy URL.
@@ -90,7 +90,10 @@ export class EventsController {
         url: `${apiUrl}/api/connections/${session.id}/media/${filename}`,
       };
     }
-    const rewrittenEvent = { ...event, payload: rewrittenPayload };
+    // connectionId lets webhook consumers map the event to the connection they
+    // registered against without parsing session names (needed by NoClick's
+    // session-death detection; the raw WAHA envelope only carries sessionName).
+    const rewrittenEvent = { ...event, connectionId: session.id, payload: rewrittenPayload };
 
     this.eventsGateway.broadcastEvent(session.id, session.userId, {
       event: event.event,
@@ -166,6 +169,7 @@ export class EventsController {
     session: any,
     wahaStatus: string | undefined,
     meId: string | undefined,
+    statusHistory?: unknown[],
   ): Promise<void> {
     const map: Record<string, string> = {
       WORKING: 'working',
@@ -184,7 +188,21 @@ export class EventsController {
     if (!needsStatus && !needsPhone) return;
 
     const updates: Record<string, any> = { updatedAt: new Date() };
-    if (needsStatus) updates.status = newStatus;
+    if (needsStatus) {
+      updates.status = newStatus;
+      // Persist WHY at transition time — WAHA pod logs rotate away in
+      // minutes, so this row is the only durable evidence when a session
+      // death is investigated later. Cleared on recovery.
+      updates.statusReason =
+        newStatus === 'working'
+          ? null
+          : JSON.stringify({
+              via: 'waha_event',
+              waha_status: wahaStatus,
+              at: new Date().toISOString(),
+              history: Array.isArray(statusHistory) ? statusHistory.slice(-5) : [],
+            });
+    }
     if (needsPhone) updates.phoneNumber = phoneFromEvent;
 
     await this.db
