@@ -90,6 +90,16 @@ export class EventsController {
         url: `${apiUrl}/api/connections/${session.id}/media/${filename}`,
       };
     }
+    // For message-family events, surface the sender's real phone number at the
+    // top level as `senderPhone` (digits only). When the sender uses a WhatsApp
+    // @lid (privacy identifier), `from` is the LID and the phone number JID lives
+    // in `_data.key.remoteJidAlt` (`participantAlt` for group senders) — this
+    // saves consumers from reaching into `_data`. Original fields (`from`,
+    // `_data`, …) are left untouched for backwards compatibility.
+    if (typeof rewrittenPayload.from === 'string') {
+      rewrittenPayload.senderPhone = this.resolveSenderPhone(rewrittenPayload);
+    }
+
     // connectionId lets webhook consumers map the event to the connection they
     // registered against without parsing session names (needed by NoClick's
     // session-death detection; the raw WAHA envelope only carries sessionName).
@@ -154,6 +164,32 @@ export class EventsController {
     }
 
     return { received: true };
+  }
+
+  /**
+   * Best-effort resolution of a message sender's real phone number (digits only)
+   * from a WAHA message payload. Handles the WhatsApp @lid privacy case: when the
+   * sender's `from`/`participant` is a `<lid>@lid`, WhatsApp still ships the phone
+   * JID alongside it in `_data.key.remoteJidAlt` (DMs) / `participantAlt` (group
+   * senders). Prefer those; fall back to `from`/`participant` when they are
+   * already a phone JID. Returns null when only a LID is available (no phone JID)
+   * or the sender is not a phone (e.g. a group/broadcast id).
+   */
+  private resolveSenderPhone(payload: any): string | null {
+    const key = payload?._data?.key ?? {};
+    const candidates = [
+      key.participantAlt,
+      key.remoteJidAlt,
+      payload?.participant,
+      payload?.from,
+    ];
+    for (const jid of candidates) {
+      if (typeof jid !== 'string') continue;
+      // <digits>[:device]@(c.us|s.whatsapp.net) → the phone number digits.
+      const match = jid.match(/^(\d+)(?::\d+)?@(?:c\.us|s\.whatsapp\.net)$/);
+      if (match) return match[1];
+    }
+    return null;
   }
 
   /**
