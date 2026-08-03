@@ -93,6 +93,69 @@ describe('EventsController', () => {
       });
     });
 
+    it('resolves a @lid sender into a top-level payload.senderPhone (leaving from/_data intact)', async () => {
+      const session = { id: 'sess-1', sessionName: 'u_user-123_s_abc', userId: 'user-123' };
+      const config = {
+        id: 'wh-1', sessionId: 'sess-1', url: 'https://example.com/hook',
+        events: ['message'], signingSecret: 'secret-123', active: true,
+      };
+      const event = {
+        event: 'message',
+        session: 'u_user-123_s_abc',
+        payload: {
+          from: '171051518537926@lid',
+          body: 'oi',
+          _data: {
+            key: {
+              remoteJid: '171051518537926@lid',
+              remoteJidAlt: '556291503777@s.whatsapp.net',
+            },
+          },
+        },
+      };
+
+      db.where.mockResolvedValueOnce([session]);
+      db.where.mockResolvedValueOnce([config]);
+      db.returning.mockResolvedValueOnce([{ id: 'log-1' }]);
+
+      await controller.ingestWahaEvent(event);
+
+      const delivered = webhookQueue.add.mock.calls[0][1].payload;
+      // New convenience field: real phone number, digits only.
+      expect(delivered.payload.senderPhone).toBe('556291503777');
+      // Backwards compatibility: original fields untouched.
+      expect(delivered.payload.from).toBe('171051518537926@lid');
+      expect(delivered.payload._data.key.remoteJidAlt).toBe('556291503777@s.whatsapp.net');
+      expect(delivered.connectionId).toBe('sess-1');
+    });
+
+    it('sets senderPhone from a plain phone `from`, and null when only a LID is available', async () => {
+      const session = { id: 'sess-1', sessionName: 'u_user-123_s_abc', userId: 'user-123' };
+      const config = {
+        id: 'wh-1', sessionId: 'sess-1', url: 'https://example.com/hook',
+        events: ['message'], signingSecret: 'secret-123', active: true,
+      };
+
+      db.where.mockResolvedValueOnce([session]);
+      db.where.mockResolvedValueOnce([config]);
+      db.returning.mockResolvedValueOnce([{ id: 'log-1' }]);
+      await controller.ingestWahaEvent({
+        event: 'message', session: 'u_user-123_s_abc',
+        payload: { from: '556299999999@c.us', body: 'hi' },
+      });
+      expect(webhookQueue.add.mock.calls[0][1].payload.payload.senderPhone).toBe('556299999999');
+
+      webhookQueue.add.mockClear();
+      db.where.mockResolvedValueOnce([session]);
+      db.where.mockResolvedValueOnce([config]);
+      db.returning.mockResolvedValueOnce([{ id: 'log-2' }]);
+      await controller.ingestWahaEvent({
+        event: 'message', session: 'u_user-123_s_abc',
+        payload: { from: '171051518537926@lid', body: 'hi' }, // no phone JID available
+      });
+      expect(webhookQueue.add.mock.calls[0][1].payload.payload.senderPhone).toBeNull();
+    });
+
     it('should return { received: true } even when session not found', async () => {
       db.where.mockResolvedValueOnce([]);
 
