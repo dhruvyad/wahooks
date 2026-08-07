@@ -13,6 +13,14 @@ export class WahaService {
   private readonly logger = new Logger(WahaService.name);
   private readonly maxSessions: number;
 
+  // Cache of resolved send targets (phone digits → canonical WAHA chatId) so we
+  // don't hit WAHA's check-exists on every send. Keyed by `${sessionName}:${digits}`
+  // and TTL'd, because a contact's canonical identity can shift over time (e.g.
+  // WhatsApp LID migration).
+  private readonly chatIdCache = new Map<string, { chatId: string; exp: number }>();
+  private readonly CHATID_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+  private readonly CHATID_CACHE_MAX = 10_000;
+
   constructor(private readonly configService: ConfigService) {
     this.maxSessions = Number(
       this.configService.get('WAHA_MAX_SESSIONS', '1'),
@@ -422,6 +430,88 @@ export class WahaService {
     return file;
   }
 
+  /**
+   * Ask WAHA whether a phone number is on WhatsApp and, if so, its canonical
+   * chatId. WAHA normalizes here (e.g. Brazilian "9th digit", LID-migrated
+   * contacts), so the returned chatId is the form that actually routes.
+   */
+  async checkNumberExists(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    phone: string,
+  ): Promise<{ numberExists: boolean; chatId?: string } | null> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/contacts/check-exists?phone=${encodeURIComponent(phone)}&session=${encodeURIComponent(sessionName)}`,
+    );
+    const headers = this.buildHeaders(apiKey);
+    return this.request<{ numberExists: boolean; chatId?: string }>(
+      'GET',
+      url,
+      headers,
+    );
+  }
+
+  /**
+   * Resolve a caller-supplied chatId to the canonical WAHA chatId WhatsApp will
+   * actually route to. Phone-number targets (bare digits, `@c.us`,
+   * `@s.whatsapp.net`) are run through WAHA's check-exists, which fixes common
+   * mis-addressing — notably Brazilian numbers sent with the extra "9th digit"
+   * and LID-migrated contacts — that otherwise silently stall at PENDING.
+   *
+   * Group (`@g.us`) and LID (`@lid`) targets are already routable identities and
+   * pass through untouched. On any failure (number not on WhatsApp, WAHA error)
+   * the original chatId is returned, so this never regresses existing behavior.
+   */
+  async resolveChatId(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+  ): Promise<string> {
+    if (typeof chatId !== 'string' || !chatId) return chatId;
+    // Already-routable identities — never rewrite them.
+    if (chatId.endsWith('@g.us') || chatId.endsWith('@lid')) return chatId;
+    // Extract phone digits (drops '+', spaces, and the @c.us/@s.whatsapp.net suffix).
+    const digits = chatId.replace(/@[a-z.]+$/i, '').replace(/\D/g, '');
+    if (!digits) return chatId;
+
+    const cacheKey = `${sessionName}:${digits}`;
+    const now = Date.now();
+    const cached = this.chatIdCache.get(cacheKey);
+    if (cached && cached.exp > now) return cached.chatId;
+
+    try {
+      const res = await this.checkNumberExists(
+        workerUrl,
+        apiKey,
+        sessionName,
+        digits,
+      );
+      if (res?.numberExists && res.chatId) {
+        if (this.chatIdCache.size >= this.CHATID_CACHE_MAX) {
+          this.chatIdCache.clear();
+        }
+        this.chatIdCache.set(cacheKey, {
+          chatId: res.chatId,
+          exp: now + this.CHATID_CACHE_TTL_MS,
+        });
+        if (res.chatId !== chatId) {
+          this.logger.log(
+            `Resolved send target ${chatId} → ${res.chatId} (session "${sessionName}")`,
+          );
+        }
+        return res.chatId;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `chatId resolution failed for "${chatId}" on session "${sessionName}": ${error instanceof Error ? error.message : String(error)} — sending as-is`,
+      );
+    }
+    return chatId;
+  }
+
   async sendImage(
     workerUrl: string,
     apiKey: string,
@@ -433,6 +523,7 @@ export class WahaService {
     mimetype?: string,
     options?: { skipPresence?: boolean },
   ): Promise<any> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     if (!options?.skipPresence) {
       await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
     }
@@ -456,6 +547,7 @@ export class WahaService {
     mimetype?: string,
     options?: { skipPresence?: boolean },
   ): Promise<any> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     if (!options?.skipPresence) {
       await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
     }
@@ -477,6 +569,7 @@ export class WahaService {
     mimetype?: string,
     options?: { skipPresence?: boolean },
   ): Promise<any> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     if (!options?.skipPresence) {
       await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
     }
@@ -501,6 +594,7 @@ export class WahaService {
     mimetype?: string,
     options?: { skipPresence?: boolean },
   ): Promise<any> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     if (!options?.skipPresence) {
       await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
     }
@@ -523,6 +617,7 @@ export class WahaService {
     address?: string,
     options?: { skipPresence?: boolean },
   ): Promise<any> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     if (!options?.skipPresence) {
       await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
     }
@@ -548,6 +643,7 @@ export class WahaService {
     contactPhone: string,
     options?: { skipPresence?: boolean },
   ): Promise<any> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     if (!options?.skipPresence) {
       await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
     }
@@ -681,6 +777,7 @@ export class WahaService {
     text: string,
     options?: { skipPresence?: boolean; replyTo?: string },
   ): Promise<WahaSendTextResponse> {
+    chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
     this.logger.log(
       `Sending text to ${chatId} via session "${sessionName}" on worker ${workerUrl}`,
     );

@@ -163,4 +163,75 @@ describe('WahaService', () => {
       ).rejects.toThrow('Network failure');
     });
   });
+
+  describe('resolveChatId', () => {
+    const sess = 'u_x_s_y';
+
+    it('normalizes a phone target via check-exists (fixes BR 9th-digit / @s.whatsapp.net)', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockFetchResponse({ numberExists: true, chatId: '553197471917@c.us' }),
+      );
+
+      const out = await service.resolveChatId(
+        workerUrl, apiKey, sess, '5531997471917@s.whatsapp.net',
+      );
+
+      expect(out).toBe('553197471917@c.us');
+      const [url] = fetchSpy.mock.calls[0];
+      expect(url).toContain('/api/contacts/check-exists');
+      expect(url).toContain('phone=5531997471917');
+    });
+
+    it('leaves @lid and @g.us targets untouched (no lookup)', async () => {
+      expect(
+        await service.resolveChatId(workerUrl, apiKey, sess, '171051518537926@lid'),
+      ).toBe('171051518537926@lid');
+      expect(
+        await service.resolveChatId(workerUrl, apiKey, sess, '120363@g.us'),
+      ).toBe('120363@g.us');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns the original chatId when the number is not on WhatsApp', async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ numberExists: false }));
+      const out = await service.resolveChatId(
+        workerUrl, apiKey, sess, '5531900000000@c.us',
+      );
+      expect(out).toBe('5531900000000@c.us');
+    });
+
+    it('never throws — falls back to the original chatId on a WAHA error', async () => {
+      fetchSpy.mockRejectedValueOnce(new Error('boom'));
+      const out = await service.resolveChatId(workerUrl, apiKey, sess, '5531997471917');
+      expect(out).toBe('5531997471917');
+    });
+
+    it('caches the resolution (second call does not hit WAHA)', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockFetchResponse({ numberExists: true, chatId: '553197471917@c.us' }),
+      );
+      const first = await service.resolveChatId(workerUrl, apiKey, sess, '5531997471917');
+      const second = await service.resolveChatId(workerUrl, apiKey, sess, '5531997471917');
+      expect(first).toBe('553197471917@c.us');
+      expect(second).toBe('553197471917@c.us');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('sendText sends to the resolved chatId, not the raw one', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(
+          mockFetchResponse({ numberExists: true, chatId: '553197471917@c.us' }),
+        ) // check-exists
+        .mockResolvedValueOnce(mockFetchResponse({ key: { id: 'm1' } })); // sendText
+
+      await service.sendText(
+        workerUrl, apiKey, sess, '5531997471917@s.whatsapp.net', 'hi',
+        { skipPresence: true },
+      );
+
+      const body = JSON.parse((fetchSpy.mock.calls[1][1] as any).body);
+      expect(body.chatId).toBe('553197471917@c.us');
+      expect(body.text).toBe('hi');
+    });
+  });
 });
