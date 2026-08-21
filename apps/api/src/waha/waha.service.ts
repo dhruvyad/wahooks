@@ -393,7 +393,9 @@ export class WahaService {
   ): Promise<any> {
     const url = this.buildUrl(
       workerUrl,
-      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}?downloadMedia=false`,
+      // downloadMedia=true — getMessageMedia depends on this response carrying
+      // hasMedia + media.url; with false it always 404'd "Message has no media".
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}?downloadMedia=true`,
     );
     return this.request<any>('GET', url, this.buildHeaders(apiKey));
   }
@@ -674,7 +676,11 @@ export class WahaService {
   ): Promise<any[]> {
     const url = this.buildUrl(
       workerUrl,
-      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&offset=${offset}&downloadMedia=false`,
+      // downloadMedia=true so WAHA attaches hasMedia/media (incl. a fetchable
+      // file URL) for audio/image/video/document messages. With false, media
+      // messages come back with no media payload at all — which breaks the
+      // media proxy and makes voice notes invisible to read-API consumers.
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&offset=${offset}&downloadMedia=true`,
     );
     const headers = this.buildHeaders(apiKey);
 
