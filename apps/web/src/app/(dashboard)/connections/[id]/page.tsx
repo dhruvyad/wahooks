@@ -55,8 +55,18 @@ function ChatAvatar({
     avatarCache.has(cacheKey) ? avatarCache.get(cacheKey)! : undefined
   );
 
+  // This component instance survives chat switches (e.g. the conversation
+  // header), so `url` may still hold the PREVIOUS chat's photo. Re-sync state
+  // whenever the key changes (React's "adjust state during render" pattern) —
+  // otherwise the old contact's photo stays stuck on screen.
+  const [prevKey, setPrevKey] = useState(cacheKey);
+  if (prevKey !== cacheKey) {
+    setPrevKey(cacheKey);
+    setUrl(avatarCache.has(cacheKey) ? avatarCache.get(cacheKey)! : undefined);
+  }
+
   useEffect(() => {
-    if (avatarCache.has(cacheKey)) return;
+    if (avatarCache.has(cacheKey)) return; // state already synced during render
     let cancelled = false;
     apiFetch(
       `/api/connections/${connectionId}/contacts/${encodeURIComponent(chatId)}/picture`
