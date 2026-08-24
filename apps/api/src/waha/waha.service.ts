@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   WahaSessionResponse,
@@ -106,9 +106,15 @@ export class WahaService {
 
       if (!response.ok) {
         const responseBody = await response.text();
-        const message = `WAHA API error: ${method} ${url} returned ${response.status} - ${responseBody}`;
-        this.logger.error(message);
-        throw new Error(message);
+        this.logger.error(
+          `WAHA API error: ${method} ${url} returned ${response.status} - ${responseBody}`,
+        );
+        // Surface a concise, actionable error to API callers instead of a
+        // generic 500: WAHA 4xx (bad request contents) → 400, WAHA 5xx → 502.
+        // Message keeps the 'WAHA API error' prefix — internal callers match on it.
+        const detail = this.extractWahaErrorDetail(responseBody);
+        const message = `WAHA API error: ${method} ${url} returned ${response.status} - ${detail}`;
+        throw new HttpException(message, response.status >= 500 ? 502 : 400);
       }
 
       const text = await response.text();
@@ -135,6 +141,23 @@ export class WahaService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  /**
+   * Pull the human-meaningful message out of a WAHA error body (which can be a
+   * huge JSON envelope with stack traces and the full request echoed back).
+   */
+  private extractWahaErrorDetail(body: string): string {
+    try {
+      const parsed = JSON.parse(body);
+      const detail =
+        parsed?.exception?.message ?? parsed?.message ?? parsed?.error;
+      if (typeof detail === 'string' && detail) return detail;
+      if (Array.isArray(detail) && detail.length) return detail.join('; ');
+    } catch {
+      // not JSON — fall through to truncation
+    }
+    return body.length > 300 ? `${body.slice(0, 300)}…` : body;
   }
 
   async createSession(
@@ -421,15 +444,55 @@ export class WahaService {
   }
 
   private buildFilePayload(opts: { mediaUrl?: string; mediaData?: string; mimetype?: string; filename?: string }): any {
-    if (opts.mediaData) {
-      const file: any = { data: opts.mediaData };
-      if (opts.mimetype) file.mimetype = opts.mimetype;
+    let { mediaUrl, mediaData, mimetype } = opts;
+
+    // WAHA downloads file.url with axios, which rejects data: URLs ("Invalid
+    // URL" → 500). Clients (agents inlining local files) legitimately send
+    // them, so decode data: URLs ourselves into WAHA's supported base64 form.
+    if (!mediaData && mediaUrl?.startsWith('data:')) {
+      const parsed = this.parseDataUrl(mediaUrl);
+      if (parsed) {
+        mediaData = parsed.data;
+        mimetype = mimetype ?? parsed.mimetype;
+        mediaUrl = undefined;
+      }
+    }
+
+    if (mediaData) {
+      const file: any = { data: mediaData };
+      if (mimetype) file.mimetype = mimetype;
       if (opts.filename) file.filename = opts.filename;
       return file;
     }
-    const file: any = { url: opts.mediaUrl };
+    const file: any = { url: mediaUrl };
     if (opts.filename) file.filename = opts.filename;
     return file;
+  }
+
+  /**
+   * Parse a data: URL into { mimetype, data(base64) }. Handles both base64
+   * payloads (`data:image/png;base64,...`) and percent-encoded text payloads
+   * (`data:image/svg+xml;charset=utf-8,%3Csvg...`). Returns null if malformed.
+   */
+  private parseDataUrl(url: string): { mimetype?: string; data: string } | null {
+    const m = url.match(/^data:([^;,]+)?((?:;[^;,=]+=[^;,]*)*)(;base64)?,([\s\S]*)$/);
+    if (!m) return null;
+    const mimetype = m[1] || undefined;
+    const raw = m[4];
+    try {
+      if (m[3]) {
+        // base64 payload — tolerate percent-encoding and whitespace
+        const b64 = (raw.includes('%') ? decodeURIComponent(raw) : raw).replace(/\s/g, '');
+        return { mimetype, data: b64 };
+      }
+      // text payload — percent-decode, then base64-encode for WAHA
+      return {
+        mimetype,
+        data: Buffer.from(decodeURIComponent(raw), 'utf8').toString('base64'),
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -1023,6 +1023,17 @@ export class ConnectionsController {
     @Body() body: { chatId: string; url?: string; data?: string; mimetype?: string; caption?: string; skipPresence?: boolean },
     @CurrentUser() user: { sub: string },
   ) {
+    // WhatsApp does not support SVG as an image (clients can't render it and
+    // thumbnail generation fails downstream). Fail fast with guidance instead
+    // of letting the engine 500.
+    const declaredMime =
+      body.mimetype ??
+      (body.url?.startsWith('data:') ? body.url.slice(5).split(/[;,]/)[0] : undefined);
+    if (declaredMime?.toLowerCase().includes('svg')) {
+      throw new BadRequestException(
+        'WhatsApp does not support SVG images. Send the file via send-document instead, or convert it to PNG/JPEG first.',
+      );
+    }
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     return this.wahaService.sendImage(
       worker.internalIp, worker.apiKeyEnc, wahaName,
