@@ -13,6 +13,7 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  GoneException,
   ServiceUnavailableException,
   BadRequestException,
   Header,
@@ -1011,6 +1012,14 @@ export class ConnectionsController {
       .where(eq(wahaSessions.id, id));
     if (!connection) throw new NotFoundException('Connection not found');
     if (connection.userId !== userId) throw new ForbiddenException('You do not own this connection');
+    // A deleted (soft-stopped) connection has no worker by design. Without this
+    // check it surfaced as 503 'No worker assigned', which reads as a platform
+    // outage and sends client retry loops hammering a permanently-dead id.
+    if (connection.status === 'stopped') {
+      throw new GoneException(
+        'This connection was deleted. Create a new connection, link it by scanning the QR code, and update your integration to use the new connection id.',
+      );
+    }
     const worker = await this.workersService.getWorkerForSession(id);
     if (!worker) throw new ServiceUnavailableException('No worker assigned');
     const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
