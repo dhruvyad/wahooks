@@ -127,6 +127,31 @@ describe('HealthService', () => {
     });
   });
 
+  describe('unreachable worker', () => {
+    it('creates only never-materialized (pending) sessions, never the ones WAHA already holds', async () => {
+      const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
+      const dbSessions = [
+        { id: 'a', sessionName: 'working1', status: 'working' },
+        { id: 'b', sessionName: 'failed1', status: 'failed' },
+        { id: 'c', sessionName: 'scan1', status: 'scan_qr' },
+        { id: 'd', sessionName: 'new1', status: 'pending' },
+      ];
+      db.where
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce(dbSessions.map((s) => ({ sessionName: s.sessionName })))
+        .mockResolvedValueOnce(dbSessions);
+      wahaService.listSessions!.mockRejectedValueOnce(new Error('500 - remaining connection slots are reserved'));
+      wahaService.createSession!.mockResolvedValue({} as any);
+      wahaService.startSession!.mockResolvedValue(undefined);
+
+      await service.pollWorkerHealth();
+
+      expect(wahaService.createSession).toHaveBeenCalledTimes(1);
+      expect(wahaService.createSession).toHaveBeenCalledWith('10.0.0.1', 'key', 'new1', expect.any(String));
+      expect(wahaService.restartSession).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reconcileSessionStatus', () => {
     // We test reconcileSessionStatus indirectly via pollWorkerHealth
     // since it's a private method. Each scenario sets up a worker+session combination.

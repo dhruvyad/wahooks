@@ -102,9 +102,13 @@ export class HealthService {
       .where(eq(wahaSessions.workerId, worker.id));
 
     if (!workerReachable) {
-      // Worker is unreachable (likely still booting). Try to create pending sessions.
+      // Worker is unreachable (booting, or its store briefly out of Postgres
+      // slots). Only a `pending` session has never been materialized in WAHA;
+      // every other row already exists there and auto-starts with the pod.
+      // Creating all of them here fired 53 POSTs per poll at the weakest
+      // moment and turned a one-off connection-cap blip into a storm.
       for (const dbSession of dbSessions) {
-        if (dbSession.status === 'stopped') {
+        if (dbSession.status !== 'pending') {
           continue;
         }
         await this.tryAutoCreateSession(worker, dbSession);
