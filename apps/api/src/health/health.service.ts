@@ -19,6 +19,15 @@ export class HealthService {
   private readonly recoveryAttempts = new Map<string, number>();
   private readonly MAX_RECOVERY_ATTEMPTS = 5;
 
+  // When each session was first seen in SCAN_QR_CODE (per pod lifetime). A
+  // session nobody scans keeps its engine resident, minting QR codes and
+  // counting as live capacity; after a bounded wait it is retired (stopped,
+  // auth kept, row `failed`) — short for a link that dropped, since the owner
+  // is told to re-scan anyway; longer for one still waiting for its first scan.
+  private readonly scanQrSince = new Map<string, number>();
+  private readonly SCAN_QR_LINKED_RETIRE_MS = 30 * 60_000;
+  private readonly SCAN_QR_UNLINKED_RETIRE_MS = 2 * 60 * 60_000;
+
   // Orphan cleanup deletes lingering soft-deleted WAHA sessions from the pod.
   // Rate-limited per worker per poll so a large backlog clears gradually without
   // hammering the WAHA API.
@@ -250,6 +259,7 @@ export class HealthService {
       case 'WORKING':
         // Recovered (or healthy) — stop tracking recovery attempts.
         this.recoveryAttempts.delete(dbSession.id);
+        this.scanQrSince.delete(dbSession.id);
         if (dbStatus !== 'working' || !dbSession.phoneNumber) {
           const updates: Record<string, any> = { status: 'working', statusReason: null, updatedAt: new Date() };
 
@@ -279,9 +289,35 @@ export class HealthService {
         }
         break;
 
-      case 'SCAN_QR_CODE':
+      case 'SCAN_QR_CODE': {
         // A definitive state (WhatsApp wants a fresh link) — recovery is done.
         this.recoveryAttempts.delete(dbSession.id);
+        const since = this.scanQrSince.get(dbSession.id) ?? Date.now();
+        this.scanQrSince.set(dbSession.id, since);
+        const limit = dbSession.phoneNumber
+          ? this.SCAN_QR_LINKED_RETIRE_MS
+          : this.SCAN_QR_UNLINKED_RETIRE_MS;
+        const waitedMs = Date.now() - since;
+        if (waitedMs >= limit) {
+          this.scanQrSince.delete(dbSession.id);
+          this.logger.warn(
+            `Session "${sessionName}" unscanned for ${Math.round(waitedMs / 60_000)} min — retiring (auth preserved; re-link revives it)`,
+          );
+          await this.db
+            .update(wahaSessions)
+            .set({
+              status: 'failed',
+              statusReason: JSON.stringify({
+                via: 'health_cron',
+                reason: `scan_qr_expired after ${Math.round(waitedMs / 60_000)} min unscanned`,
+                at: new Date().toISOString(),
+              }),
+              updatedAt: new Date(),
+            })
+            .where(eq(wahaSessions.id, dbSession.id));
+          await this.retireSession(worker, dbSession, wahaName);
+          break;
+        }
         if (dbStatus !== 'scan_qr') {
           this.logger.log(
             `Session "${sessionName}" is SCAN_QR_CODE in WAHA but "${dbStatus}" in DB, updating to "scan_qr"`,
@@ -292,6 +328,7 @@ export class HealthService {
             .where(eq(wahaSessions.id, dbSession.id));
         }
         break;
+      }
 
       case 'FAILED':
         // Recover from persisted auth WITHOUT logging out (preserves the WhatsApp

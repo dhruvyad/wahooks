@@ -115,3 +115,43 @@ terraform output ingress_public_ipv4
 | `K8S_NAMESPACE` | No | `default` | k8s namespace for WAHA StatefulSet |
 | `WAHA_STATEFULSET_NAME` | No | `waha` | StatefulSet name |
 | `WAHA_HEADLESS_SERVICE` | No | `waha` | Headless Service name for pod DNS |
+
+## Operations (2026-09-14)
+
+**What owns what.** The cluster, the Cluster Autoscaler and the k3s version are
+Terraform/kube-hetzner territory, but the live cluster has drifted from
+`terraform/` (k3s auto-upgrades; hand patches) — treat `terraform apply` as
+destructive until the config is re-imported. Workloads (`waha` StatefulSet,
+`wahooks-api`, `wahooks-mcp`) are changed with `kubectl` and mirrored into the
+manifests here; `deploy-api.yml` only does `kubectl set image`.
+
+**WAHA workers never share a node with the control plane.** The StatefulSet
+carries node affinity `node-role.kubernetes.io/control-plane DoesNotExist`,
+requests 1 cpu / 2 GiB, limits 2 cpu / 3 GiB (under a cx23's memory, so a
+runaway worker is OOM-killed alone), `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`,
+and `updateStrategy: OnDelete`. A worker that grew on the 4 GB control-plane
+node thrashed the whole node until kubelet killed it (2026-09-14: every
+session flapped and every owner was emailed for nothing).
+
+**Rolling a WAHA pod = a WhatsApp reconnect for every session on it.** Never
+`kubectl rollout restart statefulset/waha`. To pick up a template change:
+
+1. Pre-provision a node: `kubectl patch deploy -n kube-system cluster-autoscaler`
+   with `--nodes=2:10:…` **and** `--enforce-node-group-min-size=true`; wait for
+   `kubectl get nodes` to show it Ready (~3 min). Revert both flags afterwards.
+2. `kubectl delete pod waha-N --grace-period=60` — the pod re-schedules with the
+   new template; sessions are WORKING again ~90 s later. Verify with
+   `kubectl exec waha-N -- sh -c 'curl -s -H "X-Api-Key: $WHATSAPP_API_KEY" localhost:3000/api/sessions'`.
+3. One pod per maintenance window.
+
+**Session cap.** `WAHA_MAX_SESSIONS` on the API only seeds NEW `waha_workers`
+rows; existing rows keep their own `max_sessions` — update them with SQL when
+the env changes (35 live sessions ≈ 1.65 GB; ~47 MB each).
+
+**Database connections.** The API and every WAHA session store (one
+`waha_noweb_<session>` database per session) share one Supabase Postgres with
+`max_connections = 60`. Steady state is ~40; pod restarts (full-store sync on
+boot) and overlapping API rollouts can hit the cap, which WAHA reports as
+`remaining connection slots are reserved for roles with the SUPERUSER attribute`.
+Reach the DB with `kubectl port-forward svc/supabase-db 15432:5432` and the
+`DATABASE_URL` from secret `wahooks-api-secret`.

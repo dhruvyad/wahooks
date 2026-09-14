@@ -1,3 +1,11 @@
+# NOT THE LIVE MANIFEST. The running Cluster Autoscaler is deployed by the
+# kube-hetzner Terraform module (terraform/main.tf `autoscaler_nodepools`) and
+# its live command differs from this file (node group `wahooks-waha-workers`,
+# 3m scale-down windows, utilization threshold 0.3). Read the live spec with
+#   kubectl get deploy -n kube-system cluster-autoscaler -o yaml
+# and change it with `kubectl patch`; never `kubectl apply -f` this file.
+# Raising `--nodes=MIN:…` only adds nodes when `--enforce-node-group-min-size=true`
+# is also present (used to pre-provision a node before moving a WAHA pod).
 # Kubernetes Cluster Autoscaler — Hetzner Cloud provider
 # Scales k3s worker nodes in the "waha-workers" node pool based on pod demand.
 # When WAHA StatefulSet replicas exceed node capacity, CA provisions new CX23 nodes.

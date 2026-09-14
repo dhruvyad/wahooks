@@ -326,6 +326,67 @@ describe('HealthService', () => {
     });
   });
 
+  describe('unscanned SCAN_QR_CODE sessions', () => {
+    const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
+    const wahaSessionsList = [{ name: 's1', status: 'SCAN_QR_CODE' as const }];
+
+    function pollAt(ms: number, dbSession: any) {
+      jest.spyOn(Date, 'now').mockReturnValue(ms);
+      db.where.mockReset();
+      db.where
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }])
+        .mockResolvedValueOnce([dbSession])
+        .mockResolvedValueOnce(undefined);
+      wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
+      return service.pollWorkerHealth();
+    }
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('retires a previously linked session left unscanned past the linked limit (auth kept)', async () => {
+      const dbSession = { id: 'sid1', sessionName: 's1', status: 'scan_qr', phoneNumber: '4470000' };
+      await pollAt(1_000_000, dbSession);
+      await pollAt(1_000_000 + 29 * 60_000, dbSession);
+      expect(wahaService.stopSession).not.toHaveBeenCalled();
+
+      db.set.mockClear();
+      await pollAt(1_000_000 + 31 * 60_000, dbSession);
+      expect(wahaService.stopSession).toHaveBeenCalledWith('10.0.0.1', 'key', 's1');
+      expect(db.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+      expect(wahaService.logoutSession).not.toHaveBeenCalled();
+      expect(wahaService.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('gives a never-linked session the longer window before retiring it', async () => {
+      const dbSession = { id: 'sid1', sessionName: 's1', status: 'scan_qr', phoneNumber: null };
+      await pollAt(1_000_000, dbSession);
+      await pollAt(1_000_000 + 90 * 60_000, dbSession);
+      expect(wahaService.stopSession).not.toHaveBeenCalled();
+
+      await pollAt(1_000_000 + 121 * 60_000, dbSession);
+      expect(wahaService.stopSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('forgets the wait once the session is WORKING again', async () => {
+      const dbSession = { id: 'sid1', sessionName: 's1', status: 'scan_qr', phoneNumber: '4470000' };
+      await pollAt(1_000_000, dbSession);
+
+      jest.spyOn(Date, 'now').mockReturnValue(1_000_000 + 10 * 60_000);
+      db.where.mockReset();
+      db.where
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }])
+        .mockResolvedValueOnce([{ ...dbSession, status: 'working' }]);
+      wahaService.listSessions!.mockResolvedValueOnce([{ name: 's1', status: 'WORKING' as const }]);
+      await service.pollWorkerHealth();
+
+      // Drops to SCAN_QR again 40 min after the FIRST sighting — the clock restarted.
+      await pollAt(1_000_000 + 40 * 60_000, dbSession);
+      expect(wahaService.stopSession).not.toHaveBeenCalled();
+    });
+  });
+
   describe('orphan cleanup', () => {
     it('deletes orphan WAHA sessions (no active DB record) and never touches "default" or stops them', async () => {
       const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
