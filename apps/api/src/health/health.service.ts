@@ -301,7 +301,10 @@ export class HealthService {
       case 'STOPPED':
         // WAHA has the session but it isn't running while the DB expects it up
         // (common right after a worker replacement). Start it from persisted auth.
-        if (dbStatus !== 'stopped') {
+        // A `failed` row is one recovery already retired (see recoverSession):
+        // leave it stopped until the user re-links through the QR path, which
+        // resets it with full config.
+        if (dbStatus !== 'stopped' && dbStatus !== 'failed') {
           await this.recoverSession(worker, dbSession, wahaName, 'start');
         }
         break;
@@ -358,6 +361,13 @@ export class HealthService {
           })
           .where(eq(wahaSessions.id, dbSession.id));
       }
+      // Retire it in WAHA too: a FAILED session keeps its engine resident and is
+      // auto-started on every pod boot, where it loops STARTING→FAILED beside the
+      // live sessions. Stop preserves the auth (no logout); the QR path resets
+      // a stopped session with full config when the user re-links.
+      if (action === 'restart') {
+        await this.retireSession(worker, dbSession, wahaName);
+      }
       return;
     }
 
@@ -383,6 +393,27 @@ export class HealthService {
     } catch (error) {
       this.logger.error(
         `Recovery ${action} failed for "${dbSession.sessionName}": ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async retireSession(
+    worker: any,
+    dbSession: any,
+    wahaName: string,
+  ): Promise<void> {
+    this.logger.warn(
+      `Stopping exhausted session "${dbSession.sessionName}" on worker ${worker.id} (auth preserved; re-link revives it)`,
+    );
+    try {
+      await this.wahaService.stopSession(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Stop failed for "${dbSession.sessionName}": ${error instanceof Error ? error.message : String(error)} — will retry next poll`,
       );
     }
   }

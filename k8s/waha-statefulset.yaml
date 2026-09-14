@@ -14,6 +14,11 @@ metadata:
 spec:
   serviceName: waha      # must match the headless Service name
   replicas: 1            # NestJS controls this; start with 1
+  # OnDelete: a template change must never roll every WhatsApp session at once.
+  # New pods (scale-up) get the new template; existing ones only on an explicit
+  # `kubectl delete pod waha-N` during a maintenance window.
+  updateStrategy:
+    type: OnDelete
   selector:
     matchLabels:
       app: waha
@@ -21,7 +26,19 @@ spec:
     metadata:
       labels:
         app: waha
+      annotations:
+        # A node hosting live sessions is never consolidated away by the autoscaler.
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
+      # Never on the control-plane node: it also runs etcd + the k3s server on a
+      # 4 GB box, and a worker growing there thrashed the whole node (2026-09-14).
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
       containers:
         - name: waha
           image: devlikeapro/waha-plus:latest
@@ -49,13 +66,17 @@ spec:
                 secretKeyRef:
                   name: waha-secret
                   key: database-url
+          # Requests reflect real steady state (~1.2 GB at 25 live sessions) so the
+          # scheduler cannot pack a worker where it won't fit; the limit sits under a
+          # cx23's allocatable memory so a runaway worker is OOM-killed alone instead
+          # of thrashing the node and taking every neighbour with it.
           resources:
             requests:
               cpu: "1"
-              memory: "1Gi"
+              memory: "2Gi"
             limits:
-              cpu: "4"
-              memory: "4Gi"
+              cpu: "2"
+              memory: "3Gi"
           readinessProbe:
             httpGet:
               path: /api/server/version

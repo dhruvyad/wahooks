@@ -43,6 +43,11 @@ spec:
             - secretRef:
                 name: wahooks-api-secret   # all env vars from /opt/wahooks/.env
           env:
+            # Live sessions per worker (~47 MB each): 35 ≈ 1.65 GB steady state under
+            # the worker's 3 GiB limit, with headroom for media bursts. Existing
+            # waha_workers rows keep their own max_sessions — update them with this.
+            - name: WAHA_MAX_SESSIONS
+              value: "35"
             # Override Redis to use host network (control-plane node's private IP)
             - name: REDIS_URL
               value: "redis://10.0.0.2:6379"

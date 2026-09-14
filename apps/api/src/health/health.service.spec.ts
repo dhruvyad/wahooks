@@ -256,6 +256,48 @@ describe('HealthService', () => {
 
       expect(wahaService.restartSession).toHaveBeenCalledTimes(5);
       expect(db.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+      // …and retired in WAHA: stopped (auth preserved), never logged out or deleted.
+      expect(wahaService.stopSession).toHaveBeenCalledWith('10.0.0.1', 'key', 's1');
+      expect(wahaService.logoutSession).not.toHaveBeenCalled();
+      expect(wahaService.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('keeps stopping an exhausted session that is still FAILED in WAHA (stop failed last poll)', async () => {
+      const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
+      const wahaSessionsList = [{ name: 's1', status: 'FAILED' as const }];
+      const dbSession = { id: 'sid1', sessionName: 's1', status: 'failed' };
+
+      for (let i = 0; i < 6; i++) {
+        db.where.mockReset();
+        db.where
+          .mockResolvedValueOnce([worker])
+          .mockResolvedValueOnce([{ sessionName: 's1' }])
+          .mockResolvedValueOnce([dbSession]);
+        wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
+        await service.pollWorkerHealth();
+      }
+      // 5 bounded restarts, then a stop on the 6th poll; the row was already failed.
+      expect(wahaService.restartSession).toHaveBeenCalledTimes(5);
+      expect(wahaService.stopSession).toHaveBeenCalledTimes(1);
+      expect(db.set).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+
+    it('leaves a retired session (STOPPED in WAHA, failed in DB) stopped until the user re-links', async () => {
+      const worker = { id: 'w1', internalIp: '10.0.0.1', apiKeyEnc: 'key', status: 'active' };
+      const wahaSessionsList = [{ name: 's1', status: 'STOPPED' as const }];
+      const dbSessions = [{ id: 'sid1', sessionName: 's1', status: 'failed' }];
+
+      db.where
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ sessionName: 's1' }]) // failed is non-stopped → still owned, not an orphan
+        .mockResolvedValueOnce(dbSessions);
+      wahaService.listSessions!.mockResolvedValueOnce(wahaSessionsList);
+
+      await service.pollWorkerHealth();
+
+      expect(wahaService.startSession).not.toHaveBeenCalled();
+      expect(wahaService.restartSession).not.toHaveBeenCalled();
+      expect(wahaService.deleteSession).not.toHaveBeenCalled();
     });
   });
 
