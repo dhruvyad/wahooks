@@ -36,6 +36,13 @@
       "when": 1773854400000,
       "tag": "0004_add_session_name",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789430400000,
+      "tag": "0005_enable_rls_on_public_tables",
+      "breakpoints": true
     }
   ]
 }
