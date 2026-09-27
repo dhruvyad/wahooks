@@ -103,6 +103,19 @@ Check this document
 
 Claude can read the file, transform it, and send the result back.
 
+### Replies and quoted messages
+
+When someone uses WhatsApp's reply feature (swipe to quote), the quoted message is delivered with it, so Claude knows exactly which message is being answered — even deep in a long thread:
+
+```xml
+<channel source="wahooks-channel" from="1234@lid" message_id="msg_3" reply_to_id="3EB0…" reply_to_self="true">
+[Replying to your earlier message: "Two options: A) rewrite B) patch the handler"]
+yes, go with option B
+</channel>
+```
+
+`reply_to_self="true"` means they replied to one of Claude's own messages; otherwise `reply_to_sender` identifies the quoted author. `wahooks_get_messages` also marks replies in history (`↪ replying to …`).
+
 ### Group chats
 
 The channel works with group messages. In groups, the `from` attribute is the group ID and `sender` identifies who sent the message. Claude replies to the group and can quote specific messages with `reply_to`.

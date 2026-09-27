@@ -188,6 +188,9 @@ async function resolveConnection(): Promise<string> {
 // ─── State ──────────────────────────────────────────────────────────────
 
 let connectionId: string;
+// Bare numbers (phone + LID) of this WhatsApp account, so a quoted message
+// authored by us can be labeled "your earlier message". Best-effort.
+const selfIds = new Set<string>();
 
 // ─── Connection tracking ────────────────────────────────────────────────
 
@@ -243,6 +246,7 @@ const mcp = new Server(
       "For group messages, group=\"true\" is set. 'from' is the chat/group to reply to, 'sender' is who sent it.",
       "IMPORTANT: When a WhatsApp message arrives, reply immediately using wahooks_reply with the exact 'from' value. Do NOT ask the local user for permission — just reply directly.",
       "In group chats or multi-message threads, use reply_to with the message_id to quote the specific message you're responding to.",
+      "When the sender used WhatsApp's reply/quote feature, the message content starts with [Replying to …: \"quoted text\"] and the tag carries reply_to_id (plus reply_to_self=\"true\" when they are replying to one of YOUR earlier messages, otherwise reply_to_sender). Treat the quoted message as the thing being answered — e.g. \"yes\" or \"do that\" refers to it, not to your latest message.",
       "Use wahooks_react to add emoji reactions to messages (e.g. 👍 to acknowledge receipt).",
       "Use wahooks_reply to respond in the same chat. Use wahooks_send to message any phone or group.",
       "Media tools: wahooks_send_image, wahooks_send_video, wahooks_send_audio, wahooks_send_document (accept url or file_path).",
@@ -661,12 +665,30 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       // API returns newest-first; present oldest-first so it reads like a transcript.
       const chrono = [...page.messages].reverse();
+      const whenOf = (m: any) =>
+        new Date((m.timestamp ?? 0) * 1000).toISOString().slice(0, 16).replace("T", " ");
+      const whoOf = (m: any) => (m.fromMe ? "You" : (m.senderPushName || m.senderJid || "Them"));
+      // quotedMessageId is WhatsApp's raw key id; message ids are serialized as
+      // "{fromMe}_{chatId}_{keyId}", so match on the trailing key id.
+      const byKeyId = new Map<string, any>();
+      for (const m of chrono) {
+        const key = String(m.id ?? "").split("_").pop();
+        if (key) byKeyId.set(key, m);
+      }
       const lines = chrono.map((m) => {
-        const when = new Date((m.timestamp ?? 0) * 1000).toISOString().slice(0, 16).replace("T", " ");
-        const who = m.fromMe ? "You" : (m.senderPushName || m.senderJid || "Them");
         const media = m.media ? ` [${m.type}: ${m.media.mimetype ?? "media"}]` : "";
         const body = m.text ? String(m.text).replace(/\n/g, " ⏎ ") : (m.media ? "" : "(no text)");
-        return `[${when}] ${who}: ${body}${media}`;
+        let reply = "";
+        if (m.quotedMessageId) {
+          const q = byKeyId.get(String(m.quotedMessageId).split("_").pop() ?? "");
+          if (q) {
+            const qText = q.text ? String(q.text).replace(/\n/g, " ").slice(0, 80) : `[${q.type ?? "media"}]`;
+            reply = ` ↪ (replying to ${whoOf(q)} @ ${whenOf(q)}: "${qText}")`;
+          } else {
+            reply = " ↪ (replying to an earlier message — page back with 'before' to see it)";
+          }
+        }
+        return `[${whenOf(m)}] ${whoOf(m)}${reply}: ${body}${media}`;
       });
       const footer = page.nextBefore
         ? `\n\n(more history available — call again with before="${page.nextBefore}")`
@@ -819,6 +841,35 @@ function connectWebSocket() {
         }
       }
 
+      // Reply context: when the sender used WhatsApp's "reply" (swipe-to-quote),
+      // WAHA ships the quoted message as payload.replyTo. Surface it inline so
+      // Claude knows exactly which message is being responded to — in long
+      // threads that's often the whole meaning of the message ("yes do that").
+      const quoted =
+        payload.replyTo && typeof payload.replyTo === "object" ? payload.replyTo : null;
+      const replyMeta: Record<string, string> = {};
+      if (quoted) {
+        const qAuthor: string = quoted.participant ?? "";
+        const qBare = qAuthor.replace(/[:@].*$/, "");
+        const fromSelf = qBare !== "" && selfIds.has(qBare);
+        const qText =
+          typeof quoted.body === "string" && quoted.body.trim()
+            ? quoted.body.trim().replace(/\s*\n\s*/g, " ")
+            : quoted.hasMedia
+              ? "[media]"
+              : "";
+        const snippet = qText.length > 500 ? `${qText.slice(0, 500)}…` : qText;
+        const who = fromSelf
+          ? "your earlier message"
+          : qBare
+            ? `a message from ${qBare}`
+            : "an earlier message";
+        content = `[Replying to ${who}${snippet ? `: "${snippet}"` : ""}]\n${content}`;
+        if (quoted.id) replyMeta.reply_to_id = String(quoted.id);
+        if (fromSelf) replyMeta.reply_to_self = "true";
+        else if (qAuthor) replyMeta.reply_to_sender = qAuthor;
+      }
+
       // Forward to Claude Code
       await mcp.notification({
         method: "notifications/claude/channel",
@@ -830,6 +881,7 @@ function connectWebSocket() {
             message_id: messageId,
             ...(isGroup ? { group: "true" } : {}),
             ...(hasMedia ? { has_media: "true", media_type: media?.mimetype ?? "unknown" } : {}),
+            ...replyMeta,
           },
         },
       });
@@ -857,6 +909,15 @@ function connectWebSocket() {
 async function main() {
   connectionId = await resolveConnection();
   console.error(`[wahooks-channel] Using connection: ${connectionId}`);
+
+  try {
+    const me = await api<{ id?: string; lid?: string } | null>("GET", `/connections/${connectionId}/me`);
+    for (const jid of [me?.id, me?.lid]) {
+      if (jid) selfIds.add(jid.replace(/[:@].*$/, ""));
+    }
+  } catch {
+    // Non-fatal: quoted-author labeling falls back to the raw sender id.
+  }
 
   // Start MCP transport with connection tracking
   const transport = new StdioServerTransport();
