@@ -43,7 +43,7 @@ wahooks/
 | `auth/` | Supabase JWT verification guard (`AuthGuard`) + `@CurrentUser()` decorator |
 | `database/` | Global Drizzle ORM provider (`DRIZZLE_TOKEN`) connected to Supabase Postgres |
 | `connections/` | CRUD for WhatsApp connections; provisions WAHA sessions on workers, QR code flow |
-| `workers/` | Worker pool management: find/provision workers, assign/unassign sessions, auto-scaling (80% up, 30% down) |
+| `workers/` | Worker pool management: find/provision workers (a ready pod nobody registered is adopted first), assign/unassign sessions, auto-scaling (80% up, 30% down; scale-down only drains the highest-ordinal pod). A failing scale-up is logged as an ERROR and exposed as `scaleUpFailure` on `GET /api/infrastructure` and `checks.scaleUp` on `GET /api/health` |
 | `orchestration/` | `ContainerOrchestrator` interface + K8s (prod) / Hetzner (legacy) / Mock (dev) implementations. Lazy factory — only selected orchestrator is instantiated. |
 | `waha/` | HTTP client for the WAHA REST API (sessions, QR codes, start/stop/restart) |
 | `health/` | Cron jobs: 3-min worker health poll (syncs WAHA status to DB; restarts a FAILED session from persisted auth up to 5× per pod lifetime, then STOPS it — auth kept, row `failed`; retires a session left in SCAN_QR_CODE after 30 min if it was ever linked, 2 h if never; an unreachable worker only gets its `pending` sessions created), 5-min scaling check |

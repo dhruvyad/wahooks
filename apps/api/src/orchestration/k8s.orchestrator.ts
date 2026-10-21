@@ -6,6 +6,9 @@ import {
   ProvisionResult,
 } from './orchestrator.interface';
 
+// Written by the Cluster Autoscaler (its default --status-config-map-name).
+const AUTOSCALER_STATUS = { name: 'cluster-autoscaler-status', namespace: 'kube-system' };
+
 @Injectable()
 export class K8sOrchestrator implements ContainerOrchestrator {
   private readonly logger = new Logger(K8sOrchestrator.name);
@@ -48,21 +51,20 @@ export class K8sOrchestrator implements ContainerOrchestrator {
     // orphan pods and over-provision nodes. This is what let a slow node add
     // spiral into waha-1, waha-2, waha-3… each unregistered.
     if (currentReplicas >= 1) {
-      const highestPod = `${this.statefulSetName}-${currentReplicas - 1}`;
+      const highestPod = this.podName(currentReplicas - 1);
       const status = await this.getWorkerStatus(highestPod);
       if (status !== 'running') {
         this.logger.log(
           `Highest pod ${highestPod} is "${status}" — adopting the in-flight provision instead of scaling up`,
         );
         await this.waitForPodReady(highestPod, this.readyTimeoutMs);
-        const internalIp = `${highestPod}.${this.headlessService}.${this.namespace}.svc.cluster.local`;
-        this.logger.log(`Pod ${highestPod} is Ready at ${internalIp}`);
-        return { podName: highestPod, internalIp, apiKey: this.wahaApiKey };
+        this.logger.log(`Pod ${highestPod} is Ready`);
+        return this.worker(highestPod);
       }
     }
 
     const newReplicas = currentReplicas + 1;
-    const podName = `${this.statefulSetName}-${currentReplicas}`; // new pod = waha-{currentReplicas}
+    const podName = this.podName(currentReplicas); // new pod = waha-{currentReplicas}
 
     await this.appsV1.patchNamespacedStatefulSet(
       this.statefulSetName,
@@ -82,14 +84,26 @@ export class K8sOrchestrator implements ContainerOrchestrator {
 
     await this.waitForPodReady(podName, this.readyTimeoutMs);
 
-    const internalIp = `${podName}.${this.headlessService}.${this.namespace}.svc.cluster.local`;
+    this.logger.log(`Pod ${podName} is Ready`);
 
-    this.logger.log(`Pod ${podName} is Ready at ${internalIp}`);
-
-    return { podName, internalIp, apiKey: this.wahaApiKey };
+    return this.worker(podName);
   }
 
-  async destroyWorker(podName: string): Promise<void> {
+  async listReadyWorkers(): Promise<ProvisionResult[]> {
+    const { body: sts } = await this.appsV1.readNamespacedStatefulSet(
+      this.statefulSetName,
+      this.namespace,
+    );
+    const pods = Array.from({ length: sts.spec?.replicas ?? 0 }, (_, i) =>
+      this.podName(i),
+    );
+    const statuses = await Promise.all(pods.map((p) => this.getWorkerStatus(p)));
+    return pods
+      .filter((_, i) => statuses[i] === 'running')
+      .map((p) => this.worker(p));
+  }
+
+  async destroyWorker(podName: string): Promise<boolean> {
     const { body: sts } = await this.appsV1.readNamespacedStatefulSet(
       this.statefulSetName,
       this.namespace,
@@ -101,7 +115,7 @@ export class K8sOrchestrator implements ContainerOrchestrator {
       this.logger.warn(
         `Cannot scale ${this.statefulSetName} below 1 replica — skipping destroy of ${podName}`,
       );
-      return;
+      return false;
     }
 
     // k8s StatefulSets always remove the highest-ordinal pod on scale-down.
@@ -116,7 +130,7 @@ export class K8sOrchestrator implements ContainerOrchestrator {
           `(${this.statefulSetName}-${expectedHighest}). Skipping scale-down to avoid ` +
           `removing a pod with active sessions. Will retry when it becomes highest-ordinal.`,
       );
-      return;
+      return false;
     }
 
     await this.appsV1.patchNamespacedStatefulSet(
@@ -134,6 +148,7 @@ export class K8sOrchestrator implements ContainerOrchestrator {
     this.logger.log(
       `Scaled ${this.statefulSetName} down to ${expectedHighest} replicas (removed ${podName})`,
     );
+    return true;
   }
 
   async getWorkerStatus(
@@ -160,16 +175,49 @@ export class K8sOrchestrator implements ContainerOrchestrator {
     }
   }
 
+  private podName(ordinal: number): string {
+    return `${this.statefulSetName}-${ordinal}`;
+  }
+
+  private worker(podName: string): ProvisionResult {
+    return {
+      podName,
+      internalIp: `${podName}.${this.headlessService}.${this.namespace}.svc.cluster.local`,
+      apiKey: this.wahaApiKey,
+    };
+  }
+
   private async waitForPodReady(
     podName: string,
     timeoutMs = 120_000,
   ): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     const pollIntervalMs = 3_000;
+    let autoscalerReadable = true;
 
     while (Date.now() < deadline) {
       const status = await this.getWorkerStatus(podName);
       if (status === 'running') return;
+
+      // A pod that can't be scheduled waits on the autoscaler for a node; once
+      // the autoscaler has backed off a failed scale-up, waiting is pointless.
+      const unschedulable = await this.unschedulableReason(podName);
+      if (unschedulable && autoscalerReadable) {
+        let backoff: string | null = null;
+        try {
+          backoff = await this.autoscalerBackoff();
+        } catch (error) {
+          autoscalerReadable = false;
+          this.logger.warn(
+            `Can't read the cluster autoscaler's status (${error instanceof Error ? error.message : String(error)}) — waiting out the timeout for ${podName}`,
+          );
+        }
+        if (backoff) {
+          throw new Error(
+            `Pod ${podName} can't be scheduled (${unschedulable}) and the cluster autoscaler can't add a node: ${backoff}`,
+          );
+        }
+      }
 
       this.logger.debug(
         `Waiting for pod ${podName} to be Ready (status: ${status})...`,
@@ -177,8 +225,44 @@ export class K8sOrchestrator implements ContainerOrchestrator {
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
+    const unschedulable = await this.unschedulableReason(podName);
     throw new Error(
-      `Pod ${podName} did not become Ready within ${timeoutMs / 1000}s`,
+      `Pod ${podName} did not become Ready within ${timeoutMs / 1000}s` +
+        (unschedulable ? ` (unschedulable: ${unschedulable})` : ''),
     );
+  }
+
+  /** The scheduler's message when the pod has no node to run on, else null. */
+  private async unschedulableReason(podName: string): Promise<string | null> {
+    try {
+      const { body: pod } = await this.coreV1.readNamespacedPod(
+        podName,
+        this.namespace,
+      );
+      const scheduled = pod.status?.conditions?.find(
+        (c) => c.type === 'PodScheduled',
+      );
+      return scheduled?.status === 'False' && scheduled.reason === 'Unschedulable'
+        ? (scheduled.message ?? 'Unschedulable')
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Why the autoscaler stopped adding nodes, when any node group is in scale-up backoff. */
+  private async autoscalerBackoff(): Promise<string | null> {
+    const { body: cm } = await this.coreV1.readNamespacedConfigMap(
+      AUTOSCALER_STATUS.name,
+      AUTOSCALER_STATUS.namespace,
+    );
+    const status = k8s.loadYaml<any>(cm.data?.status ?? '');
+    const blocked = (status?.nodeGroups ?? [])
+      .filter((g: any) => g?.scaleUp?.status === 'Backoff')
+      .map(
+        (g: any) =>
+          `${g.name}: ${g.scaleUp.backoffInfo?.errorMessage ?? g.scaleUp.backoffInfo?.errorCode ?? 'scale-up backoff'}`,
+      );
+    return blocked.length > 0 ? blocked.join('; ') : null;
   }
 }

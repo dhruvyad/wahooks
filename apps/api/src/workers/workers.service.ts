@@ -6,13 +6,25 @@ import { DRIZZLE_TOKEN } from '../database/database.module';
 import {
   ORCHESTRATOR_TOKEN,
   ContainerOrchestrator,
+  ProvisionResult,
 } from '../orchestration/orchestrator.interface';
+
+export interface ScaleUpFailure {
+  reason: string;
+  since: Date;
+  lastAttemptAt: Date;
+  failedAttempts: number;
+}
+
+type WorkerHandle = { id: string; internalIp: string; apiKey: string };
 
 @Injectable()
 export class WorkersService {
   private readonly logger = new Logger(WorkersService.name);
   private readonly maxSessionsPerWorker: number;
   private provisioningInProgress = false;
+  // Set while scale-ups keep failing; cleared by the next one that succeeds.
+  private scaleUpFailure: ScaleUpFailure | null = null;
 
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
@@ -28,11 +40,7 @@ export class WorkersService {
   /**
    * Find a worker with available capacity, or provision a new one.
    */
-  async findOrProvisionWorker(): Promise<{
-    id: string;
-    internalIp: string;
-    apiKey: string;
-  }> {
+  async findOrProvisionWorker(): Promise<WorkerHandle> {
     // Query active workers with remaining capacity, least-loaded first
     const available = await this.db
       .select()
@@ -63,19 +71,16 @@ export class WorkersService {
   }
 
   /**
-   * Provision a brand-new worker unconditionally — does NOT reuse an existing
-   * partially-full worker. Used for proactive pre-warming (so a second machine
-   * is ready before the current one fills) and as the fallback inside
-   * findOrProvisionWorker when no worker has capacity.
+   * Add a worker unconditionally — does NOT reuse an existing partially-full
+   * worker. Used for proactive pre-warming (so a second machine is ready
+   * before the current one fills) and as the fallback inside
+   * findOrProvisionWorker when no worker has capacity. A ready pod nobody
+   * registered is adopted before the orchestrator is asked for a new one.
    *
    * Throws if a provision is already in progress so the caller can back off
    * (e.g. return the connection as 'pending' or skip this scaling tick).
    */
-  async provisionNewWorker(): Promise<{
-    id: string;
-    internalIp: string;
-    apiKey: string;
-  }> {
+  async provisionNewWorker(): Promise<WorkerHandle> {
     if (this.provisioningInProgress) {
       throw new Error('Worker provisioning already in progress');
     }
@@ -84,44 +89,94 @@ export class WorkersService {
     this.logger.log('Provisioning new worker...');
 
     try {
-      const result = await this.orchestrator.provisionWorker();
-
-      // Upsert on pod_name: a StatefulSet reuses ordinals, so a pod like waha-1
-      // may already have a (stopped) row from an earlier drain. Reactivate it
-      // instead of hitting the unique-podName constraint.
-      const [inserted] = await this.db
-        .insert(wahaWorkers)
-        .values({
-          podName: result.podName,
-          internalIp: result.internalIp,
-          apiKeyEnc: result.apiKey,
-          status: 'active',
-          maxSessions: this.maxSessionsPerWorker,
-        })
-        .onConflictDoUpdate({
-          target: wahaWorkers.podName,
-          set: {
-            internalIp: result.internalIp,
-            apiKeyEnc: result.apiKey,
-            status: 'active',
-            currentSessions: 0,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-
-      this.logger.log(
-        `Provisioned new worker ${inserted.id} at ${inserted.internalIp}`,
-      );
-
-      return {
-        id: inserted.id,
-        internalIp: inserted.internalIp,
-        apiKey: inserted.apiKeyEnc,
-      };
+      const [adopted] = await this.adoptReadyWorkers();
+      const worker =
+        adopted ?? (await this.registerWorker(await this.orchestrator.provisionWorker()));
+      this.scaleUpFailure = null;
+      this.logger.log(`Provisioned new worker ${worker.id} at ${worker.internalIp}`);
+      return worker;
+    } catch (error) {
+      this.recordScaleUpFailure(error);
+      throw error;
     } finally {
       this.provisioningInProgress = false;
     }
+  }
+
+  /**
+   * Register every ready worker pod whose row is missing or stopped. A pod
+   * whose provision timed out, or that a scale-down could not remove, keeps
+   * running without taking sessions until it is adopted. A draining row is
+   * left alone: that worker is being emptied on purpose.
+   */
+  async adoptReadyWorkers(): Promise<WorkerHandle[]> {
+    const ready = await this.orchestrator.listReadyWorkers();
+    if (ready.length === 0) return [];
+
+    const rows: Array<{ podName: string; status: string }> = await this.db
+      .select({ podName: wahaWorkers.podName, status: wahaWorkers.status })
+      .from(wahaWorkers)
+      .where(inArray(wahaWorkers.podName, ready.map((w) => w.podName)));
+    const statusByPod = new Map(rows.map((r) => [r.podName, r.status]));
+
+    const adopted: WorkerHandle[] = [];
+    for (const pod of ready) {
+      const status = statusByPod.get(pod.podName);
+      if (status === 'active' || status === 'draining') continue;
+      this.logger.log(`Adopting ready pod ${pod.podName} (worker row: ${status ?? 'none'})`);
+      adopted.push(await this.registerWorker(pod));
+    }
+    return adopted;
+  }
+
+  /** Why scale-ups are failing, or null when the last one succeeded. */
+  getScaleUpFailure(): ScaleUpFailure | null {
+    return this.scaleUpFailure;
+  }
+
+  private recordScaleUpFailure(error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    const now = new Date();
+    this.scaleUpFailure = {
+      reason,
+      since: this.scaleUpFailure?.since ?? now,
+      lastAttemptAt: now,
+      failedAttempts: (this.scaleUpFailure?.failedAttempts ?? 0) + 1,
+    };
+    this.logger.error(
+      `Worker scale-up failed (${this.scaleUpFailure.failedAttempts} in a row since ${this.scaleUpFailure.since.toISOString()}): ${reason}`,
+    );
+  }
+
+  /**
+   * Upsert on pod_name: a StatefulSet reuses ordinals, so a pod like waha-1
+   * may already have a (stopped) row from an earlier drain. Reactivate it with
+   * today's session cap instead of hitting the unique-podName constraint.
+   */
+  private async registerWorker(result: ProvisionResult): Promise<WorkerHandle> {
+    const [row] = await this.db
+      .insert(wahaWorkers)
+      .values({
+        podName: result.podName,
+        internalIp: result.internalIp,
+        apiKeyEnc: result.apiKey,
+        status: 'active',
+        maxSessions: this.maxSessionsPerWorker,
+      })
+      .onConflictDoUpdate({
+        target: wahaWorkers.podName,
+        set: {
+          internalIp: result.internalIp,
+          apiKeyEnc: result.apiKey,
+          status: 'active',
+          currentSessions: 0,
+          maxSessions: this.maxSessionsPerWorker,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return { id: row.id, internalIp: row.internalIp, apiKey: row.apiKeyEnc };
   }
 
   /**
@@ -286,6 +341,15 @@ export class WorkersService {
    * Drain cleanup: when draining workers have 0 sessions, destroy them
    */
   async checkScaling(): Promise<void> {
+    // 0. Put every ready pod to work before judging capacity
+    try {
+      await this.adoptReadyWorkers();
+    } catch (error) {
+      this.logger.error(
+        `Adopting ready workers failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
     // 1. Reconcile all active worker counters with actual DB records
     const activeWorkers = await this.db
       .select()
@@ -352,10 +416,8 @@ export class WorkersService {
         );
         try {
           await this.findOrProvisionWorker();
-        } catch (error) {
-          this.logger.warn(
-            `Scale-up failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
+        } catch {
+          // provisionNewWorker recorded and logged why
         }
         return;
       }
@@ -369,10 +431,8 @@ export class WorkersService {
       );
       try {
         await this.provisionNewWorker();
-      } catch (error) {
-        this.logger.warn(
-          `Proactive scale-up failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      } catch {
+        // provisionNewWorker recorded and logged why
       }
       return;
     }
@@ -385,40 +445,30 @@ export class WorkersService {
     );
 
     if (allUnderThreshold) {
-      // Find highest-ordinal worker to drain
-      const sorted = [...workers].sort((a: any, b: any) => {
-        const ordA = parseInt(a.podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
-        const ordB = parseInt(b.podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
-        return ordB - ordA;
-      });
+      // Only the highest-ordinal pod can leave a StatefulSet; draining any
+      // other worker would stop its sessions and then keep the pod anyway.
+      const target = [...workers].sort(
+        (a: any, b: any) => this.ordinal(b.podName) - this.ordinal(a.podName),
+      )[0];
 
-      // Skip workers that have 'working' sessions (active WhatsApp connections)
-      const workingSessionCounts = await Promise.all(
-        sorted.map(async (w: any) => {
-          const rows = await this.db
-            .select({ count: sql`count(*)` })
-            .from(wahaSessions)
-            .where(
-              and(
-                eq(wahaSessions.workerId, w.id),
-                eq(wahaSessions.status, 'working'),
-              ),
-            );
-          return { worker: w, workingCount: Number(rows[0]?.count ?? 0) };
-        }),
-      );
+      // Never drain a worker with 'working' sessions (active WhatsApp connections)
+      const [working] = await this.db
+        .select({ count: sql`count(*)` })
+        .from(wahaSessions)
+        .where(
+          and(
+            eq(wahaSessions.workerId, target.id),
+            eq(wahaSessions.status, 'working'),
+          ),
+        );
 
-      // Find first drainable worker (no working sessions, highest ordinal)
-      const drainTarget = workingSessionCounts.find((x) => x.workingCount === 0);
-
-      if (!drainTarget) {
+      if (Number(working?.count ?? 0) > 0) {
         this.logger.log(
-          'All workers below 30% but all have working sessions — skipping drain',
+          `All workers below 30% but ${target.podName} (highest ordinal) has working sessions — skipping drain`,
         );
         return;
       }
 
-      const target = drainTarget.worker;
       this.logger.log(
         `All workers below 30%, draining ${target.podName} (${target.currentSessions} sessions, 0 working)`,
       );
@@ -440,6 +490,10 @@ export class WorkersService {
 
       await this.drainWorker(target.id);
     }
+  }
+
+  private ordinal(podName: string | null | undefined): number {
+    return parseInt(podName?.match(/-(\d+)$/)?.[1] ?? '0', 10);
   }
 
   /**
@@ -473,16 +527,26 @@ export class WorkersService {
     }
 
     if (worker.podName) {
+      let removed: boolean;
       try {
-        await this.orchestrator.destroyWorker(worker.podName);
-        this.logger.log(
-          `Destroyed worker pod ${worker.podName} for worker ${workerId}`,
-        );
+        removed = await this.orchestrator.destroyWorker(worker.podName);
       } catch (error) {
         this.logger.warn(
-          `Failed to destroy pod ${worker.podName}: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to destroy pod ${worker.podName}: ${error instanceof Error ? error.message : String(error)} — worker ${workerId} stays draining, retrying next check`,
         );
+        return;
       }
+      // A pod the orchestrator kept is still running; marking it stopped
+      // would strand it (and adoption would revive it into another drain).
+      if (!removed) {
+        this.logger.warn(
+          `Pod ${worker.podName} was kept by the orchestrator — worker ${workerId} stays draining until it can be removed`,
+        );
+        return;
+      }
+      this.logger.log(
+        `Destroyed worker pod ${worker.podName} for worker ${workerId}`,
+      );
     }
 
     await this.db

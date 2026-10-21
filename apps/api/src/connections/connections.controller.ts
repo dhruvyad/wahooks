@@ -20,9 +20,9 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq, and, ne, inArray, desc, isNull, notExists } from 'drizzle-orm';
+import { eq, and, ne, inArray, desc, isNull, exists, notExists } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { wahaSessions, webhookConfigs } from '@wahooks/db';
+import { wahaSessions, wahaWorkers, webhookConfigs } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -30,6 +30,28 @@ import { WorkersService } from '../workers/workers.service';
 import { WahaService } from '../waha/waha.service';
 import { StripeService } from '../billing/stripe.service';
 import { users } from '@wahooks/db';
+
+// createConnection places a session within seconds and the health poll
+// creates a placed one in WAHA within minutes; one pending longer is stuck.
+const STUCK_PENDING_MS = 2 * 60_000;
+
+type IdleRow = {
+  session: { status: string; updatedAt: Date | string };
+  worker: { status: string; currentSessions: number; maxSessions: number } | null;
+};
+
+/** What get-or-create may do with one of the caller's idle sessions. */
+export function idleVerdict({ session, worker }: IdleRow, now: number): 'reuse' | 'stuck' | 'skip' {
+  const placed = worker?.status === 'active';
+  if (session.status === 'pending') {
+    if (now - new Date(session.updatedAt).getTime() > STUCK_PENDING_MS) return 'stuck';
+    return placed ? 'reuse' : 'skip';
+  }
+  if (!placed) return 'skip';
+  // A failed session holds no slot; reviving it takes one.
+  if (session.status === 'failed' && worker.currentSessions >= worker.maxSessions) return 'skip';
+  return 'reuse';
+}
 
 @Controller('connections')
 @UseGuards(AuthGuard)
@@ -196,60 +218,73 @@ export class ConnectionsController {
     @CurrentUser() user: { sub: string },
     @Body() body?: { virgin_only?: boolean },
   ) {
-    // 1. Look for an existing idle connection (scan_qr, pending, or failed)
+    // 1. The caller's idle connections (scan_qr, pending, or failed), newest first
     const idleStatuses: ('scan_qr' | 'pending' | 'failed')[] = ['scan_qr', 'pending', 'failed'];
     const idleWhere = [
       eq(wahaSessions.userId, user.sub),
       inArray(wahaSessions.status, idleStatuses),
     ];
+    const webhooksOfSession = this.db
+      .select({ id: webhookConfigs.id })
+      .from(webhookConfigs)
+      .where(eq(webhookConfigs.sessionId, wahaSessions.id));
     if (body?.virgin_only) {
-      idleWhere.push(
-        isNull(wahaSessions.phoneNumber),
-        notExists(
-          this.db
-            .select({ id: webhookConfigs.id })
-            .from(webhookConfigs)
-            .where(eq(webhookConfigs.sessionId, wahaSessions.id)),
-        ),
-      );
+      idleWhere.push(isNull(wahaSessions.phoneNumber), notExists(webhooksOfSession));
     }
-    const [idle] = await this.db
-      .select()
+    const idleRows: Array<{ session: any; worker: any; configured: boolean }> = await this.db
+      .select({ session: wahaSessions, worker: wahaWorkers, configured: exists(webhooksOfSession) })
       .from(wahaSessions)
+      .leftJoin(wahaWorkers, eq(wahaSessions.workerId, wahaWorkers.id))
       .where(and(...idleWhere))
-      .orderBy(desc(wahaSessions.createdAt))
-      .limit(1);
+      .orderBy(desc(wahaSessions.createdAt));
 
+    // 2. Retire stuck ones: handing one out cost every caller ~20 s and no QR.
+    // One the caller configured webhooks on is only skipped, never deleted.
+    const now = Date.now();
+    for (const row of idleRows.filter((r) => idleVerdict(r, now) === 'stuck' && !r.configured)) {
+      this.logger.warn(
+        `Retiring connection ${row.session.id}, pending since ${new Date(row.session.updatedAt).toISOString()}`,
+      );
+      await this.teardownConnection(row.session, {
+        via: 'get_or_create',
+        reason: `stuck pending (worker: ${row.worker?.status ?? 'none'})`,
+      });
+    }
+
+    const idle = idleRows.find((r) => idleVerdict(r, now) === 'reuse');
     let connectionId: string;
 
     if (idle) {
-      // 2a. Reuse existing — restart it
-      this.logger.log(`Reusing idle connection ${idle.id} (status: ${idle.status})`);
-      connectionId = idle.id;
+      // 3a. Reuse it — reset on its worker
+      const { session, worker } = idle;
+      this.logger.log(`Reusing idle connection ${session.id} (status: ${session.status})`);
+      connectionId = session.id;
 
-      const worker = await this.workersService.getWorkerForSession(idle.id);
-      if (worker) {
-        const wahaName = this.wahaService.resolveSessionName(idle.sessionName);
-        const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
-        const webhookUrl = `${apiUrl}/api/events/waha`;
-        await this.wahaService.resetSession(
-          worker.internalIp,
-          worker.apiKeyEnc,
-          wahaName,
-          webhookUrl,
-        );
-        await this.db
-          .update(wahaSessions)
-          .set({ status: 'scan_qr', updatedAt: new Date() })
-          .where(eq(wahaSessions.id, idle.id));
-      }
+      const wahaName = this.wahaService.resolveSessionName(session.sessionName);
+      const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
+      const webhookUrl = `${apiUrl}/api/events/waha`;
+      await this.wahaService.resetSession(
+        worker.internalIp,
+        worker.apiKeyEnc,
+        wahaName,
+        webhookUrl,
+      );
+      await this.db
+        .update(wahaSessions)
+        .set({ status: 'scan_qr', updatedAt: new Date() })
+        .where(eq(wahaSessions.id, session.id));
     } else {
-      // 2b. No idle connection — create a new one
+      // 3b. No reusable connection — create a new one
       const created = await this.createConnection(user);
       connectionId = created.id;
+      // No worker could take it (capacity full, scale-up pending or failing):
+      // there is no QR to wait for.
+      if (!(await this.workersService.getWorkerForSession(connectionId))) {
+        return { id: connectionId, status: 'pending', qr: null };
+      }
     }
 
-    // 3. Poll for QR (up to 10 attempts, 2s apart)
+    // 4. Poll for QR (up to 10 attempts, 2s apart)
     for (let i = 0; i < 10; i++) {
       try {
         const qr = await this.getQrCode(connectionId, user);
@@ -1160,8 +1195,16 @@ export class ConnectionsController {
       throw new ForbiddenException('You do not own this connection');
     }
 
+    return this.teardownConnection(connection);
+  }
+
+  /** Stop a connection in WAHA, free its worker slot and soft-delete the row. */
+  private async teardownConnection(
+    connection: any,
+    reason?: { via: string; reason: string },
+  ) {
     try {
-      const worker = await this.workersService.getWorkerForSession(id);
+      const worker = await this.workersService.getWorkerForSession(connection.id);
 
       if (worker) {
         const wahaName = this.wahaService.resolveSessionName(
@@ -1177,18 +1220,24 @@ export class ConnectionsController {
         try {
           await this.wahaService.deleteSession(worker.internalIp, worker.apiKeyEnc, wahaName);
         } catch { /* ignore */ }
-        await this.workersService.unassignSession(worker.id, id);
+        await this.workersService.unassignSession(worker.id, connection.id);
       }
     } catch (error) {
       this.logger.error(
-        `Failed to stop WAHA session for connection ${id}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to stop WAHA session for connection ${connection.id}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
     const [updated] = await this.db
       .update(wahaSessions)
-      .set({ status: 'stopped', updatedAt: new Date() })
-      .where(eq(wahaSessions.id, id))
+      .set({
+        status: 'stopped',
+        ...(reason
+          ? { statusReason: JSON.stringify({ ...reason, at: new Date().toISOString() }) }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(wahaSessions.id, connection.id))
       .returning();
 
     return updated;

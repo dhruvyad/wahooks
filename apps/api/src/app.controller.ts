@@ -3,12 +3,14 @@ import { ConfigService } from "@nestjs/config";
 import { eq } from "drizzle-orm";
 import { wahaWorkers } from "@wahooks/db";
 import { DRIZZLE_TOKEN } from "./database/database.module";
+import { WorkersService } from "./workers/workers.service";
 
 @Controller()
 export class AppController {
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     private readonly configService: ConfigService,
+    private readonly workersService: WorkersService,
   ) {}
 
   /**
@@ -82,6 +84,16 @@ export class AppController {
         error: error instanceof Error ? error.message : "Unknown error",
       };
     }
+
+    // Details (the cloud's own error) are on the admin /api/infrastructure.
+    const scaleUpFailure = this.workersService.getScaleUpFailure();
+    checks.scaleUp = scaleUpFailure
+      ? {
+          status: "error",
+          error: `Worker scale-up failing since ${scaleUpFailure.since.toISOString()}`,
+        }
+      : { status: "ok" };
+    if (scaleUpFailure) healthy = false;
 
     return {
       status: healthy ? "ok" : "degraded",

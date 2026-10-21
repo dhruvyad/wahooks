@@ -63,6 +63,7 @@ describe('WorkersService', () => {
       provisionWorker: jest.fn(),
       destroyWorker: jest.fn(),
       getWorkerStatus: jest.fn(),
+      listReadyWorkers: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -72,7 +73,7 @@ describe('WorkersService', () => {
         { provide: ORCHESTRATOR_TOKEN, useValue: orchestrator },
         {
           provide: ConfigService,
-          useValue: { get: jest.fn().mockReturnValue('50') },
+          useValue: { get: jest.fn().mockReturnValue('35') },
         },
       ],
     }).compile();
@@ -326,7 +327,7 @@ describe('WorkersService', () => {
       // getWorker
       db.mockResult([worker]);
 
-      orchestrator.destroyWorker.mockResolvedValue(undefined);
+      orchestrator.destroyWorker.mockResolvedValue(true);
 
       await service.destroyWorker('worker-drain');
 
@@ -376,14 +377,38 @@ describe('WorkersService', () => {
 
       // 1. getWorker -> [worker]
       db.mockResult([worker]);
-      // 2. query podName -> [worker]
-      db.mockResult([worker]);
 
-      orchestrator.destroyWorker.mockResolvedValue(undefined);
+      orchestrator.destroyWorker.mockResolvedValue(true);
 
       await service.destroyWorker('worker-empty');
 
       expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0');
+      expect(db.update).toHaveBeenCalledTimes(1); // marked stopped
+    });
+
+    it('keeps a worker draining when the orchestrator keeps its pod', async () => {
+      db.mockResult([{
+        id: 'worker-kept', currentSessions: 0, maxSessions: 35, status: 'draining',
+        internalIp: 'waha-1.waha', apiKeyEnc: 'key', podName: 'waha-1',
+      }]);
+      orchestrator.destroyWorker.mockResolvedValue(false);
+
+      await service.destroyWorker('worker-kept');
+
+      // Marking it stopped would strand a running pod (and adoption would revive it).
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps a worker draining when destroying its pod fails', async () => {
+      db.mockResult([{
+        id: 'worker-err', currentSessions: 0, maxSessions: 35, status: 'draining',
+        internalIp: 'waha-1.waha', apiKeyEnc: 'key', podName: 'waha-1',
+      }]);
+      orchestrator.destroyWorker.mockRejectedValue(new Error('k8s API down'));
+
+      await service.destroyWorker('worker-err');
+
+      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('should handle worker not found', async () => {
@@ -392,6 +417,152 @@ describe('WorkersService', () => {
       await service.destroyWorker('nonexistent');
 
       expect(orchestrator.destroyWorker).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('adopting ready pods', () => {
+    // Records each insert chain so the upserted values can be asserted.
+    function recordInserts() {
+      const calls: Array<{ values?: any; onConflict?: any }> = [];
+      db.insert = jest.fn(() => {
+        const call: { values?: any; onConflict?: any } = {};
+        calls.push(call);
+        const chain: any = {
+          values: (v: any) => ((call.values = v), chain),
+          onConflictDoUpdate: (c: any) => ((call.onConflict = c), chain),
+          returning: async () => [{
+            id: `row-${call.values.podName}`,
+            internalIp: call.values.internalIp,
+            apiKeyEnc: call.values.apiKeyEnc,
+          }],
+        };
+        return chain;
+      });
+      return calls;
+    }
+    const pod = (n: number) => ({
+      podName: `waha-${n}`,
+      internalIp: `waha-${n}.waha.default.svc.cluster.local`,
+      apiKey: 'waha-key',
+    });
+
+    it('registers every ready pod whose row is missing or stopped, with today\'s session cap', async () => {
+      orchestrator.listReadyWorkers.mockResolvedValue([pod(0), pod(1), pod(2), pod(3)]);
+      db.mockResult([
+        { podName: 'waha-0', status: 'active' },
+        { podName: 'waha-1', status: 'draining' },
+        { podName: 'waha-2', status: 'stopped' },
+      ]);
+      const inserts = recordInserts();
+
+      const adopted = await service.adoptReadyWorkers();
+
+      // waha-0 is already in use and waha-1 is being emptied on purpose.
+      expect(inserts.map((c) => c.values.podName)).toEqual(['waha-2', 'waha-3']);
+      for (const call of inserts) {
+        expect(call.values).toMatchObject({ status: 'active', maxSessions: 35 });
+        // A revived row (waha-2 had a stale cap of 50) takes the configured cap.
+        expect(call.onConflict.set).toMatchObject({ status: 'active', currentSessions: 0, maxSessions: 35 });
+      }
+      expect(adopted.map((w) => w.id)).toEqual(['row-waha-2', 'row-waha-3']);
+    });
+
+    it('adopts an idle ready pod instead of asking the orchestrator for a new one', async () => {
+      orchestrator.listReadyWorkers.mockResolvedValue([pod(0), pod(2)]);
+      db.mockResult([{ podName: 'waha-0', status: 'active' }]);
+      recordInserts();
+
+      const worker = await service.provisionNewWorker();
+
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+      expect(worker).toEqual({ id: 'row-waha-2', internalIp: pod(2).internalIp, apiKey: 'waha-key' });
+    });
+
+    it('adopts before judging capacity on every scaling check', async () => {
+      orchestrator.listReadyWorkers.mockResolvedValue([pod(2)]);
+      db.mockResult([{ podName: 'waha-2', status: 'stopped' }]);
+      const inserts = recordInserts();
+
+      await service.checkScaling();
+
+      expect(inserts.map((c) => c.values.podName)).toEqual(['waha-2']);
+    });
+  });
+
+  describe('scale-up failures', () => {
+    const blocked = new Error(
+      "Pod waha-3 can't be scheduled (3 Insufficient cpu) and the cluster autoscaler can't add a node: workers: Primary IP limit exceeded (resource_limit_exceeded)",
+    );
+
+    it('records why scale-ups keep failing, and clears it once one succeeds', async () => {
+      const errorLog = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+      orchestrator.provisionWorker.mockRejectedValue(blocked);
+
+      await expect(service.provisionNewWorker()).rejects.toThrow('Primary IP limit exceeded');
+      const first = service.getScaleUpFailure();
+      expect(first).toMatchObject({ reason: blocked.message, failedAttempts: 1 });
+      expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('Primary IP limit exceeded'));
+
+      await expect(service.provisionNewWorker()).rejects.toThrow();
+      expect(service.getScaleUpFailure()).toMatchObject({ failedAttempts: 2, since: first!.since });
+
+      orchestrator.provisionWorker.mockResolvedValue({
+        podName: 'waha-3', internalIp: 'waha-3.waha', apiKey: 'k',
+      });
+      db.mockResult([{ id: 'w3', internalIp: 'waha-3.waha', apiKeyEnc: 'k' }]);
+      await service.provisionNewWorker();
+      expect(service.getScaleUpFailure()).toBeNull();
+    });
+
+    it('records the failure when a scaling check cannot add a worker', async () => {
+      jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+      const full = { id: 'w0', status: 'active', currentSessions: 35, maxSessions: 35, podName: 'waha-0' };
+      db.mockResult([full]);            // active workers
+      db.mockResult([{ count: 35 }]);   // reconcile count
+      db.mockResult([]);                // reconcile update
+      db.mockResult([full]);            // re-fetch active
+      db.mockResult([]);                // draining
+      db.mockResult([{ id: 'pending-1' }]); // workerless pending sessions
+      db.mockResult([]);                // findOrProvisionWorker: no worker with room
+      orchestrator.provisionWorker.mockRejectedValue(blocked);
+
+      await service.checkScaling();
+
+      expect(service.getScaleUpFailure()?.reason).toContain('Primary IP limit exceeded');
+    });
+  });
+
+  describe('scale-down target', () => {
+    const w0 = { id: 'w0', status: 'active', currentSessions: 1, maxSessions: 35, podName: 'waha-0' };
+    const w2 = { id: 'w2', status: 'active', currentSessions: 1, maxSessions: 35, podName: 'waha-2' };
+    function queueUnderThreshold(highestWorking: number) {
+      db.mockResult([w0, w2]);          // active workers
+      db.mockResult([{ count: 1 }]);    // reconcile w0 count
+      db.mockResult([]);                // reconcile w0 update
+      db.mockResult([{ count: 1 }]);    // reconcile w2 count
+      db.mockResult([]);                // reconcile w2 update
+      db.mockResult([w0, w2]);          // re-fetch active
+      db.mockResult([]);                // draining
+      db.mockResult([{ count: highestWorking }]); // working sessions on waha-2
+    }
+
+    it('never drains a lower-ordinal worker the StatefulSet cannot remove', async () => {
+      queueUnderThreshold(1);
+
+      await service.checkScaling();
+
+      // Only the two reconcile updates: waha-2 has a live session, and waha-0
+      // can't leave the StatefulSet while waha-2 exists.
+      expect(db.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('drains the highest-ordinal worker when it holds no working session', async () => {
+      queueUnderThreshold(0);
+
+      await service.checkScaling();
+
+      // Reconcile ×2, stop its idle sessions, re-reconcile (count + update), mark draining.
+      expect(db.update).toHaveBeenCalledTimes(5);
     });
   });
 });

@@ -292,7 +292,16 @@ export class HealthService {
       case 'SCAN_QR_CODE': {
         // A definitive state (WhatsApp wants a fresh link) — recovery is done.
         this.recoveryAttempts.delete(dbSession.id);
-        const since = this.scanQrSince.get(dbSession.id) ?? Date.now();
+        // A session handed out again (get-or-create reset it, stamping the
+        // row) starts a fresh wait; an older sighting must not retire it.
+        const handedOutAt =
+          dbStatus === 'scan_qr' && dbSession.updatedAt
+            ? new Date(dbSession.updatedAt).getTime()
+            : 0;
+        const since = Math.max(
+          this.scanQrSince.get(dbSession.id) ?? Date.now(),
+          handedOutAt,
+        );
         this.scanQrSince.set(dbSession.id, since);
         const limit = dbSession.phoneNumber
           ? this.SCAN_QR_LINKED_RETIRE_MS

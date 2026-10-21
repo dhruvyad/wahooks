@@ -385,6 +385,22 @@ describe('HealthService', () => {
       await pollAt(1_000_000 + 40 * 60_000, dbSession);
       expect(wahaService.stopSession).not.toHaveBeenCalled();
     });
+
+    it('gives a session handed out again a fresh wait, whatever an older sighting says', async () => {
+      // Seen waiting for a scan, then it failed and was retired without this
+      // pod ever seeing it WORKING; hours later get-or-create resets it for
+      // someone new, stamping the row.
+      const t0 = 1_000_000;
+      await pollAt(t0, { id: 'sid1', sessionName: 's1', status: 'scan_qr', phoneNumber: null });
+      const handedOut = t0 + 5 * 60 * 60_000;
+      const dbSession = { id: 'sid1', sessionName: 's1', status: 'scan_qr', phoneNumber: null, updatedAt: new Date(handedOut) };
+
+      await pollAt(handedOut + 60_000, dbSession);
+      expect(wahaService.stopSession).not.toHaveBeenCalled();
+
+      await pollAt(handedOut + 121 * 60_000, dbSession);
+      expect(wahaService.stopSession).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('orphan cleanup', () => {
