@@ -7,6 +7,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { WorkersService } from './workers.service';
 
 @Controller('infrastructure')
 @UseGuards(AuthGuard, AdminGuard)
@@ -16,6 +17,7 @@ export class WorkersController {
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
+    private readonly workersService: WorkersService,
   ) {}
 
   @Get()
@@ -145,6 +147,9 @@ export class WorkersController {
         total: userTotal,
         byStatus: userSessionsByStatus,
       },
+      // Non-null while worker scale-ups keep failing (e.g. the cloud refuses
+      // new servers): new connections can't be placed once capacity runs out.
+      scaleUpFailure: this.workersService.getScaleUpFailure(),
       webhookQueue,
       timestamp: new Date().toISOString(),
     };

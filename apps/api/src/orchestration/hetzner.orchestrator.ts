@@ -83,7 +83,7 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
     };
   }
 
-  async destroyWorker(podName: string): Promise<void> {
+  async destroyWorker(podName: string): Promise<boolean> {
     const response = await fetch(`${this.apiBase}/servers/${podName}`, {
       method: 'DELETE',
       headers: {
@@ -103,6 +103,13 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
     }
 
     this.logger.log(`Destroyed worker (server ${podName})`);
+    return true;
+  }
+
+  // Each server is registered by the provision that created it; there is no
+  // pool of unregistered servers to adopt.
+  async listReadyWorkers(): Promise<ProvisionResult[]> {
+    return [];
   }
 
   async getWorkerStatus(

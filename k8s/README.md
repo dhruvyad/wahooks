@@ -144,9 +144,39 @@ session flapped and every owner was emailed for nothing).
    `kubectl exec waha-N -- sh -c 'curl -s -H "X-Api-Key: $WHATSAPP_API_KEY" localhost:3000/api/sessions'`.
 3. One pod per maintenance window.
 
-**Session cap.** `WAHA_MAX_SESSIONS` on the API only seeds NEW `waha_workers`
-rows; existing rows keep their own `max_sessions` — update them with SQL when
-the env changes (35 live sessions ≈ 1.65 GB; ~47 MB each).
+**Session cap.** `WAHA_MAX_SESSIONS` on the API sets `max_sessions` when a
+worker row is created or revived; active rows keep their own — update them with
+SQL when the env changes (35 live sessions ≈ 1.65 GB; ~47 MB each).
+
+**Every ready WAHA pod takes sessions.** Each scaling check (and every
+provision, before it asks for a new pod) registers any Ready pod whose
+`waha_workers` row is missing or `stopped`, so a pod that came up after its
+provision timed out is used instead of idling. Scale-down only drains the
+highest-ordinal pod, the only one a StatefulSet can remove; a pod it couldn't
+remove stays `draining` rather than being marked `stopped`.
+
+**A failing scale-up is loud.** A provision fails at once, with the cloud's own
+error, when the new pod can't be scheduled and the Cluster Autoscaler reports a
+scale-up backoff (e.g. Hetzner's `Primary IP limit exceeded`). The API logs it
+as an ERROR, `GET /api/infrastructure` (admin) carries it as `scaleUpFailure`
+and `GET /api/health` reports `checks.scaleUp: error` until a scale-up
+succeeds. Reading the autoscaler's status needs the `wahooks-api-autoscaler-status`
+Role in `rbac.yaml` (`kubectl apply -f k8s/rbac.yaml`); without it the provision
+waits out its 5 minutes and reports why the pod can't be scheduled.
+
+**OS updates on autoscaled nodes.** kube-hetzner 2.15.3 applies
+`automatically_upgrade_os = false` only to the nodes Terraform creates; nodes
+the autoscaler adds run `transactional-update` nightly, and each run leaves a
+~1 GB btrfs snapshot until kured reboots the node into it. Kured's lock lives
+in the `weave.works/kured-node-lock` annotation on `ds/kured`: a node deleted
+mid-reboot held it forever (from 2026-08-06), no node rebooted, and one node
+reached disk pressure after ~4 weeks of snapshots (2026-10-21, a WAHA pod
+evicted). `kured_options` now sets `lock-ttl`. Clearing a stale lock
+(`kubectl -n kube-system annotate ds kured weave.works/kured-node-lock-`) lets
+kured reboot every node with a pending update, one at a time — each reboot is a
+WhatsApp reconnect for every session on that node. Superseded update snapshots
+(`snapper list`: every "Snapshot Update" except the default `+` and the booted
+`-`) can be deleted with `snapper delete --sync <n>` to free space.
 
 **Database connections.** The API and every WAHA session store (one
 `waha_noweb_<session>` database per session) share one Supabase Postgres with

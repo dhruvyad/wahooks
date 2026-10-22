@@ -31,3 +31,30 @@ roleRef:
   kind: Role
   name: wahooks-api-role
   apiGroup: rbac.authorization.k8s.io
+---
+# Read the Cluster Autoscaler's status so a scale-up it can't perform (e.g. the
+# cloud refusing new servers) is reported instead of waited out.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wahooks-api-autoscaler-status
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["cluster-autoscaler-status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wahooks-api-autoscaler-status
+  namespace: kube-system
+subjects:
+  - kind: ServiceAccount
+    name: wahooks-api
+    namespace: default
+roleRef:
+  kind: Role
+  name: wahooks-api-autoscaler-status
+  apiGroup: rbac.authorization.k8s.io

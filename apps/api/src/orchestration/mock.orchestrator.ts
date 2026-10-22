@@ -20,13 +20,18 @@ export class MockOrchestrator implements ContainerOrchestrator {
     return { podName, internalIp, apiKey };
   }
 
-  async destroyWorker(podName: string): Promise<void> {
+  async destroyWorker(podName: string): Promise<boolean> {
     this.logger.log(`[Mock] Destroyed worker ${podName}`);
+    return true;
   }
 
   async getWorkerStatus(
     _podName: string,
   ): Promise<'running' | 'stopped' | 'unknown'> {
     return 'running';
+  }
+
+  async listReadyWorkers(): Promise<ProvisionResult[]> {
+    return [];
   }
 }

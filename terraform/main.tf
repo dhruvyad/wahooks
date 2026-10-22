@@ -106,6 +106,9 @@ module "kube-hetzner" {
   enable_longhorn       = false
   enable_metrics_server = true
   kured_version         = "1.16.0" # pin to avoid GitHub API rate-limit failures
+  # A node deleted mid-reboot (autoscaler scale-down) otherwise holds the reboot
+  # lock forever and no node reboots into its pending OS update again.
+  kured_options = { "lock-ttl" = "30m" }
 
   # ── Extra Manifests (applied via kustomize) ─────────
   extra_kustomize_parameters = {

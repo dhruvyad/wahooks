@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ConnectionsController } from './connections.controller';
+import { ConnectionsController, idleVerdict } from './connections.controller';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WorkersService } from '../workers/workers.service';
 import { WahaService } from '../waha/waha.service';
@@ -12,6 +12,7 @@ function createMockDb() {
   const mock: any = {};
   mock.select = jest.fn().mockReturnValue(mock);
   mock.from = jest.fn().mockReturnValue(mock);
+  mock.leftJoin = jest.fn().mockReturnValue(mock);
   mock.where = jest.fn().mockReturnValue(mock);
   mock.insert = jest.fn().mockReturnValue(mock);
   mock.values = jest.fn().mockReturnValue(mock);
@@ -146,6 +147,7 @@ describe('ConnectionsController', () => {
     // the idle-reuse filter captured by db.where.
 
     it('reuses any idle session by default (status filter only)', async () => {
+      db.orderBy.mockResolvedValueOnce([]);
       await expect(controller.getOrCreateScannable(user)).rejects.toThrow();
       expect(db.where).toHaveBeenCalled();
       expect(mentionsPhoneNumber()).toBe(false);
@@ -153,11 +155,103 @@ describe('ConnectionsController', () => {
     });
 
     it('virgin_only excludes phone-linked and webhook-bearing sessions from reuse', async () => {
+      db.orderBy.mockResolvedValueOnce([]);
       await expect(
         controller.getOrCreateScannable(user, { virgin_only: true }),
       ).rejects.toThrow();
       expect(mentionsPhoneNumber()).toBe(true);
       expect(mentionsNotExists()).toBe(true);
+    });
+  });
+
+  describe('getOrCreateScannable: stuck sessions and capacity', () => {
+    const NOW = Date.parse('2026-10-21T22:00:00Z');
+    const minutesAgo = (m: number) => new Date(NOW - m * 60_000);
+    const fullWorker = { id: 'w0', status: 'active', currentSessions: 35, maxSessions: 35, internalIp: 'waha-0.waha', apiKeyEnc: 'k' };
+    const roomyWorker = { id: 'w2', status: 'active', currentSessions: 3, maxSessions: 35, internalIp: 'waha-2.waha', apiKeyEnc: 'k' };
+    const session = (id: string, status: string, updatedAt: Date) => ({
+      id, userId: 'user-123', sessionName: `u_s_${id}`, status, updatedAt,
+    });
+
+    beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(NOW));
+    afterEach(() => jest.restoreAllMocks());
+
+    it('retires a stuck pending session and never hands it out', async () => {
+      db.orderBy.mockResolvedValueOnce([
+        // Pending for hours with no worker: every caller used to get this one.
+        { session: session('stuck', 'pending', minutesAgo(270)), worker: null, configured: false },
+        // Reviving a failed session takes a slot its full worker doesn't have.
+        { session: session('failed-full', 'failed', minutesAgo(300)), worker: fullWorker, configured: false },
+        { session: session('scannable', 'scan_qr', minutesAgo(10)), worker: roomyWorker, configured: false },
+      ]);
+      workersService.getWorkerForSession.mockResolvedValue(null);
+      jest.spyOn(controller, 'getQrCode').mockResolvedValue({ value: 'QR', mimetype: 'image/png' } as any);
+
+      const result = await controller.getOrCreateScannable(user, { virgin_only: true });
+
+      expect(result).toEqual({ id: 'scannable', status: 'scan_qr', qr: 'QR' });
+      expect(wahaService.resetSession).toHaveBeenCalledTimes(1);
+      expect(wahaService.resetSession).toHaveBeenCalledWith('waha-2.waha', 'k', 'u_s_scannable', expect.any(String));
+      // The stuck one is soft-deleted with the reason recorded.
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'stopped', statusReason: expect.stringContaining('stuck pending') }),
+      );
+    });
+
+    it('skips a stuck session the caller configured webhooks on, without deleting it', async () => {
+      db.orderBy.mockResolvedValueOnce([
+        { session: session('configured', 'pending', minutesAgo(270)), worker: null, configured: true },
+      ]);
+      jest.spyOn(controller, 'createConnection').mockResolvedValue({ id: 'new', status: 'pending' } as any);
+      workersService.getWorkerForSession.mockResolvedValue(null);
+
+      const result = await controller.getOrCreateScannable(user);
+
+      expect(result.id).toBe('new');
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('returns at once, without polling for a QR, when no worker could take the new session', async () => {
+      db.orderBy.mockResolvedValueOnce([]);
+      jest.spyOn(controller, 'createConnection').mockResolvedValue({ id: 'new', status: 'pending' } as any);
+      workersService.getWorkerForSession.mockResolvedValue(null);
+      const qr = jest.spyOn(controller, 'getQrCode');
+
+      const result = await controller.getOrCreateScannable(user, { virgin_only: true });
+
+      expect(result).toEqual({ id: 'new', status: 'pending', qr: null });
+      expect(qr).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('idleVerdict', () => {
+    const NOW = Date.parse('2026-10-21T22:00:00Z');
+    const at = (minutesAgo: number) => new Date(NOW - minutesAgo * 60_000);
+    const active = { status: 'active', currentSessions: 10, maxSessions: 35 };
+
+    it('reuses a fresh pending session on a live worker, skips one nobody placed yet', () => {
+      expect(idleVerdict({ session: { status: 'pending', updatedAt: at(0.5) }, worker: active }, NOW)).toBe('reuse');
+      expect(idleVerdict({ session: { status: 'pending', updatedAt: at(0.5) }, worker: null }, NOW)).toBe('skip');
+    });
+
+    it('calls a session pending past the timeout stuck, placed or not', () => {
+      expect(idleVerdict({ session: { status: 'pending', updatedAt: at(3) }, worker: null }, NOW)).toBe('stuck');
+      expect(idleVerdict({ session: { status: 'pending', updatedAt: at(3) }, worker: active }, NOW)).toBe('stuck');
+    });
+
+    it('only reuses sessions on an active worker', () => {
+      for (const status of ['draining', 'stopped']) {
+        expect(idleVerdict({ session: { status: 'scan_qr', updatedAt: at(1) }, worker: { ...active, status } }, NOW)).toBe('skip');
+      }
+      expect(idleVerdict({ session: { status: 'failed', updatedAt: at(1) }, worker: null }, NOW)).toBe('skip');
+    });
+
+    it('revives a failed session only where its worker has a free slot', () => {
+      const full = { ...active, currentSessions: 35 };
+      expect(idleVerdict({ session: { status: 'failed', updatedAt: at(60) }, worker: full }, NOW)).toBe('skip');
+      expect(idleVerdict({ session: { status: 'failed', updatedAt: at(60) }, worker: active }, NOW)).toBe('reuse');
+      // A scan_qr session already holds its slot.
+      expect(idleVerdict({ session: { status: 'scan_qr', updatedAt: at(60) }, worker: full }, NOW)).toBe('reuse');
     });
   });
 
