@@ -87,9 +87,10 @@ export class WahaService {
     url: string,
     headers: Record<string, string>,
     body?: unknown,
+    timeoutMs = 30_000,
   ): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const options: RequestInit = {
@@ -125,7 +126,7 @@ export class WahaService {
       return JSON.parse(text) as T;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        const message = `WAHA API timeout: ${method} ${url} exceeded 30s`;
+        const message = `WAHA API timeout: ${method} ${url} exceeded ${timeoutMs / 1000}s`;
         this.logger.error(message);
         throw new Error(message);
       }
@@ -516,6 +517,31 @@ export class WahaService {
       url,
       headers,
     );
+  }
+
+  /**
+   * The phone chat (`<digits>@c.us`) the session's LID store pairs with a
+   * `<id>@lid`, or null when the store doesn't know it (WAHA answers
+   * `{ lid, pn: null }`). Short timeout: callers sit on the event-ingestion path.
+   */
+  async getLidPhoneChat(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    lid: string,
+  ): Promise<string | null> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/${encodeURIComponent(sessionName)}/lids/${encodeURIComponent(lid)}`,
+    );
+    const res = await this.request<{ lid: string; pn: string | null } | undefined>(
+      'GET',
+      url,
+      this.buildHeaders(apiKey),
+      undefined,
+      3_000,
+    );
+    return res?.pn ?? null;
   }
 
   /**
