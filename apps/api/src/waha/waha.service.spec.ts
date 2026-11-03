@@ -194,6 +194,35 @@ describe('WahaService', () => {
     });
   });
 
+  describe('getLidPhoneChat', () => {
+    it('reads the phone chat the session LID store pairs with a LID', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockFetchResponse({ lid: '171051518537926@lid', pn: '556291503777@c.us' }),
+      );
+      expect(
+        await service.getLidPhoneChat(workerUrl, apiKey, 'u_x_s_y', '171051518537926@lid'),
+      ).toBe('556291503777@c.us');
+      const [url] = fetchSpy.mock.calls[0];
+      expect(url).toBe('http://10.0.0.1:3000/api/u_x_s_y/lids/171051518537926%40lid');
+    });
+
+    it('returns null when the store does not know the LID', async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ lid: '171051518537926@lid', pn: null }));
+      expect(
+        await service.getLidPhoneChat(workerUrl, apiKey, 'u_x_s_y', '171051518537926@lid'),
+      ).toBeNull();
+    });
+
+    it('gives up after a short timeout instead of holding event ingestion', async () => {
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      fetchSpy.mockRejectedValueOnce(abortError);
+      await expect(
+        service.getLidPhoneChat(workerUrl, apiKey, 'u_x_s_y', '171051518537926@lid'),
+      ).rejects.toThrow('exceeded 3s');
+    });
+  });
+
   describe('resolveChatId', () => {
     const sess = 'u_x_s_y';
 

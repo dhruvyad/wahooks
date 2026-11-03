@@ -7,6 +7,7 @@ import { eq, and, not } from 'drizzle-orm';
 import { wahaSessions, webhookConfigs, webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
+import { WorkersService } from '../workers/workers.service';
 import { EventsGateway } from './events.gateway';
 
 interface WahaEvent {
@@ -21,10 +22,16 @@ interface WahaEvent {
 export class EventsController {
   private readonly logger = new Logger(EventsController.name);
 
+  private readonly lidPhoneCache = new Map<string, { phone: string | null; exp: number }>();
+  private readonly LID_PHONE_TTL_MS = 24 * 60 * 60 * 1000;
+  private readonly LID_UNKNOWN_TTL_MS = 10 * 60 * 1000;
+  private readonly LID_PHONE_CACHE_MAX = 10_000;
+
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
     private readonly wahaService: WahaService,
+    private readonly workersService: WorkersService,
     private readonly eventsGateway: EventsGateway,
     private readonly configService: ConfigService,
   ) {}
@@ -94,10 +101,13 @@ export class EventsController {
     // top level as `senderPhone` (digits only). When the sender uses a WhatsApp
     // @lid (privacy identifier), `from` is the LID and the phone number JID lives
     // in `_data.key.remoteJidAlt` (`participantAlt` for group senders) — this
-    // saves consumers from reaching into `_data`. Original fields (`from`,
-    // `_data`, …) are left untouched for backwards compatibility.
+    // saves consumers from reaching into `_data`. WhatsApp doesn't always ship
+    // that alt JID; the session's LID store is asked then. Original fields
+    // (`from`, `_data`, …) are left untouched for backwards compatibility.
     if (typeof rewrittenPayload.from === 'string') {
-      rewrittenPayload.senderPhone = this.resolveSenderPhone(rewrittenPayload);
+      rewrittenPayload.senderPhone =
+        this.resolveSenderPhone(rewrittenPayload) ??
+        (await this.lookupLidSenderPhone(session, rewrittenPayload));
     }
 
     // connectionId lets webhook consumers map the event to the connection they
@@ -184,12 +194,68 @@ export class EventsController {
       payload?.from,
     ];
     for (const jid of candidates) {
-      if (typeof jid !== 'string') continue;
-      // <digits>[:device]@(c.us|s.whatsapp.net) → the phone number digits.
-      const match = jid.match(/^(\d+)(?::\d+)?@(?:c\.us|s\.whatsapp\.net)$/);
-      if (match) return match[1];
+      const phone = this.phoneOf(jid);
+      if (phone) return phone;
     }
     return null;
+  }
+
+  /** <digits>[:device]@(c.us|s.whatsapp.net) → the phone number digits. */
+  private phoneOf(jid: unknown): string | null {
+    if (typeof jid !== 'string') return null;
+    const match = jid.match(/^(\d+)(?::\d+)?@(?:c\.us|s\.whatsapp\.net)$/);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * The writer's number from the session's LID store, for a writer WhatsApp
+   * addresses only by `<id>@lid`. Null when the store doesn't know the pair or
+   * the lookup fails (logged) — never guessed from the LID's digits. Answers
+   * are cached per (connection, LID): a known pair is stable, an unknown one is
+   * re-asked after a few minutes since a contact sync can teach it.
+   */
+  private async lookupLidSenderPhone(session: any, payload: any): Promise<string | null> {
+    const writer =
+      payload?.participant || payload?._data?.key?.participant || payload?.from;
+    if (payload?.fromMe || typeof writer !== 'string' || !writer.endsWith('@lid')) {
+      return null;
+    }
+
+    const cacheKey = `${session.id}:${writer}`;
+    const now = Date.now();
+    const cached = this.lidPhoneCache.get(cacheKey);
+    if (cached && cached.exp > now) return cached.phone;
+
+    let phone: string | null;
+    try {
+      const worker = await this.workersService.getWorkerForSession(session.id);
+      if (!worker) {
+        this.logger.warn(`LID sender lookup skipped: no worker for session ${session.id}`);
+        return null;
+      }
+      phone = this.phoneOf(
+        await this.wahaService.getLidPhoneChat(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          this.wahaService.resolveSessionName(session.sessionName),
+          writer,
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `LID sender lookup failed for session ${session.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+    if (!phone) {
+      this.logger.log(`No phone number known for a LID sender on session ${session.id}`);
+    }
+    if (this.lidPhoneCache.size >= this.LID_PHONE_CACHE_MAX) this.lidPhoneCache.clear();
+    this.lidPhoneCache.set(cacheKey, {
+      phone,
+      exp: now + (phone ? this.LID_PHONE_TTL_MS : this.LID_UNKNOWN_TTL_MS),
+    });
+    return phone;
   }
 
   /**
