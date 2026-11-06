@@ -21,6 +21,13 @@ export class WahaService {
   private readonly CHATID_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
   private readonly CHATID_CACHE_MAX = 10_000;
 
+  // WAHA keeps each session's store in the shared Postgres. When that server is
+  // out of connection slots WAHA answers 500 before doing the work, and slots free
+  // up within seconds to minutes, so such a call is tried again after these waits.
+  static readonly DB_FULL_BACKOFF_MS = [1_000, 3_000, 8_000, 15_000];
+  private static readonly DB_FULL =
+    /remaining connection slots are reserved|too many clients already/i;
+
   constructor(private readonly configService: ConfigService) {
     this.maxSessions = Number(
       this.configService.get('WAHA_MAX_SESSIONS', '1'),
@@ -83,6 +90,35 @@ export class WahaService {
   }
 
   private async request<T>(
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    body?: unknown,
+    timeoutMs = 30_000,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.requestOnce<T>(method, url, headers, body, timeoutMs);
+      } catch (error) {
+        const dbFull =
+          error instanceof HttpException && WahaService.DB_FULL.test(error.message);
+        if (!dbFull) throw error;
+        const wait = WahaService.DB_FULL_BACKOFF_MS[attempt];
+        if (wait === undefined) {
+          throw new HttpException(
+            'WhatsApp storage is briefly out of database connections. Try again in a minute.',
+            503,
+          );
+        }
+        this.logger.warn(
+          `WAHA database full: ${method} ${url}, retry ${attempt + 1} in ${wait / 1000}s`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+  }
+
+  private async requestOnce<T>(
     method: string,
     url: string,
     headers: Record<string, string>,

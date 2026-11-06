@@ -335,4 +335,46 @@ describe('WahaService', () => {
       expect(body.text).toBe('hi');
     });
   });
+
+  describe('a WAHA database out of connection slots', () => {
+    const full = 'remaining connection slots are reserved for roles with the SUPERUSER attribute';
+
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('is tried again after a wait, and the retry\'s answer is returned', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(mockFetchResponse({ message: full }, 500, false))
+        .mockResolvedValueOnce(mockFetchResponse({ message: full }, 500, false))
+        .mockResolvedValueOnce(mockFetchResponse(''));
+
+      const done = service.startSession(workerUrl, apiKey, 'my-session');
+      await jest.advanceTimersByTimeAsync(1_000 + 3_000);
+
+      await expect(done).resolves.toBeUndefined();
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('answers 503 once every wait is spent', async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse({ message: full }, 500, false));
+
+      const done = service.startSession(workerUrl, apiKey, 'my-session');
+      const settled = expect(done).rejects.toMatchObject({ status: 503 });
+      await jest.advanceTimersByTimeAsync(
+        WahaService.DB_FULL_BACKOFF_MS.reduce((a, b) => a + b, 0),
+      );
+
+      await settled;
+      expect(fetchSpy).toHaveBeenCalledTimes(WahaService.DB_FULL_BACKOFF_MS.length + 1);
+    });
+
+    it('leaves any other WAHA error alone', async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ message: 'boom' }, 500, false));
+
+      await expect(service.startSession(workerUrl, apiKey, 'my-session')).rejects.toMatchObject({
+        status: 502,
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });
