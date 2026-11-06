@@ -110,10 +110,9 @@ export class ConnectionsController {
     return jid.replace(/:\d+@/, '@');
   }
 
-  private deriveMessageType(raw: any): string {
+  private deriveMessageType(raw: any, mime?: string | null): string {
     if (raw?.location) return 'location';
     if (raw?.vCards) return 'contact';
-    const mime: string | undefined = raw?.media?.mimetype;
     if (raw?.hasMedia && mime) {
       if (mime.startsWith('image/')) return 'image';
       if (mime.startsWith('video/')) return 'video';
@@ -155,7 +154,7 @@ export class ConnectionsController {
       fromMe: !!raw?.fromMe,
       senderJid,
       senderPushName: raw?._data?.pushName ?? raw?._data?.notifyName ?? null,
-      type: this.deriveMessageType(raw),
+      type: this.deriveMessageType(raw, media?.mimetype),
       text: raw?.body ?? null,
       quotedMessageId,
       media,

@@ -574,6 +574,20 @@ describe('ConnectionsController', () => {
           '10.0.0.1', 'key', 'u_user-123_s_abc', '111@g.us', 50, 0, false);
         expect(page.messages[0].media).toEqual({
           url: null, mimetype: 'application/pdf', filename: 'MEL.pdf', size: 94371840 });
+        expect(page.messages[0].type).toBe('document');
+      });
+
+      it('types a captioned image as an image, not text, when it was not downloaded', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getMessages.mockResolvedValueOnce([
+          { id: 'false_111@g.us_3EB1', timestamp: 6, from: '111@g.us', fromMe: false, body: 'the chart', hasMedia: true,
+            media: null, replyTo: null,
+            _data: { message: { imageMessage: { mimetype: 'image/jpeg', caption: 'the chart', fileLength: '18326' } } } },
+        ]);
+        const page = await controller.getMessages('sess-1', '111@g.us', user, undefined, undefined, 'false');
+        expect(page.messages[0].type).toBe('image');
+        expect(page.messages[0].text).toBe('the chart');
       });
     });
 
