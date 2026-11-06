@@ -8,6 +8,7 @@ resources:
   - rbac.yaml
   - redis.yaml
   - db-proxy.yaml
+  - pgbouncer.yaml
   - waha-service.yaml
   - waha-statefulset.yaml
   - api-deployment.yaml

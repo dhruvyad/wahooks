@@ -29,15 +29,3 @@ spec:
             limits:
               cpu: 100m
               memory: 32Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: supabase-db
-  namespace: default
-spec:
-  selector:
-    app: supabase-db-proxy
-  ports:
-    - port: 5432
-      targetPort: 15432

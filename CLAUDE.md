@@ -151,7 +151,7 @@ Tables in `packages/db/src/schema/`:
 - Outbound webhooks signed with HMAC-SHA256 (`X-WAHooks-Signature` header)
 - Webhook delivery: BullMQ with 5 attempts, exponential backoff (5s base), last 1000 failed jobs retained
 - Usage metering: hourly cron records connection-hours, separate cron reports to Stripe
-- Supabase DB connectivity: socat DaemonSet bridges IPv4→IPv6 (Supabase has IPv6-only DNS, k3s pods can't route IPv6)
+- Supabase DB connectivity: `supabase-db` → PgBouncer (`k8s/pgbouncer.yaml`, session mode, 2 replicas × 35 server connections) → `supabase-db-direct` → socat DaemonSet bridging IPv4→IPv6 (Supabase has IPv6-only DNS, k3s pods can't route IPv6) → Postgres (`max_connections` 90). WAHA opens up to 10 connections per session store (hard-coded), so without the cap bursts failed every write with "remaining connection slots are reserved". The `postgres` role has `idle_session_timeout` 15min: socat never closes a dead pod's connections by itself
 
 ## Production Deployment
 

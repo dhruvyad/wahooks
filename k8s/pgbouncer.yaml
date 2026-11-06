@@ -1,0 +1,146 @@
+# PgBouncer between the cluster and Supabase Postgres.
+#
+# WAHA keeps each session's store in its own database and opens up to 10
+# connections per store (hard-coded in its image), so a few sessions syncing at
+# once burst past Postgres' 87 usable connections and every WAHA write and send
+# failed with "remaining connection slots are reserved". PgBouncer caps the
+# server connections (max_user_connections per replica) so a burst waits for a
+# slot instead of failing.
+#
+# Session mode, not transaction mode: the API's postgres.js uses prepared
+# statements. supabase-db (what WAHA and the API connect to) points here;
+# supabase-db-direct is the socat proxy itself, which PgBouncer connects through.
+# Out of band: the pgbouncer-tls secret (self-signed; WAHA connects with TLS
+# and doesn't verify), created with `kubectl create secret tls pgbouncer-tls`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-db-direct
+  namespace: default
+spec:
+  selector:
+    app: supabase-db-proxy
+  ports:
+    - port: 5432
+      targetPort: 15432
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: default
+data:
+  pgbouncer.ini: |
+    [databases]
+    * = host=supabase-db-direct.default.svc.cluster.local port=5432
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    auth_type = scram-sha-256
+    auth_file = /run/pgbouncer/userlist.txt
+    pool_mode = session
+    max_client_conn = 2000
+    default_pool_size = 10
+    ; Per replica: 2 replicas x 35 leaves Supabase's own services ~17 of 87.
+    max_user_connections = 35
+    ; A finished client's server connection closes fast, so another database's
+    ; waiting client gets the slot.
+    server_idle_timeout = 5
+    query_wait_timeout = 120
+    server_tls_sslmode = require
+    client_tls_sslmode = allow
+    client_tls_key_file = /etc/pgbouncer-tls/tls.key
+    client_tls_cert_file = /etc/pgbouncer-tls/tls.crt
+    ignore_startup_parameters = extra_float_digits,options
+    log_connections = 0
+    log_disconnections = 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: pgbouncer
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer@sha256:8638aa563607256d3c7440437534195f1066a92b68015d89ae9d6b935b444a6d
+          command: ["sh", "-c"]
+          # The postgres password comes from the URL WAHA already uses.
+          args:
+            - |
+              set -e
+              pw=$(printf '%s' "$DATABASE_URL" | sed -E 's#^[a-z]+://[^:]+:([^@]*)@.*#\1#')
+              printf '"postgres" "%s"\n' "$pw" > /run/pgbouncer/userlist.txt
+              exec pgbouncer /etc/pgbouncer/pgbouncer.ini
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: waha-secret
+                  key: database-url
+          ports:
+            - containerPort: 6432
+          readinessProbe:
+            tcpSocket:
+              port: 6432
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 6432
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer
+            - name: run
+              mountPath: /run/pgbouncer
+            - name: tls
+              mountPath: /etc/pgbouncer-tls
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: pgbouncer-config
+        - name: run
+          emptyDir:
+            medium: Memory
+        - name: tls
+          secret:
+            secretName: pgbouncer-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: default
+spec:
+  selector:
+    app: pgbouncer
+  ports:
+    - port: 5432
+      targetPort: 6432
