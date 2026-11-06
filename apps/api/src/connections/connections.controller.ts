@@ -22,6 +22,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { eq, and, ne, inArray, desc, isNull, exists, notExists } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
+import { Readable } from 'stream';
+import type { ReadableStream as WebReadableStream } from 'stream/web';
 import { wahaSessions, wahaWorkers, webhookConfigs } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
@@ -130,15 +132,21 @@ export class ConnectionsController {
     const quoted = raw?.replyTo;
     const quotedMessageId =
       typeof quoted === 'string' ? quoted : (quoted?.id ?? null);
-    const media =
-      raw?.hasMedia && raw?.media?.url
-        ? {
-            url: this.mediaProxyUrl(sessionId, raw.media.url),
-            mimetype: raw.media.mimetype,
-            filename: raw.media.filename,
-            size: raw.media.size,
-          }
-        : null;
+    // What WhatsApp says of the file, kept even when WAHA didn't download it
+    // (downloadMedia=false, or a failed download): the listing still names it.
+    const message = raw?._data?.message ?? {};
+    const inner = message.documentWithCaptionMessage?.message ?? message;
+    const file =
+      inner.documentMessage ?? inner.imageMessage ?? inner.videoMessage ??
+      inner.audioMessage ?? inner.stickerMessage ?? null;
+    const media = raw?.hasMedia
+      ? {
+          url: raw?.media?.url ? this.mediaProxyUrl(sessionId, raw.media.url) : null,
+          mimetype: raw?.media?.mimetype ?? file?.mimetype ?? null,
+          filename: raw?.media?.filename ?? file?.fileName ?? null,
+          size: raw?.media?.size ?? (file?.fileLength != null ? Number(file.fileLength) : null),
+        }
+      : null;
 
     return {
       id: raw?.id,
@@ -673,6 +681,7 @@ export class ConnectionsController {
     @CurrentUser() user: { sub: string },
     @Query('limit') limitRaw?: string,
     @Query('before') before?: string,
+    @Query('downloadMedia') downloadMediaRaw?: string,
   ) {
     const [connection] = await this.db
       .select()
@@ -707,6 +716,9 @@ export class ConnectionsController {
         chatId,
         limit,
         offset,
+        // false lists a chat without WAHA downloading every file in it first;
+        // a file is then fetched by id (GET :id/messages/:messageId/media).
+        downloadMediaRaw !== 'false',
       );
       const rows = raw ?? [];
       const messages = rows.map((m) => this.mapMessage(m, id, chatId));
@@ -967,17 +979,14 @@ export class ConnectionsController {
     }
 
     const contentType = wahaRes.headers.get('content-type') || 'application/octet-stream';
+    const length = Number(wahaRes.headers.get('content-length'));
 
-    const chunks: Uint8Array[] = [];
-    const reader = wahaRes.body.getReader();
-    let done = false;
-    while (!done) {
-      const result = await reader.read();
-      done = result.done;
-      if (result.value) chunks.push(result.value);
-    }
-
-    return new StreamableFile(Buffer.concat(chunks), { type: contentType });
+    // Streamed, not buffered: a group's 90 MB PDFs, several at once, would
+    // otherwise sit whole in the API's memory.
+    return new StreamableFile(Readable.fromWeb(wahaRes.body as WebReadableStream), {
+      type: contentType,
+      ...(length > 0 ? { length } : {}),
+    });
   }
 
   @Post(':id/mark-read')

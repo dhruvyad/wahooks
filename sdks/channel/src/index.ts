@@ -26,6 +26,8 @@ import WebSocket from "ws";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 // Minimal mime type detection from extension
 const MIME_MAP: Record<string, string> = {
@@ -188,6 +190,89 @@ async function resolveConnection(): Promise<string> {
 // ─── State ──────────────────────────────────────────────────────────────
 
 let connectionId: string;
+
+// ─── Media files ────────────────────────────────────────────────────────
+
+// A big document (a 90 MB PDF) can take minutes from WhatsApp's servers.
+const MEDIA_TIMEOUT_MS = 10 * 60 * 1000;
+// Waits before each re-fetch by message id of a file the first download missed.
+const REFETCH_BACKOFF_MS = [2_000, 6_000, 15_000];
+
+/** What a message's own WhatsApp payload says of its file. */
+function fileOf(payload: any): { mimetype?: string; filename?: string } {
+  const message = payload?._data?.message ?? {};
+  const inner = message.documentWithCaptionMessage?.message ?? message;
+  const file =
+    inner.documentMessage ?? inner.imageMessage ?? inner.videoMessage ??
+    inner.audioMessage ?? inner.stickerMessage ?? {};
+  return {
+    mimetype: payload?.media?.mimetype ?? file.mimetype,
+    filename: payload?.media?.filename ?? file.fileName,
+  };
+}
+
+function mediaPath(mime: string, filename?: string): string {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  if (filename) return path.join(os.tmpdir(), `wahooks-media-${stamp}-${filename.replace(/[^\w.-]+/g, "_")}`);
+  const ext = mime.split("/")[1]?.split(";")[0] || "bin";
+  return path.join(os.tmpdir(), `wahooks-media-${stamp}.${ext}`);
+}
+
+/** The URL that fetches a message's file by id: WAHA downloads it from WhatsApp again. */
+function mediaByIdUrl(chatId: string, messageId: string): string {
+  return `${API_URL}/api/connections/${connectionId}/messages/${encodeURIComponent(messageId)}/media?chatId=${encodeURIComponent(chatId)}`;
+}
+
+/** Streams a WAHooks media URL to `file` (never whole in memory); its size and type. */
+async function saveMedia(url: string, file: string): Promise<{ bytes: number; mimetype: string | null }> {
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+    signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}${detail ? ` ${detail.slice(0, 120)}` : ""}`);
+  }
+  try {
+    await pipeline(Readable.fromWeb(res.body as any), fs.createWriteStream(file));
+  } catch (err) {
+    fs.rmSync(file, { force: true });
+    throw err;
+  }
+  return { bytes: fs.statSync(file).size, mimetype: res.headers.get("content-type") };
+}
+
+/** An incoming message's file: from the event's URL, else by message id after each
+ * REFETCH_BACKOFF_MS wait. `refetched` when the URL didn't serve it. */
+async function fetchIncomingMedia(
+  chatId: string, messageId: string, url: string | undefined, file: string,
+): Promise<{ bytes: number; refetched: boolean } | { error: string; tries: number }> {
+  let error = "the event carried no file";
+  let tries = 0;
+  if (url) {
+    tries++;
+    try {
+      return { bytes: (await saveMedia(url, file)).bytes, refetched: false };
+    } catch (err) {
+      error = String(err instanceof Error ? err.message : err);
+    }
+  }
+  for (const wait of REFETCH_BACKOFF_MS) {
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    tries++;
+    try {
+      return { bytes: (await saveMedia(mediaByIdUrl(chatId, messageId), file)).bytes, refetched: true };
+    } catch (err) {
+      error = String(err instanceof Error ? err.message : err);
+      console.error(`[wahooks-channel] Media re-fetch ${tries} for ${messageId} failed: ${error}`);
+    }
+  }
+  return { error, tries };
+}
+
+function sizeOf(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 // Bare numbers (phone + LID) of this WhatsApp account, so a quoted message
 // authored by us can be labeled "your earlier message". Best-effort.
 const selfIds = new Set<string>();
@@ -253,7 +338,7 @@ const mcp = new Server(
       "Also available: wahooks_send_location (lat/lng) and wahooks_send_contact (name/phone).",
       "Reminders: use wahooks_schedule_reminder to schedule tasks (one-time or recurring via cron). Use wahooks_list_reminders and wahooks_cancel_reminder to manage them.",
       "When a reminder fires, it arrives as a <channel> event with type=\"reminder\". Execute the task described and send results to the specified chatId.",
-      "Read history: use wahooks_get_chats to list conversations, wahooks_get_messages to read a chat's message history (for questions like 'what did they say earlier' or 'summarize my chat with X'), and wahooks_get_contacts to look up contact names/numbers. Pass a chat_id or a phone number to wahooks_get_messages; page older messages with the returned 'before' cursor.",
+      "Read history: use wahooks_get_chats to list conversations, wahooks_get_messages to read a chat's message history (for questions like 'what did they say earlier' or 'summarize my chat with X'), and wahooks_get_contacts to look up contact names/numbers. Pass a chat_id or a phone number to wahooks_get_messages; page older messages with the returned 'before' cursor. A file that arrived as 'download failed', or one listed in history (with its id=), is fetched with wahooks_download_media.",
       "Live status updates: wahooks_send/wahooks_reply return a message_id. For long tasks, send a brief 'working on it…' first, then use wahooks_edit_message to update THAT message with progress/results as you go (within ~15 min) instead of sending many messages.",
     ].join(" "),
   }
@@ -458,6 +543,18 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "wahooks_download_media",
+      description: "Download a message's file (a PDF, photo, voice note, video) to a local path: one that arrived as 'download failed', or one from history (wahooks_get_messages lists each file with its id). WhatsApp's servers serve it again, so it works long after the message arrived.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          chat_id: { type: "string", description: "Chat ID / JID the message is in (a group's ...@g.us), or a phone number" },
+          message_id: { type: "string", description: "The message's id, as the channel event's message_id or wahooks_get_messages' id=" },
+        },
+        required: ["chat_id", "message_id"],
+      },
+    },
+    {
       name: "wahooks_get_contacts",
       description: "List WhatsApp contacts (people) with names and phone numbers. Use to look up who someone is or find a number.",
       inputSchema: {
@@ -654,7 +751,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "wahooks_get_messages": {
       const chatId = toChatId(args.chat_id);
       const limit = Number(args.limit) > 0 ? Number(args.limit) : 30;
-      const qs = new URLSearchParams({ limit: String(limit) });
+      // downloadMedia=false: listing doesn't wait on WAHA downloading every file in
+      // the chat (a group's 90 MB PDFs); a file is fetched with wahooks_download_media.
+      const qs = new URLSearchParams({ limit: String(limit), downloadMedia: "false" });
       if (args.before) qs.set("before", args.before);
       const page = await api<{ messages: any[]; nextBefore: string | null; historyStartsAt: number | null }>(
         "GET",
@@ -676,7 +775,14 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (key) byKeyId.set(key, m);
       }
       const lines = chrono.map((m) => {
-        const media = m.media ? ` [${m.type}: ${m.media.mimetype ?? "media"}]` : "";
+        const media = m.media
+          ? ` [${[
+              `${m.type}: ${m.media.mimetype ?? "media"}`,
+              ...(m.media.filename ? [`"${m.media.filename}"`] : []),
+              ...(m.media.size ? [sizeOf(Number(m.media.size))] : []),
+              `id=${m.id}`,
+            ].join(", ")}]`
+          : "";
         const body = m.text ? String(m.text).replace(/\n/g, " ⏎ ") : (m.media ? "" : "(no text)");
         let reply = "";
         if (m.quotedMessageId) {
@@ -707,6 +813,17 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       } catch (err) {
         return { content: [{ type: "text" as const, text: `Could not edit message (WhatsApp only allows editing your own messages within ~15 min). Send a new message instead. ${err instanceof Error ? err.message : ""}` }] };
       }
+    }
+
+    case "wahooks_download_media": {
+      const chatId = toChatId(args.chat_id);
+      const file = mediaPath("application/octet-stream");
+      const saved = await saveMedia(mediaByIdUrl(chatId, args.message_id), file);
+      const mime = saved.mimetype?.split(";")[0] ?? "application/octet-stream";
+      const ext = mime.split("/")[1];
+      const named = ext && ext !== "octet-stream" ? file.replace(/\.[^.]+$/, `.${ext}`) : file;
+      if (named !== file) fs.renameSync(file, named);
+      return { content: [{ type: "text" as const, text: `Saved to: ${named} (${mime}, ${sizeOf(saved.bytes)})` }] };
     }
 
     case "wahooks_get_contacts": {
@@ -817,28 +934,20 @@ function connectWebSocket() {
 
       // Build message content for Claude
       let content = text;
-      let localMediaPath = "";
-      if (hasMedia && media?.url) {
-        const mime = media.mimetype ?? "unknown";
-        // Download media locally so Claude can access it directly
-        try {
-          const mediaRes = await fetch(media.url, {
-            headers: { Authorization: `Bearer ${API_KEY}` },
-          });
-          if (mediaRes.ok) {
-            const buf = Buffer.from(await mediaRes.arrayBuffer());
-            const ext = mime.split("/")[1]?.split(";")[0] ?? "bin";
-            localMediaPath = path.join(os.tmpdir(), `wahooks-media-${Date.now()}.${ext}`);
-            fs.writeFileSync(localMediaPath, buf);
-            content = `${text ? text + "\n\n" : ""}[Attached: ${mime}] Saved to: ${localMediaPath}`;
-            console.error(`[wahooks-channel] Media saved: ${localMediaPath} (${buf.length} bytes)`);
-          } else {
-            content = `${text ? text + "\n\n" : ""}[Attached: ${mime}] (could not download)`;
-          }
-        } catch (err) {
-          content = `${text ? text + "\n\n" : ""}[Attached: ${mime}] (download failed)`;
-          console.error(`[wahooks-channel] Media download failed: ${err}`);
-        }
+      const { mimetype: fileMime, filename } = hasMedia ? fileOf(payload) : {};
+      if (hasMedia) {
+        const mime = fileMime ?? "unknown";
+        const named = filename ? ` "${filename}"` : "";
+        // Saved locally so Claude can open it. A file the event's URL doesn't serve
+        // (WAHA's copy lasts 180 s, or its download failed) is fetched again by id,
+        // and the message arrives either way.
+        const file = mediaPath(mime, filename);
+        const got = await fetchIncomingMedia(chatId, messageId, media?.url, file);
+        const note = "error" in got
+          ? `(download failed after ${got.tries} tries: ${got.error}. Fetch it later with wahooks_download_media, chat_id="${chatId}", message_id="${messageId}")`
+          : `Saved to: ${file} (${sizeOf(got.bytes)}${got.refetched ? ", re-fetched by message id after the first download failed" : ""})`;
+        content = `${text ? text + "\n\n" : ""}[Attached: ${mime}${named}] ${note}`;
+        console.error(`[wahooks-channel] Media ${"error" in got ? `failed: ${got.error}` : `saved: ${file} (${got.bytes} bytes)`}`);
       }
 
       // Reply context: when the sender used WhatsApp's "reply" (swipe-to-quote),
@@ -880,7 +989,7 @@ function connectWebSocket() {
             sender: isGroup ? sender : chatId,
             message_id: messageId,
             ...(isGroup ? { group: "true" } : {}),
-            ...(hasMedia ? { has_media: "true", media_type: media?.mimetype ?? "unknown" } : {}),
+            ...(hasMedia ? { has_media: "true", media_type: fileMime ?? "unknown", ...(filename ? { media_filename: filename } : {}) } : {}),
             ...replyMeta,
           },
         },

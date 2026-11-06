@@ -62,6 +62,7 @@ Claude can pull conversation history and contacts — so it can answer things li
 | `wahooks_get_chats` | List conversations with names + last-message previews (`limit`, `unread_only`) |
 | `wahooks_get_messages` | Read a chat's message history. Pass a `chat_id` or phone number; page older messages with the returned `before` cursor |
 | `wahooks_get_contacts` | List contacts (people) with names and phone numbers |
+| `wahooks_download_media` | Download a message's file to a local path by `chat_id` and `message_id` (history lists each file with its `id=`) |
 
 <Callout type="warn">
   History reads WhatsApp's live store: media may be unavailable for older messages, history
@@ -102,6 +103,8 @@ Check this document
 ```
 
 Claude can read the file, transform it, and send the result back.
+
+Large files (a 90 MB PDF) are streamed to disk. If the first download fails, the channel fetches the file again by its message id (three more tries over about 20 seconds) and says so. If every try fails, the message still arrives, naming the file and the `message_id` to fetch later with `wahooks_download_media`.
 
 ### Replies and quoted messages
 

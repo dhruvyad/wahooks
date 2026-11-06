@@ -544,7 +544,7 @@ describe('ConnectionsController', () => {
         (wahaService as any).getMessages.mockResolvedValueOnce([]);
         const cursor = Buffer.from('50').toString('base64url');
         await controller.getMessages('sess-1', '111@g.us', user, '50', cursor);
-        expect((wahaService as any).getMessages).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '111@g.us', 50, 50);
+        expect((wahaService as any).getMessages).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '111@g.us', 50, 50, true);
       });
 
       it('rewrites media url to the proxy and derives image type', async () => {
@@ -558,6 +558,22 @@ describe('ConnectionsController', () => {
         expect(page.messages[0].type).toBe('image');
         expect(page.messages[0].media.url).toBe('http://localhost:3001/api/connections/sess-1/media/pic.jpeg');
         expect(page.messages[0].senderJid).toBeNull(); // fromMe
+      });
+
+      it('lists without downloading files when downloadMedia=false, naming each file from WhatsApp\'s message', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getMessages.mockResolvedValueOnce([
+          { id: 'false_111@g.us_3EB0', timestamp: 5, from: '111@g.us', fromMe: false, body: '', hasMedia: true,
+            media: null, replyTo: null,
+            _data: { message: { documentWithCaptionMessage: { message: { documentMessage: {
+              mimetype: 'application/pdf', fileName: 'MEL.pdf', fileLength: '94371840' } } } } } },
+        ]);
+        const page = await controller.getMessages('sess-1', '111@g.us', user, undefined, undefined, 'false');
+        expect((wahaService as any).getMessages).toHaveBeenCalledWith(
+          '10.0.0.1', 'key', 'u_user-123_s_abc', '111@g.us', 50, 0, false);
+        expect(page.messages[0].media).toEqual({
+          url: null, mimetype: 'application/pdf', filename: 'MEL.pdf', size: 94371840 });
       });
     });
 

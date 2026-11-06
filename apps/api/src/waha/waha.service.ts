@@ -798,14 +798,15 @@ export class WahaService {
     chatId: string,
     limit: number = 50,
     offset: number = 0,
+    downloadMedia: boolean = true,
   ): Promise<any[]> {
     const url = this.buildUrl(
       workerUrl,
-      // downloadMedia=true so WAHA attaches hasMedia/media (incl. a fetchable
-      // file URL) for audio/image/video/document messages. With false, media
-      // messages come back with no media payload at all — which breaks the
-      // media proxy and makes voice notes invisible to read-API consumers.
-      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&offset=${offset}&downloadMedia=true`,
+      // downloadMedia=true (the default) so WAHA attaches media (incl. a
+      // fetchable file URL) for audio/image/video/document messages. With false,
+      // media messages come back with no media payload, only what WhatsApp's own
+      // message says of the file: a listing that doesn't wait on every download.
+      `/api/${encodeURIComponent(sessionName)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&offset=${offset}&downloadMedia=${downloadMedia}`,
     );
     const headers = this.buildHeaders(apiKey);
 
