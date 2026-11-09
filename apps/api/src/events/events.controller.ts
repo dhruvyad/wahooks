@@ -20,6 +20,7 @@ import { WorkersService } from '../workers/workers.service';
 import { EventsGateway } from './events.gateway';
 import { WebhookLogRetentionService } from './webhook-log-retention.service';
 import { EVENTS_SECRET_HEADER, eventsSecretMatches } from './events-secret';
+import { EventMetricsService } from './event-metrics.service';
 
 interface WahaEvent {
   event: string;
@@ -50,6 +51,7 @@ export class EventsController {
     private readonly eventsGateway: EventsGateway,
     private readonly configService: ConfigService,
     private readonly logRetention: WebhookLogRetentionService,
+    private readonly eventMetrics: EventMetricsService,
   ) {
     this.eventsSecret = this.configService.get<string>('EVENTS_SECRET')?.trim() || null;
     if (!this.eventsSecret) {
@@ -131,6 +133,10 @@ export class EventsController {
         throw new UnauthorizedException();
       }
     }
+
+    // Count it for the Infrastructure page's event volume graphs. Fire-and-forget:
+    // the counter never rejects, and Redis is never waited on here.
+    void this.eventMetrics.countReceived(event.event);
 
     // 1b. session.status events carry the live connection state. Reflect it in
     // the DB immediately so SDK/web pollers (GET /connections, GET /:id) see the

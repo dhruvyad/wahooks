@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { createHmac } from 'crypto';
 import { WebhookDeliveryProcessor } from './webhook-delivery.processor';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { EventMetricsService } from './event-metrics.service';
 
 describe('WebhookDeliveryProcessor', () => {
   let processor: WebhookDeliveryProcessor;
   let db: any;
   let fetchSpy: jest.SpyInstance;
+  let eventMetrics: { countDelivery: jest.Mock };
 
   function chainable(resolvedValue: any = undefined) {
     const chain: any = {
@@ -44,11 +46,13 @@ describe('WebhookDeliveryProcessor', () => {
 
   beforeEach(async () => {
     db = chainable();
+    eventMetrics = { countDelivery: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WebhookDeliveryProcessor,
         { provide: DRIZZLE_TOKEN, useValue: db },
+        { provide: EventMetricsService, useValue: eventMetrics },
       ],
     }).compile();
 
@@ -125,6 +129,8 @@ describe('WebhookDeliveryProcessor', () => {
           set: expect.objectContaining({ status: 'delivered', attempts: 1, deliveredAt: expect.any(Date) }),
         }),
       );
+      expect(eventMetrics.countDelivery).toHaveBeenCalledTimes(1);
+      expect(eventMetrics.countDelivery).toHaveBeenCalledWith('delivered');
     });
 
     it('uses the time the event was queued as the row created_at', async () => {
@@ -165,6 +171,8 @@ describe('WebhookDeliveryProcessor', () => {
       );
       const { set } = db.onConflictDoUpdate.mock.calls[0][0];
       expect(set).toEqual({ status: 'pending', attempts: 2 }); // a retry never touches deliveredAt
+      expect(eventMetrics.countDelivery).toHaveBeenCalledTimes(1);
+      expect(eventMetrics.countDelivery).toHaveBeenCalledWith('retried');
     });
 
     it('should mark as failed when max attempts reached', async () => {
@@ -182,6 +190,26 @@ describe('WebhookDeliveryProcessor', () => {
           status: 'failed',
         }),
       );
+      expect(eventMetrics.countDelivery).toHaveBeenCalledTimes(1);
+      expect(eventMetrics.countDelivery).toHaveBeenCalledWith('failed');
+    });
+
+    it('counts a failed attempt even when its log row cannot be written', async () => {
+      const job = createJob();
+      job.attemptsMade = 4;
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse(500, false, 'Server Error'));
+      db.onConflictDoUpdate.mockRejectedValueOnce(new Error('database unavailable'));
+
+      await expect(processor.process(job as any)).rejects.toThrow('database unavailable');
+
+      expect(eventMetrics.countDelivery).toHaveBeenCalledWith('failed');
+    });
+
+    it('never waits on the counter', async () => {
+      eventMetrics.countDelivery.mockReturnValue(new Promise(() => undefined));
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse());
+
+      await expect(processor.process(createJob() as any)).resolves.toBeUndefined();
     });
 
     it('should handle network errors', async () => {

@@ -6,6 +6,7 @@ import { EventsController } from './events.controller';
 import { eventsSecretMatches } from './events-secret';
 import { EventsGateway } from './events.gateway';
 import { WebhookLogRetentionService } from './webhook-log-retention.service';
+import { EventMetricsService } from './event-metrics.service';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
 import { WorkersService } from '../workers/workers.service';
@@ -34,11 +35,13 @@ describe('EventsController', () => {
   let wahaService: { getMaxSessions: jest.Mock; resolveSessionName: jest.Mock; getLidPhoneChat: jest.Mock };
   let workersService: { getWorkerForSession: jest.Mock };
   let logRetention: { touch: jest.Mock };
+  let eventMetrics: { countReceived: jest.Mock };
 
   beforeEach(async () => {
     db = createMockDb();
     webhookQueue = { add: jest.fn().mockResolvedValue({}) };
     logRetention = { touch: jest.fn() };
+    eventMetrics = { countReceived: jest.fn().mockResolvedValue(undefined) };
     wahaService = {
       getMaxSessions: jest.fn().mockReturnValue(2),
       resolveSessionName: jest.fn((name: string) => name),
@@ -58,6 +61,7 @@ describe('EventsController', () => {
         { provide: EventsGateway, useValue: { broadcastEvent: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('http://localhost:3001') } },
         { provide: WebhookLogRetentionService, useValue: logRetention },
+        { provide: EventMetricsService, useValue: eventMetrics },
       ],
     }).compile();
 
@@ -85,6 +89,9 @@ describe('EventsController', () => {
       const result = await controller.ingestWahaEvent(event);
 
       expect(result).toEqual({ received: true });
+      // Counted once for the event volume graphs, by its type.
+      expect(eventMetrics.countReceived).toHaveBeenCalledTimes(1);
+      expect(eventMetrics.countReceived).toHaveBeenCalledWith('message');
       // No log row at ingest: the delivery processor writes it when the first attempt ends.
       expect(db.insert).not.toHaveBeenCalled();
       // Delivered envelopes carry connectionId so consumers can map events to
@@ -248,6 +255,20 @@ describe('EventsController', () => {
 
       expect(result).toEqual({ received: true });
       expect(webhookQueue.add).not.toHaveBeenCalled();
+      // Only events for a known connection are counted.
+      expect(eventMetrics.countReceived).not.toHaveBeenCalled();
+    });
+
+    it('counts an event that no webhook wants, and never waits on the counter', async () => {
+      const session = { id: 'sess-1', sessionName: 'u_user-123_s_abc', userId: 'user-123' };
+      db.where.mockResolvedValueOnce([session]).mockResolvedValueOnce([]);
+      // A counter stuck on Redis must not hold the request.
+      eventMetrics.countReceived.mockReturnValue(new Promise(() => undefined));
+
+      await expect(
+        controller.ingestWahaEvent({ event: 'presence.update', session: 'u_user-123_s_abc' }),
+      ).resolves.toEqual({ received: true });
+      expect(eventMetrics.countReceived).toHaveBeenCalledWith('presence.update');
     });
 
     it('should handle wildcard * event matching', async () => {
@@ -422,6 +443,7 @@ describe('EventsController', () => {
         { broadcastEvent: jest.fn() } as any,
         { get: jest.fn((key: string, def?: unknown) => (key in values ? values[key] : def)) } as any,
         logRetention as any,
+        eventMetrics as any,
       );
     }
     const event = (session: string) => ({ event: 'message', session, payload: { body: 'hi' } });
@@ -435,6 +457,7 @@ describe('EventsController', () => {
       await expect(ctrl.ingestWahaEvent(event('u_g_s_1'))).rejects.toThrow(UnauthorizedException);
 
       expect(webhookQueue.add).not.toHaveBeenCalled();
+      expect(eventMetrics.countReceived).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('"u_g_s_1"'));
     });
 
@@ -456,6 +479,7 @@ describe('EventsController', () => {
       await expect(ctrl.ingestWahaEvent(event('u_w_s_1'), '')).rejects.toThrow(UnauthorizedException);
 
       expect(db.where).not.toHaveBeenCalled();
+      expect(eventMetrics.countReceived).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('"u_w_s_1"'));
     });
 

@@ -13,6 +13,7 @@ import { ConnectionsModule } from "./connections/connections.module";
 import { HealthModule } from "./health/health.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 import { EventsModule } from "./events/events.module";
+import { EventMetricsModule } from "./events/event-metrics.module";
 import { BillingModule } from "./billing/billing.module";
 
 @Module({
@@ -35,6 +36,7 @@ import { BillingModule } from "./billing/billing.module";
     HealthModule,
     WebhooksModule,
     EventsModule,
+    EventMetricsModule,
     BillingModule,
   ],
   controllers: [AppController],

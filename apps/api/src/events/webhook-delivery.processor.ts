@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
 import { webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { EventMetricsService } from './event-metrics.service';
 
 interface WebhookJob {
   webhookConfigId: string;
@@ -23,7 +24,10 @@ interface WebhookJob {
 export class WebhookDeliveryProcessor extends WorkerHost {
   private readonly logger = new Logger(WebhookDeliveryProcessor.name);
 
-  constructor(@Inject(DRIZZLE_TOKEN) private readonly db: any) {
+  constructor(
+    @Inject(DRIZZLE_TOKEN) private readonly db: any,
+    private readonly eventMetrics: EventMetricsService,
+  ) {
     super();
   }
 
@@ -70,15 +74,16 @@ export class WebhookDeliveryProcessor extends WorkerHost {
         attempts: job.attemptsMade + 1,
         deliveredAt: new Date(),
       });
+      // Counters never reject and aren't waited on (event volume graphs).
+      void this.eventMetrics.countDelivery('delivered');
 
       this.logger.log(`Delivered webhook ${logId} to ${url}`);
     } catch (error) {
+      const final = job.attemptsMade + 1 >= (job.opts.attempts ?? 5);
+      void this.eventMetrics.countDelivery(final ? 'failed' : 'retried');
       await this.recordAttempt(job, {
         attempts: job.attemptsMade + 1,
-        status:
-          job.attemptsMade + 1 >= (job.opts.attempts ?? 5)
-            ? 'failed'
-            : 'pending',
+        status: final ? 'failed' : 'pending',
       });
 
       this.logger.error(
