@@ -134,7 +134,7 @@ func runConvert(args []string, verifyOnly bool) error {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
 	in := fs.String("in", "", "export file")
 	format := fs.String("format", "", "csv | json | jsonl | pgdump (default: from extension/content)")
-	out := fs.String("out", "", "target: sqlite:<path>, <path>.db or postgres://…")
+	out := fs.String("out", "", "target: sqlite:<path>, <path>.db, postgres://… or env:<VAR> (read the target from a variable)")
 	var opt convert.Options
 	fs.BoolVar(&opt.Replace, "replace", false, "overwrite a device with the same JID already in the target")
 	fs.BoolVar(&opt.SkipSessions, "skip-sessions", false, "do not convert Signal sessions or identities")
@@ -243,6 +243,13 @@ func printReport(r *convert.Report) {
 }
 
 func target(out string) (driver, dialect, dsn string, err error) {
+	// env:<NAME> reads the target from an environment variable (e.g. env:WAGW_DB), so a database password
+	// never appears in the process list.
+	if name, ok := strings.CutPrefix(out, "env:"); ok {
+		if out = os.Getenv(name); out == "" {
+			return "", "", "", fmt.Errorf("-out env:%s: the variable is empty", name)
+		}
+	}
 	switch {
 	case out == "":
 		return "", "", "", errors.New("-out is required")
