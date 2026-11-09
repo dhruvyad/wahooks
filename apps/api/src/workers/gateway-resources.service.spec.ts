@@ -32,15 +32,15 @@ wagw_events_total{event="message"} 1200
 
 const cx23 = { name: 'cx23', cores: 2, memory: 4 };
 
-/** The hand-made box: row `wagw-a`, server `wahooks-gw-1`. */
+/** The hand-made box: row `wagw-a`, server `hand-built-gw`. */
 const SERVERS = [
-  { id: 101, name: 'wahooks-gw-1', server_type: cx23, private_net: [{ network: 7, ip: '10.0.1.5' }] },
+  { id: 101, name: 'hand-built-gw', server_type: cx23, private_net: [{ network: 7, ip: '10.0.1.5' }] },
   { id: 102, name: 'wagw-0a1b2c3d', server_type: cx23, private_net: [{ network: 7, ip: '10.0.1.6' }] },
   {
     id: 200,
     name: 'k3s-agent',
     server_type: { name: 'cx33', cores: 4, memory: 8 },
-    private_net: [{ network: 9, ip: '10.255.0.2' }],
+    private_net: [{ network: 9, ip: '10.0.9.2' }],
   },
 ];
 
@@ -161,16 +161,16 @@ describe('parsePrometheus', () => {
 describe('indexServersByIp', () => {
   it('maps private IPs to servers, whatever the row is called', () => {
     const byIp = indexServersByIp(SERVERS);
-    expect(byIp.get('10.0.1.5')).toEqual({ id: 101, name: 'wahooks-gw-1', type: 'cx23', cores: 2, memoryGb: 4 });
+    expect(byIp.get('10.0.1.5')).toEqual({ id: 101, name: 'hand-built-gw', type: 'cx23', cores: 2, memoryGb: 4 });
     expect(byIp.get('10.0.1.6')?.name).toBe('wagw-0a1b2c3d');
-    expect(byIp.get('10.255.0.2')?.cores).toBe(4);
+    expect(byIp.get('10.0.9.2')?.cores).toBe(4);
     expect(byIp.has('10.0.1.9')).toBe(false);
   });
 
   it('keeps only the given network', () => {
     const byIp = indexServersByIp(SERVERS, 7);
     expect(byIp.has('10.0.1.5')).toBe(true);
-    expect(byIp.has('10.255.0.2')).toBe(false);
+    expect(byIp.has('10.0.9.2')).toBe(false);
   });
 
   it('marks an IP two servers share as ambiguous (null)', () => {
@@ -226,7 +226,7 @@ describe('GatewayResourcesService', () => {
 
     expect(res.get('w1')).toEqual({
       sampledAt: '2026-11-10T12:00:00.000Z',
-      server: { name: 'wahooks-gw-1', type: 'cx23' },
+      server: { name: 'hand-built-gw', type: 'cx23' },
       cpu: { pct: 10, avgPct5m: 10, cores: 2 },
       memory: { usedBytes: 59768832, totalBytes: 4 * GIB, pct: 1.4, heapLiveBytes: 18874368 },
       sessions: { current: 62, max: 5000, pct: 1.2 },
@@ -371,7 +371,7 @@ describe('GatewayResourcesService', () => {
       await service.resourcesFor([row()]);
       await flush();
       const res = (await service.resourcesFor([row()])).get('w1')!;
-      expect(res.server?.name).toBe('wahooks-gw-1');
+      expect(res.server?.name).toBe('hand-built-gw');
       expect(res.cpu).toEqual({ pct: 25, avgPct5m: 25, cores: 2 });
       expect(res.errors).toEqual({});
     });
@@ -385,7 +385,7 @@ describe('GatewayResourcesService', () => {
       const res = (await build(fetch).resourcesFor([row()])).get('w1')!;
       expect(res.cpu).toBeNull();
       expect(res.errors.cpu).toBe('Hetzner GET /servers/101/metrics failed (HTTP 429: rate limit exceeded)');
-      expect(res.server).toEqual({ name: 'wahooks-gw-1', type: 'cx23' });
+      expect(res.server).toEqual({ name: 'hand-built-gw', type: 'cx23' });
       expect(res.memory?.pct).toBe(1.4);
       expect(res.errors.memory).toBeUndefined();
     });
