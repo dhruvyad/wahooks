@@ -87,6 +87,9 @@ the legacy `POST /api/sessions/start|stop|logout`, `/api/checkNumberStatus`, and
 | `GET /api/server/version` | yes | WAHA's version body (Kubernetes probed it) |
 
 Gateway extension on create: `"x-gateway-source-ip": "<addr>"` pins a session's source address.
+Gateway extension `POST /api/sessions/{session}/load`: picks up a session that `gateway adopt-device` wrote to a shared
+store while the gateway runs, and starts it if its desired state is running. Nothing else on the box restarts, so
+accounts can be moved onto a busy box one at a time.
 
 ## Postgres / Supabase
 

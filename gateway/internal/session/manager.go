@@ -220,6 +220,35 @@ func (m *Manager) newSession(r *gwstore.SessionRow) *Session {
 	return s
 }
 
+// LoadAdopted picks up a session that another process (`gateway adopt-device`) wrote to the store while this
+// gateway runs, and starts it if it should run. Only that account connects: nothing else on the box restarts,
+// which is what lets accounts move onto a busy box one by one. ErrExists if this gateway already holds the name.
+func (m *Manager) LoadAdopted(ctx context.Context, name string) (*Session, error) {
+	r, err := m.DB.GetSession(ctx, name)
+	if errors.Is(err, gwstore.ErrNotFound) || (err == nil && r == nil) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if r.Box != "" && r.Box != m.Cfg.BoxID {
+		return nil, BadRequest{Msg: "session " + name + " is assigned to box " + r.Box + ", not " + m.Cfg.BoxID}
+	}
+	m.mu.Lock()
+	if _, ok := m.sessions[name]; ok {
+		m.mu.Unlock()
+		return nil, ErrExists
+	}
+	s := m.newSession(r)
+	m.sessions[name] = s
+	m.mu.Unlock()
+	m.Log.Info("adopted session loaded", "session", name, "desired", r.Desired)
+	if r.Desired == "running" {
+		return s, s.Start(ctx)
+	}
+	return s, nil
+}
+
 func (m *Manager) Get(name string) (*Session, error) {
 	m.mu.RLock()
 	s := m.sessions[name]

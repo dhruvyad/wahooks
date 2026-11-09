@@ -26,6 +26,11 @@ jobs:
           want="${GITHUB_REF_NAME#gateway-v}-wagw"
           grep -q "const Version = \"${want}\"" internal/api/handlers.go || { echo "tag ${GITHUB_REF_NAME} does not match api.Version"; exit 1; }
 
+      - name: Download modules
+        working-directory: gateway
+        # build.sh patches whatsmeow from the module cache (whatsmeow-patches/apply.sh)
+        run: go mod download
+
       - name: Vet and test
         working-directory: gateway
         run: |

@@ -25,7 +25,7 @@ import (
 	"github.com/dhruvyad/wahooks/gateway/internal/waha"
 )
 
-const Version = "2026.11.2-wagw" // 2026.11.2: copy-store, per-box lease heartbeat; 2026.11.1: import-history
+const Version = "2026.11.3-wagw" // 2026.11.3: POST /api/sessions/{session}/load; .2: copy-store, lease heartbeat; .1: import-history
 
 type Server struct {
 	M       *session.Manager
@@ -59,6 +59,8 @@ func (s *Server) Handler(apiKey string) http.Handler {
 	rt.handle("POST", "/api/sessions/{session}/stop", s.action("stop"))
 	rt.handle("POST", "/api/sessions/{session}/restart", s.action("restart"))
 	rt.handle("POST", "/api/sessions/{session}/logout", s.action("logout"))
+	// gateway extension: load a session `gateway adopt-device` wrote while this gateway runs
+	rt.handle("POST", "/api/sessions/{session}/load", s.loadSession)
 	// auth
 	rt.handle("GET", "/api/{session}/auth/qr", s.qr)
 	rt.handle("POST", "/api/{session}/auth/request-code", s.requestCode)
@@ -343,6 +345,19 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request, _ params)
 			s.fail(w, r, ss, err)
 			return
 		}
+	}
+	writeJSON(w, 201, s.sessionInfo(ss, true))
+}
+
+// loadSession registers and starts a session adopted into the store by another process (`gateway adopt-device`)
+// without restarting the gateway. 422 if this gateway already holds it.
+func (s *Server) loadSession(w http.ResponseWriter, r *http.Request, p params) {
+	c, cancel := ctx(r, 60*time.Second)
+	defer cancel()
+	ss, err := s.M.LoadAdopted(c, p["session"])
+	if err != nil {
+		s.fail(w, r, ss, err)
+		return
 	}
 	writeJSON(w, 201, s.sessionInfo(ss, true))
 }
