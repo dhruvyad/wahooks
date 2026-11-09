@@ -6,6 +6,12 @@ import { EventsGateway } from './events.gateway';
 import { WebhookDeliveryProcessor } from './webhook-delivery.processor';
 import { WebhookLogRetentionService } from './webhook-log-retention.service';
 
+/**
+ * BullMQ keeps only this many failed delivery jobs (removeOnFail), so the
+ * queue's failed count stops here: a retention window, not a backlog.
+ */
+export const FAILED_JOBS_KEPT = 1000;
+
 @Module({
   imports: [
     BullModule.forRootAsync({
@@ -35,7 +41,7 @@ import { WebhookLogRetentionService } from './webhook-log-retention.service';
           delay: 5000, // 5s, 10s, 20s, 40s, 80s
         },
         removeOnComplete: 100, // keep last 100 completed
-        removeOnFail: 1000, // keep last 1000 failed (DLQ-like)
+        removeOnFail: FAILED_JOBS_KEPT, // keep the newest 1000 failed jobs for inspection
       },
     }),
   ],

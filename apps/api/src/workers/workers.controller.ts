@@ -1,4 +1,12 @@
-import { Controller, Get, Inject, UseGuards, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Inject,
+  UseGuards,
+  Logger,
+  Query,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, ne, sql, and, inArray } from 'drizzle-orm';
@@ -7,6 +15,9 @@ import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { EventMetricsService } from '../events/event-metrics.service';
+import { EVENT_RANGES, EventVolume, isEventRange } from '../events/event-metrics';
+import { FAILED_JOBS_KEPT } from '../events/events.module';
 import { WorkersService } from './workers.service';
 import { GatewayResources, GatewayResourcesService } from './gateway-resources.service';
 
@@ -20,7 +31,22 @@ export class WorkersController {
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
     private readonly workersService: WorkersService,
     private readonly gatewayResources: GatewayResourcesService,
+    private readonly eventMetrics: EventMetricsService,
   ) {}
+
+  /**
+   * Events received and webhook deliveries over time, from the per-minute
+   * counters in Redis: 60 one-minute buckets for `1h` (the default), 288
+   * five-minute buckets for `24h`, 168 hourly buckets for `7d`.
+   */
+  @Get('events')
+  async getEventVolume(@Query('range') range?: string): Promise<EventVolume> {
+    const selected = range ?? '1h';
+    if (!isEventRange(selected)) {
+      throw new BadRequestException(`range must be one of ${Object.keys(EVENT_RANGES).join(', ')}`);
+    }
+    return this.eventMetrics.read(selected);
+  }
 
   @Get()
   async getInfrastructureStatus(@CurrentUser() user: { sub: string }) {
@@ -118,35 +144,30 @@ export class WorkersController {
     const totalFailed = workerInfo.reduce((sum: number, w: any) => sum + w.failedSessions, 0);
 
     // Webhook delivery queue stats (BullMQ → Redis). Counts only — cheap.
-    let webhookQueue = {
-      waiting: 0,
-      active: 0,
-      delayed: 0,
-      failed: 0,
-      completed: 0,
-      reachable: false as boolean,
+    // `failed` is the failed jobs BullMQ keeps, at most `failedKept`: it stops
+    // there, so `failedLast24h` (from the event counters; null when they can't
+    // be read) is the number that says how many deliveries were given up on.
+    const [counts, failedLast24h] = await Promise.all([
+      this.webhookQueue
+        .getJobCounts('waiting', 'active', 'delayed', 'failed', 'completed')
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Failed to read webhook queue counts: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return null;
+        }),
+      this.eventMetrics.countRecent('failed', 24 * 60),
+    ]);
+    const webhookQueue = {
+      waiting: counts?.waiting ?? 0,
+      active: counts?.active ?? 0,
+      delayed: counts?.delayed ?? 0,
+      failed: counts?.failed ?? 0,
+      completed: counts?.completed ?? 0,
+      reachable: counts !== null,
+      failedKept: FAILED_JOBS_KEPT,
+      failedLast24h,
     };
-    try {
-      const counts = await this.webhookQueue.getJobCounts(
-        'waiting',
-        'active',
-        'delayed',
-        'failed',
-        'completed',
-      );
-      webhookQueue = {
-        waiting: counts.waiting ?? 0,
-        active: counts.active ?? 0,
-        delayed: counts.delayed ?? 0,
-        failed: counts.failed ?? 0,
-        completed: counts.completed ?? 0,
-        reachable: true,
-      };
-    } catch (err) {
-      this.logger.warn(
-        `Failed to read webhook queue counts: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
 
     return {
       workers: workerInfo,
