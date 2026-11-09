@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bullmq';
 import { EventsController } from './events.controller';
 import { EventsGateway } from './events.gateway';
+import { WebhookLogRetentionService } from './webhook-log-retention.service';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
 import { WorkersService } from '../workers/workers.service';
@@ -30,10 +31,12 @@ describe('EventsController', () => {
   let webhookQueue: { add: jest.Mock };
   let wahaService: { getMaxSessions: jest.Mock; resolveSessionName: jest.Mock; getLidPhoneChat: jest.Mock };
   let workersService: { getWorkerForSession: jest.Mock };
+  let logRetention: { touch: jest.Mock };
 
   beforeEach(async () => {
     db = createMockDb();
     webhookQueue = { add: jest.fn().mockResolvedValue({}) };
+    logRetention = { touch: jest.fn() };
     wahaService = {
       getMaxSessions: jest.fn().mockReturnValue(2),
       resolveSessionName: jest.fn((name: string) => name),
@@ -52,6 +55,7 @@ describe('EventsController', () => {
         { provide: WorkersService, useValue: workersService },
         { provide: EventsGateway, useValue: { broadcastEvent: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('http://localhost:3001') } },
+        { provide: WebhookLogRetentionService, useValue: logRetention },
       ],
     }).compile();
 
@@ -59,7 +63,7 @@ describe('EventsController', () => {
   });
 
   describe('ingestWahaEvent', () => {
-    it('should look up session, find matching configs, create log entries, and enqueue jobs', async () => {
+    it('should look up session, find matching configs, and enqueue jobs whose log rows the processor writes', async () => {
       const session = { id: 'sess-1', sessionName: 'u_user-123_s_abc', userId: 'user-123' };
       const config = {
         id: 'wh-1',
@@ -69,31 +73,21 @@ describe('EventsController', () => {
         signingSecret: 'secret-123',
         active: true,
       };
-      const logEntry = { id: 'log-1' };
       const event = { event: 'message', session: 'u_user-123_s_abc', payload: { text: 'hello' } };
 
       // First where() is for session lookup
       db.where.mockResolvedValueOnce([session]);
       // Second where() is for webhook configs lookup
       db.where.mockResolvedValueOnce([config]);
-      // returning() is for the log entry insert
-      db.returning.mockResolvedValueOnce([logEntry]);
 
       const result = await controller.ingestWahaEvent(event);
 
       expect(result).toEqual({ received: true });
-      expect(db.insert).toHaveBeenCalled();
+      // No log row at ingest: the delivery processor writes it when the first attempt ends.
+      expect(db.insert).not.toHaveBeenCalled();
       // Delivered envelopes carry connectionId so consumers can map events to
       // the connection they registered against (session names are internal).
       const delivered = { ...event, connectionId: 'sess-1' };
-      expect(db.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          webhookConfigId: 'wh-1',
-          eventType: 'message',
-          payload: delivered,
-          status: 'pending',
-        }),
-      );
       expect(webhookQueue.add).toHaveBeenCalledWith('deliver', {
         webhookConfigId: 'wh-1',
         url: 'https://example.com/hook',
@@ -101,8 +95,10 @@ describe('EventsController', () => {
         eventType: 'message',
         payload: delivered,
         sessionId: 'sess-1',
-        logId: 'log-1',
+        logId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        createdAt: expect.any(String),
       });
+      expect(logRetention.touch).toHaveBeenCalledWith('wh-1');
     });
 
     it('resolves a @lid sender into a top-level payload.senderPhone (leaving from/_data intact)', async () => {
@@ -369,27 +365,23 @@ describe('EventsController', () => {
         signingSecret: 'secret-2',
         active: true,
       };
-      const logEntry1 = { id: 'log-1' };
-      const logEntry2 = { id: 'log-2' };
       const event = { event: 'message', session: 'u_user-123_s_abc', payload: { text: 'hi' } };
 
       db.where.mockResolvedValueOnce([session]);
       db.where.mockResolvedValueOnce([config1, config2]);
-      db.returning.mockResolvedValueOnce([logEntry1]);
-      db.returning.mockResolvedValueOnce([logEntry2]);
 
       const result = await controller.ingestWahaEvent(event);
 
       expect(result).toEqual({ received: true });
       expect(webhookQueue.add).toHaveBeenCalledTimes(2);
-      expect(webhookQueue.add).toHaveBeenCalledWith('deliver', expect.objectContaining({
-        webhookConfigId: 'wh-1',
-        logId: 'log-1',
-      }));
-      expect(webhookQueue.add).toHaveBeenCalledWith('deliver', expect.objectContaining({
-        webhookConfigId: 'wh-2',
-        logId: 'log-2',
-      }));
+      const [, job1] = webhookQueue.add.mock.calls[0];
+      const [, job2] = webhookQueue.add.mock.calls[1];
+      expect(job1).toEqual(expect.objectContaining({ webhookConfigId: 'wh-1' }));
+      expect(job2).toEqual(expect.objectContaining({ webhookConfigId: 'wh-2' }));
+      // each delivery gets its own log row id
+      expect(job1.logId).not.toEqual(job2.logId);
+      expect(logRetention.touch).toHaveBeenCalledWith('wh-1');
+      expect(logRetention.touch).toHaveBeenCalledWith('wh-2');
     });
   });
 });

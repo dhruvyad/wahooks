@@ -10,9 +10,9 @@ describe('WebhookDeliveryProcessor', () => {
 
   function chainable(resolvedValue: any = undefined) {
     const chain: any = {
-      update: jest.fn().mockReturnThis(),
-      set: jest.fn().mockReturnThis(),
-      where: jest.fn().mockResolvedValue(resolvedValue),
+      insert: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      onConflictDoUpdate: jest.fn().mockResolvedValue(resolvedValue),
     };
     return chain;
   }
@@ -107,13 +107,45 @@ describe('WebhookDeliveryProcessor', () => {
 
       await processor.process(job as any);
 
-      expect(db.update).toHaveBeenCalled();
-      expect(db.set).toHaveBeenCalledWith(
+      // one write: the row is inserted when the first attempt ends
+      expect(db.insert).toHaveBeenCalledTimes(1);
+      expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({
+          id: 'log-1',
+          webhookConfigId: 'wh-config-1',
+          eventType: 'message.received',
+          payload: { from: '1234567890', body: 'Hello' },
           status: 'delivered',
           attempts: 1,
+          deliveredAt: expect.any(Date),
         }),
       );
+      expect(db.onConflictDoUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          set: expect.objectContaining({ status: 'delivered', attempts: 1, deliveredAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('uses the time the event was queued as the row created_at', async () => {
+      const job = createJob({ createdAt: '2026-11-09T10:00:00.000Z' });
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse());
+
+      await processor.process(job as any);
+
+      expect(db.values).toHaveBeenCalledWith(
+        expect.objectContaining({ createdAt: new Date('2026-11-09T10:00:00.000Z') }),
+      );
+    });
+
+    it('skips the log row when the webhook was deleted while the delivery was queued', async () => {
+      const job = createJob();
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse());
+      db.onConflictDoUpdate.mockRejectedValueOnce(
+        Object.assign(new Error('violates foreign key constraint'), { code: '23503' }),
+      );
+
+      await expect(processor.process(job as any)).resolves.toBeUndefined();
     });
 
     it('should update attempts on failure and re-throw', async () => {
@@ -124,13 +156,15 @@ describe('WebhookDeliveryProcessor', () => {
 
       await expect(processor.process(job as any)).rejects.toThrow('HTTP 500');
 
-      expect(db.update).toHaveBeenCalled();
-      expect(db.set).toHaveBeenCalledWith(
+      expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({
+          id: 'log-1',
           attempts: 2,
           status: 'pending', // still under max attempts
         }),
       );
+      const { set } = db.onConflictDoUpdate.mock.calls[0][0];
+      expect(set).toEqual({ status: 'pending', attempts: 2 }); // a retry never touches deliveredAt
     });
 
     it('should mark as failed when max attempts reached', async () => {
@@ -142,7 +176,7 @@ describe('WebhookDeliveryProcessor', () => {
 
       await expect(processor.process(job as any)).rejects.toThrow('HTTP 502');
 
-      expect(db.set).toHaveBeenCalledWith(
+      expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 5,
           status: 'failed',
@@ -156,7 +190,7 @@ describe('WebhookDeliveryProcessor', () => {
 
       await expect(processor.process(job as any)).rejects.toThrow('ECONNREFUSED');
 
-      expect(db.set).toHaveBeenCalledWith(
+      expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 1,
           status: 'pending',

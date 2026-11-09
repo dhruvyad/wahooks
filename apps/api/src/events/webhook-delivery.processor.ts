@@ -2,7 +2,6 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
-import { eq } from 'drizzle-orm';
 import { webhookEventLogs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 
@@ -14,6 +13,8 @@ interface WebhookJob {
   payload: unknown;
   sessionId: string;
   logId: string;
+  /** When the event arrived (the log row's created_at). Absent on jobs queued before this field existed. */
+  createdAt?: string;
 }
 
 // Concurrency: each worker handles up to 20 jobs in flight. Webhook delivery is
@@ -64,35 +65,60 @@ export class WebhookDeliveryProcessor extends WorkerHost {
         );
       }
 
-      // Mark as delivered
-      await this.db
-        .update(webhookEventLogs)
-        .set({
-          status: 'delivered',
-          attempts: job.attemptsMade + 1,
-          deliveredAt: new Date(),
-        })
-        .where(eq(webhookEventLogs.id, logId));
+      await this.recordAttempt(job, {
+        status: 'delivered',
+        attempts: job.attemptsMade + 1,
+        deliveredAt: new Date(),
+      });
 
       this.logger.log(`Delivered webhook ${logId} to ${url}`);
     } catch (error) {
-      // Update attempt count
-      await this.db
-        .update(webhookEventLogs)
-        .set({
-          attempts: job.attemptsMade + 1,
-          status:
-            job.attemptsMade + 1 >= (job.opts.attempts ?? 5)
-              ? 'failed'
-              : 'pending',
-        })
-        .where(eq(webhookEventLogs.id, logId));
+      await this.recordAttempt(job, {
+        attempts: job.attemptsMade + 1,
+        status:
+          job.attemptsMade + 1 >= (job.opts.attempts ?? 5)
+            ? 'failed'
+            : 'pending',
+      });
 
       this.logger.error(
         `Failed to deliver webhook ${logId} to ${url} (attempt ${job.attemptsMade + 1}): ${error instanceof Error ? error.message : String(error)}`,
       );
 
       throw error; // Re-throw so BullMQ retries
+    }
+  }
+
+  /**
+   * Writes the delivery's log row: inserted when the first attempt ends (a delivery that succeeds
+   * first time costs one write), updated by later attempts. The id was fixed when the event was
+   * queued, so every attempt lands on the same row.
+   */
+  private async recordAttempt(
+    job: Job<WebhookJob>,
+    result: { status: 'pending' | 'delivered' | 'failed'; attempts: number; deliveredAt?: Date },
+  ): Promise<void> {
+    const { webhookConfigId, eventType, payload, logId, createdAt } = job.data;
+    const set: Record<string, unknown> = { status: result.status, attempts: result.attempts };
+    if (result.deliveredAt) set.deliveredAt = result.deliveredAt;
+    try {
+      await this.db
+        .insert(webhookEventLogs)
+        .values({
+          id: logId,
+          webhookConfigId,
+          eventType,
+          payload,
+          status: result.status,
+          attempts: result.attempts,
+          deliveredAt: result.deliveredAt ?? null,
+          createdAt: new Date(createdAt ?? job.timestamp ?? Date.now()),
+        })
+        .onConflictDoUpdate({ target: webhookEventLogs.id, set });
+    } catch (error) {
+      // The webhook was deleted while this delivery was queued; its logs went with it.
+      if ((error as { code?: string })?.code === '23503') return;
+      throw error;
     }
   }
 }

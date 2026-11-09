@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { EventsController } from './events.controller';
 import { EventsGateway } from './events.gateway';
 import { WebhookDeliveryProcessor } from './webhook-delivery.processor';
+import { WebhookLogRetentionService } from './webhook-log-retention.service';
 
 @Module({
   imports: [
@@ -39,7 +40,7 @@ import { WebhookDeliveryProcessor } from './webhook-delivery.processor';
     }),
   ],
   controllers: [EventsController],
-  providers: [WebhookDeliveryProcessor, EventsGateway],
-  exports: [EventsGateway],
+  providers: [WebhookDeliveryProcessor, EventsGateway, WebhookLogRetentionService],
+  exports: [EventsGateway, WebhookLogRetentionService],
 })
 export class EventsModule {}

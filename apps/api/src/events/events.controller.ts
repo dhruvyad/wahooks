@@ -4,11 +4,13 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, and, not } from 'drizzle-orm';
-import { wahaSessions, webhookConfigs, webhookEventLogs } from '@wahooks/db';
+import { randomUUID } from 'crypto';
+import { wahaSessions, webhookConfigs } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
 import { WorkersService } from '../workers/workers.service';
 import { EventsGateway } from './events.gateway';
+import { WebhookLogRetentionService } from './webhook-log-retention.service';
 
 interface WahaEvent {
   event: string;
@@ -34,6 +36,7 @@ export class EventsController {
     private readonly workersService: WorkersService,
     private readonly eventsGateway: EventsGateway,
     private readonly configService: ConfigService,
+    private readonly logRetention: WebhookLogRetentionService,
   ) {}
 
   /**
@@ -146,17 +149,12 @@ export class EventsController {
       return { received: true };
     }
 
-    // 4. For each matching config, create a log entry and enqueue a delivery job
+    // 4. For each matching config, enqueue a delivery job. Its log row is written by the delivery
+    // processor when the first attempt ends (one write instead of an insert here and an update
+    // there); the id is fixed now so every attempt updates the same row.
+    const createdAt = new Date().toISOString();
     for (const config of matchingConfigs) {
-      const [log] = await this.db
-        .insert(webhookEventLogs)
-        .values({
-          webhookConfigId: config.id,
-          eventType: event.event,
-          payload: rewrittenEvent,
-          status: 'pending',
-        })
-        .returning();
+      const logId = randomUUID();
 
       await this.webhookQueue.add('deliver', {
         webhookConfigId: config.id,
@@ -165,11 +163,13 @@ export class EventsController {
         eventType: event.event,
         payload: rewrittenEvent,
         sessionId: session.id,
-        logId: log.id,
+        logId,
+        createdAt,
       });
+      this.logRetention.touch(config.id);
 
       this.logger.log(
-        `Enqueued webhook delivery ${log.id} to ${config.url} for event ${event.event}`,
+        `Enqueued webhook delivery ${logId} to ${config.url} for event ${event.event}`,
       );
     }
 

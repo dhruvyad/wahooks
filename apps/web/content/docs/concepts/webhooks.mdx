@@ -43,7 +43,7 @@ You can create multiple webhook configs per connection. Each receives events ind
 
 ## Delivery logs
 
-Every webhook delivery is logged with status, attempt count, and the full payload. Use the [logs endpoint](/docs/api-reference/webhooks/logs) or CLI to inspect deliveries:
+Every webhook delivery is logged with status, attempt count, and the full payload; the last 100 deliveries per webhook are kept. Use the [logs endpoint](/docs/api-reference/webhooks/logs) or CLI to inspect deliveries:
 
 ```bash
 wahooks webhooks logs WEBHOOK_ID
