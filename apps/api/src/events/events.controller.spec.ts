@@ -305,6 +305,17 @@ describe('EventsController', () => {
       );
     });
 
+    it('never brings a deleted (stopped) connection back on a late session.status event', async () => {
+      for (const status of ['WORKING', 'SCAN_QR_CODE', 'FAILED']) {
+        db.update.mockClear();
+        const session = { id: 'sess-1', sessionName: 'u_user-123_s_abc', userId: 'user-123', status: 'stopped', phoneNumber: '1234567890' };
+        db.where.mockResolvedValueOnce([session]); // session lookup
+        db.where.mockResolvedValueOnce([]); // webhook configs lookup (none)
+        await controller.ingestWahaEvent({ event: 'session.status', session: 'u_user-123_s_abc', payload: { status } });
+        expect(db.update).not.toHaveBeenCalled();
+      }
+    });
+
     it('should not write to DB when session.status matches current DB status', async () => {
       const session = {
         id: 'sess-1',

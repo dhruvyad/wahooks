@@ -338,6 +338,9 @@ export class EventsController {
     };
     const newStatus = wahaStatus ? map[wahaStatus] : undefined;
     if (!newStatus) return;
+    // A stopped row is a deleted connection. A worker can still report on it while it shuts down (or after a
+    // late restart), and applying that would bring the connection back in its owner's dashboard.
+    if (session.status === 'stopped') return;
 
     // Opportunistically capture the phone number if WAHA included it and we
     // don't have it yet. If absent, the QR endpoint / health cron backfill it.
