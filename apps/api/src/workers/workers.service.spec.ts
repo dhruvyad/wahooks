@@ -924,11 +924,11 @@ describe('WorkersService', () => {
   });
 
   describe('adopting gateway boxes', () => {
-    const handMade = { id: 'gw-a', podName: 'wagw-a', internalIp: '10.255.0.250', apiKeyEnc: 'hand-key' };
+    const handMade = { id: 'gw-a', podName: 'wagw-a', internalIp: '10.0.9.250', apiKeyEnc: 'hand-key' };
 
     it('matches a box registered by hand under another name by its address, and never registers it twice', async () => {
       const gw = mockOrchestrator();
-      gw.listReadyWorkers.mockResolvedValue([{ podName: 'wahooks-gw-1', internalIp: '10.255.0.250', apiKey: '' }]);
+      gw.listReadyWorkers.mockResolvedValue([{ podName: 'gw-made-by-hand', internalIp: '10.0.9.250', apiKey: '' }]);
       await build({}, gw);
       const wheres = recordSelectWheres();
       db.mockResult([{ ...handMade, status: 'active' }]);
@@ -939,12 +939,12 @@ describe('WorkersService', () => {
 
       expect(inserts).toHaveLength(0);
       expect(updates).toHaveLength(0);
-      expect(sqlOf(wheres[0]).params).toEqual(['wahooks-gw-1', '10.255.0.250']);
+      expect(sqlOf(wheres[0]).params).toEqual(['gw-made-by-hand', '10.0.9.250']);
     });
 
     it('revives a stopped hand-made row in place, keeping its name and key', async () => {
       const gw = mockOrchestrator();
-      gw.listReadyWorkers.mockResolvedValue([{ podName: 'wahooks-gw-1', internalIp: '10.255.0.250', apiKey: '' }]);
+      gw.listReadyWorkers.mockResolvedValue([{ podName: 'gw-made-by-hand', internalIp: '10.0.9.250', apiKey: '' }]);
       await build({}, gw);
       db.mockResult([{ ...handMade, status: 'stopped' }]);
       db.mockResult([{ ...handMade, kind: 'gateway', status: 'active' }]);
@@ -957,7 +957,7 @@ describe('WorkersService', () => {
       expect(updates).toHaveLength(1);
       expect(updates[0].set).toMatchObject({ status: 'active', kind: 'gateway', apiKeyEnc: 'hand-key' });
       expect(updates[0].set).not.toHaveProperty('podName');
-      expect(worker).toEqual({ id: 'gw-a', internalIp: '10.255.0.250', apiKey: 'hand-key', kind: 'gateway' });
+      expect(worker).toEqual({ id: 'gw-a', internalIp: '10.0.9.250', apiKey: 'hand-key', kind: 'gateway' });
     });
 
     it('activates a box whose provision timed out with the key its provisioning row kept', async () => {
