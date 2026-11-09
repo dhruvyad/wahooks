@@ -1,0 +1,14 @@
+# Test webhook receiver for the gateway (appends events to a root-only file; prints only event names).
+[Unit]
+Description=wagw test webhook sink
+After=network-online.target
+
+[Service]
+ExecStart=/opt/wagw/gateway sink -listen 127.0.0.1:3999 -out /var/lib/wagw-sink/sink.jsonl
+StateDirectory=wagw-sink
+StateDirectoryMode=0700
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,310 @@
+Ordered, growable handler queue (gateway patch for whatsmeow; applied by whatsmeow-patches/apply.sh).
+Replaces the 2,048-slot channel between the frame reader and the handler loop (16 KiB per connection up front;
+when full, handleFrame logged "Handler queue is full, message ordering is no longer guaranteed" and started one
+goroutine per node). nodeQueue holds nothing while idle, grows during a burst, keeps strict FIFO order and
+releases its memory once drained. Also updates the DangerousInternals wrappers that exposed the channel type.
+
+diff -ruN a/client.go q/client.go
+--- a/client.go	2026-11-09 06:32:45
++++ q/client.go	2026-11-09 10:53:49
+@@ -245,9 +245,8 @@
+ 	WebsocketURL string
+ }
+ 
+-// Size of buffer for the channel that all incoming XML nodes go through.
+-// In general it shouldn't go past a few buffered messages, but the channel is big to be safe.
+-const handlerQueueSize = 2048
++// (patched) The channel that all incoming XML nodes went through (2048 slots) is replaced by nodeQueue, see
++// nodequeue.go.
+ 
+ // NewClient initializes a new WhatsApp web client.
+ //
+@@ -590,7 +589,7 @@
+ 		fs.URL = cli.MessengerConfig.WebsocketURL
+ 		fs.HTTPHeaders.Set("Origin", cli.MessengerConfig.BaseURL)
+ 	}
+-	var queue chan *waBinary.Node
++	var queue *nodeQueue
+ 	maps.Copy(fs.HTTPHeaders, cli.WebSocketHeaders)
+ 	if err := fs.Connect(ctx); err != nil {
+ 		fs.Close(0)
+@@ -866,13 +865,13 @@
+ 	cli.eventHandlersLock.Unlock()
+ }
+ 
+-func (cli *Client) makeFrameHandler(queue chan *waBinary.Node) func(ctx context.Context, data []byte) {
++func (cli *Client) makeFrameHandler(queue *nodeQueue) func(ctx context.Context, data []byte) {
+ 	return func(ctx context.Context, data []byte) {
+ 		cli.handleFrame(ctx, data, queue)
+ 	}
+ }
+ 
+-func (cli *Client) handleFrame(ctx context.Context, data []byte, queue chan *waBinary.Node) {
++func (cli *Client) handleFrame(ctx context.Context, data []byte, queue *nodeQueue) {
+ 	decompressed, err := waBinary.Unpack(data)
+ 	if err != nil {
+ 		cli.Log.Warnf("Failed to decompress frame: %v", err)
+@@ -894,48 +893,42 @@
+ 	} else if cli.receiveResponse(ctx, node) {
+ 		// handled
+ 	} else if _, ok := cli.nodeHandlers[node.Tag]; ok {
+-		select {
+-		case queue <- node:
+-		case <-ctx.Done():
+-		default:
+-			cli.Log.Warnf("Handler queue is full, message ordering is no longer guaranteed")
+-			go func() {
+-				select {
+-				case queue <- node:
+-				case <-ctx.Done():
+-				}
+-			}()
++		if ctx.Err() == nil {
++			queue.push(node) // never full, never reorders
+ 		}
+ 	} else if node.Tag != "ack" {
+ 		cli.Log.Debugf("Didn't handle WhatsApp node %s", node.Tag)
+ 	}
+ }
+ 
+-func (cli *Client) handlerQueueLoop(evtCtx, connCtx context.Context, queue chan *waBinary.Node, closeWait chan struct{}) {
++func (cli *Client) handlerQueueLoop(evtCtx, connCtx context.Context, queue *nodeQueue, closeWait chan struct{}) {
+ 	ticker := time.NewTicker(30 * time.Second)
+ 	ticker.Stop()
+ 	cli.Log.Debugf("Starting handler queue loop")
+ 	defer func() {
+-	Loop:
+-		for {
+-			select {
+-			case node := <-queue:
+-				// Make sure stream errors are handled even after disconnection so the appropriate auto-reconnect is done.
+-				// Everything else
+-				if node.Tag == "stream:error" {
+-					cli.Log.Debugf("Handling stream:error node in handler queue loop after context cancellation")
+-					cli.handleStreamError(evtCtx, node)
+-				}
+-			default:
+-				break Loop
++		for node := queue.pop(); node != nil; node = queue.pop() {
++			// Make sure stream errors are handled even after disconnection so the appropriate auto-reconnect is done.
++			// Everything else
++			if node.Tag == "stream:error" {
++				cli.Log.Debugf("Handling stream:error node in handler queue loop after context cancellation")
++				cli.handleStreamError(evtCtx, node)
+ 			}
+ 		}
+ 		close(closeWait)
+ 	}()
+ Loop:
+ 	for {
+-		select {
+-		case node := <-queue:
++		node := queue.pop()
++		if node == nil {
++			select {
++			case <-queue.signal:
++				continue Loop
++			case <-connCtx.Done():
++				cli.Log.Debugf("Closing handler queue loop")
++				return
++			}
++		}
++		{
+ 			if connCtx.Err() != nil {
+ 				cli.Log.Debugf("Closing handler queue loop before node handling")
+ 				return
+@@ -966,9 +959,6 @@
+ 			}
+ 			cli.Log.Warnf("Continuing handling of %s in background as it's taking too long", node)
+ 			ticker.Stop()
+-		case <-connCtx.Done():
+-			cli.Log.Debugf("Closing handler queue loop")
+-			return
+ 		}
+ 	}
+ }
+diff -ruN a/handshake.go q/handshake.go
+--- a/handshake.go	2026-11-09 06:32:45
++++ q/handshake.go	2026-11-09 10:54:39
+@@ -15,7 +15,6 @@
+ 	"go.mau.fi/libsignal/ecc"
+ 	"google.golang.org/protobuf/proto"
+ 
+-	waBinary "go.mau.fi/whatsmeow/binary"
+ 	"go.mau.fi/whatsmeow/proto/waCert"
+ 	"go.mau.fi/whatsmeow/proto/waWa6"
+ 	"go.mau.fi/whatsmeow/socket"
+@@ -30,7 +29,7 @@
+ var WACertPubKey = [...]byte{0x14, 0x23, 0x75, 0x57, 0x4d, 0xa, 0x58, 0x71, 0x66, 0xaa, 0xe7, 0x1e, 0xbe, 0x51, 0x64, 0x37, 0xc4, 0xa2, 0x8b, 0x73, 0xe3, 0x69, 0x5c, 0x6c, 0xe1, 0xf7, 0xf9, 0x54, 0x5d, 0xa8, 0xee, 0x6b}
+ 
+ // doHandshake implements the Noise_XX_25519_AESGCM_SHA256 handshake for the WhatsApp web API.
+-func (cli *Client) doHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair) (chan *waBinary.Node, error) {
++func (cli *Client) doHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair) (*nodeQueue, error) {
+ 	nh := socket.NewNoiseHandshake()
+ 	nh.Start(socket.NoiseStartPattern, fs.Header)
+ 	nh.Authenticate(ephemeralKP.Pub[:])
+@@ -126,7 +125,7 @@
+ 		return nil, fmt.Errorf("failed to send handshake finish message: %w", err)
+ 	}
+ 
+-	queue := make(chan *waBinary.Node, handlerQueueSize)
++	queue := newNodeQueue()
+ 	ns, err := nh.Finish(fs, cli.makeFrameHandler(queue), cli.onDisconnect)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("failed to create noise socket: %w", err)
+diff -ruN a/internals.go q/internals.go
+--- a/internals.go	2026-11-09 06:32:45
++++ q/internals.go	2026-11-09 10:54:39
+@@ -159,15 +159,15 @@
+ 	int.c.unlockedDisconnect()
+ }
+ 
+-func (int *DangerousInternalClient) MakeFrameHandler(queue chan *waBinary.Node) func(context.Context, []byte) {
++func (int *DangerousInternalClient) MakeFrameHandler(queue *nodeQueue) func(context.Context, []byte) {
+ 	return int.c.makeFrameHandler(queue)
+ }
+ 
+-func (int *DangerousInternalClient) HandleFrame(ctx context.Context, data []byte, queue chan *waBinary.Node) {
++func (int *DangerousInternalClient) HandleFrame(ctx context.Context, data []byte, queue *nodeQueue) {
+ 	int.c.handleFrame(ctx, data, queue)
+ }
+ 
+-func (int *DangerousInternalClient) HandlerQueueLoop(evtCtx, connCtx context.Context, queue chan *waBinary.Node, closeWait chan struct{}) {
++func (int *DangerousInternalClient) HandlerQueueLoop(evtCtx, connCtx context.Context, queue *nodeQueue, closeWait chan struct{}) {
+ 	int.c.handlerQueueLoop(evtCtx, connCtx, queue, closeWait)
+ }
+ 
+@@ -291,7 +291,7 @@
+ 	return int.c.parseGroupNotification(node)
+ }
+ 
+-func (int *DangerousInternalClient) DoHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair) (chan *waBinary.Node, error) {
++func (int *DangerousInternalClient) DoHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair) (*nodeQueue, error) {
+ 	return int.c.doHandshake(fs, ephemeralKP)
+ }
+ 
+diff -ruN a/nodequeue.go q/nodequeue.go
+--- a/nodequeue.go	1970-01-01 05:30:00
++++ q/nodequeue.go	2026-11-09 10:53:49
+@@ -0,0 +1,77 @@
++// (patched) Ordered handler queue, see client.go.
++
++package whatsmeow
++
++import (
++	"sync"
++
++	waBinary "go.mau.fi/whatsmeow/binary"
++)
++
++// nodeQueue is the FIFO between a connection's frame reader and its handler loop. It replaces a 2,048-slot channel
++// that cost 16 KiB per connection up front and, when full, handed each further node to its own goroutine, so a
++// large offline backlog could be handled out of order (prekey before whisper, retry receipts). nodeQueue never
++// blocks the reader and never reorders: it holds nothing while idle, grows during a burst and releases the memory
++// once drained.
++type nodeQueue struct {
++	mu     sync.Mutex
++	items  []*waBinary.Node
++	head   int
++	signal chan struct{} // capacity 1: "something was pushed since you last looked"
++}
++
++// nodeQueueKeep is the backing capacity kept after the queue drains; anything larger is released.
++const nodeQueueKeep = 64
++
++func newNodeQueue() *nodeQueue {
++	return &nodeQueue{signal: make(chan struct{}, 1)}
++}
++
++func (q *nodeQueue) push(node *waBinary.Node) {
++	q.mu.Lock()
++	if q.head > 256 && q.head*2 >= len(q.items) {
++		// Mostly consumed backing array during a long burst: slide the live part down instead of growing.
++		n := copy(q.items, q.items[q.head:])
++		clear(q.items[n:])
++		q.items = q.items[:n]
++		q.head = 0
++	}
++	q.items = append(q.items, node)
++	q.mu.Unlock()
++	select {
++	case q.signal <- struct{}{}:
++	default:
++	}
++}
++
++// pop returns the oldest queued node, or nil if the queue is empty.
++func (q *nodeQueue) pop() *waBinary.Node {
++	q.mu.Lock()
++	defer q.mu.Unlock()
++	if q.head >= len(q.items) {
++		q.resetLocked()
++		return nil
++	}
++	node := q.items[q.head]
++	q.items[q.head] = nil
++	q.head++
++	if q.head >= len(q.items) {
++		q.resetLocked()
++	}
++	return node
++}
++
++func (q *nodeQueue) resetLocked() {
++	if cap(q.items) > nodeQueueKeep {
++		q.items = nil
++	} else {
++		q.items = q.items[:0]
++	}
++	q.head = 0
++}
++
++func (q *nodeQueue) len() int {
++	q.mu.Lock()
++	defer q.mu.Unlock()
++	return len(q.items) - q.head
++}
+diff -ruN a/nodequeue_test.go q/nodequeue_test.go
+--- a/nodequeue_test.go	1970-01-01 05:30:00
++++ q/nodequeue_test.go	2026-11-09 10:53:49
+@@ -0,0 +1,40 @@
++package whatsmeow
++
++import (
++	"fmt"
++	"sync"
++	"testing"
++
++	waBinary "go.mau.fi/whatsmeow/binary"
++)
++
++func TestNodeQueueOrderAndRelease(t *testing.T) {
++	q := newNodeQueue()
++	if q.pop() != nil {
++		t.Fatal("empty queue returned a node")
++	}
++	const n = 5000
++	var wg sync.WaitGroup
++	wg.Add(1)
++	go func() {
++		defer wg.Done()
++		for i := 0; i < n; i++ {
++			q.push(&waBinary.Node{Tag: "message", Attrs: waBinary.Attrs{"id": fmt.Sprint(i)}})
++		}
++	}()
++	for i := 0; i < n; {
++		node := q.pop()
++		if node == nil {
++			<-q.signal
++			continue
++		}
++		if node.Attrs["id"] != fmt.Sprint(i) {
++			t.Fatalf("out of order: got %v at %d", node.Attrs["id"], i)
++		}
++		i++
++	}
++	wg.Wait()
++	if q.len() != 0 || cap(q.items) > nodeQueueKeep {
++		t.Fatalf("not released after drain: len %d cap %d", q.len(), cap(q.items))
++	}
++}

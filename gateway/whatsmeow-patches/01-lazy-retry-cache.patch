@@ -1,0 +1,38 @@
+Lazy retry cache (gateway patch for whatsmeow; applied by whatsmeow-patches/apply.sh).
+NewClient preallocated room for 256 sent messages per client (a 256-entry map plus a [256]recentMessageKey array,
+~53 KB) even for accounts that never send. Allocate both on the first send instead.
+
+diff -ru a/client.go b/client.go
+--- a/client.go	2026-11-09 06:32:45
++++ b/client.go	2026-11-09 06:33:09
+@@ -152,7 +152,7 @@
+ 	userDevicesCacheLock sync.Mutex
+ 
+ 	recentMessagesMap  map[recentMessageKey]RecentMessage
+-	recentMessagesList [recentMessagesSize]recentMessageKey
++	recentMessagesList *[recentMessagesSize]recentMessageKey // allocated on first send (bench patch: lazy retry cache)
+ 	recentMessagesPtr  int
+ 	recentMessagesLock sync.RWMutex
+ 
+@@ -298,7 +298,7 @@
+ 		groupCache:       make(map[types.JID]*groupMetaCache),
+ 		userDevicesCache: make(map[types.JID]deviceCache),
+ 
+-		recentMessagesMap:      make(map[recentMessageKey]RecentMessage, recentMessagesSize),
++		recentMessagesMap:      make(map[recentMessageKey]RecentMessage),
+ 		sessionRecreateHistory: make(map[types.JID]time.Time),
+ 		GetMessageForRetry:     func(requester, to types.JID, id types.MessageID) *waE2E.Message { return nil },
+ 		appStateKeyRequests:    make(map[string]time.Time),
+diff -ru a/retry.go b/retry.go
+--- a/retry.go	2026-11-09 06:32:45
++++ b/retry.go	2026-11-09 06:33:09
+@@ -79,6 +79,9 @@
+ 	}
+ 	cli.recentMessagesLock.Lock()
+ 	key := recentMessageKey{to, id}
++	if cli.recentMessagesList == nil {
++		cli.recentMessagesList = new([recentMessagesSize]recentMessageKey)
++	}
+ 	if cli.recentMessagesList[cli.recentMessagesPtr].ID != "" {
+ 		delete(cli.recentMessagesMap, cli.recentMessagesList[cli.recentMessagesPtr])
+ 	}

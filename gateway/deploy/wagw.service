@@ -1,0 +1,35 @@
+# systemd unit for the WAHooks WhatsApp gateway. Installed by deploy/install.sh.
+[Unit]
+Description=WAHooks WhatsApp gateway (whatsmeow, WAHA-compatible API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# GC: GOGC=50 trims ~10-20 % of RSS under traffic at no measured CPU cost; GOMEMLIMIT is a soft ceiling at ~78 % of
+# a CX23's RAM (install.sh writes a box-specific value into wagw.env, which overrides these). See
+# bench/density/RESULTS.md §6 and §10. Never set GOMEMLIMIT near the process's steady footprint (GC thrashes).
+Environment=GOGC=50
+Environment=GOMEMLIMIT=2800MiB
+EnvironmentFile=/etc/wagw/wagw.env
+# AnyIP: every address of the box's /64 can be a source address (one per account).
+ExecStartPre=+/usr/sbin/sysctl -qw net.ipv6.ip_nonlocal_bind=1
+ExecStartPre=+/bin/sh -c 'if [ -n "$WAGW_IPV6_PREFIX" ]; then ip -6 route replace local "$WAGW_IPV6_PREFIX" dev lo; fi'
+ExecStart=/opt/wagw/gateway
+User=wagw
+Group=wagw
+Restart=always
+RestartSec=3
+# Shutdown disconnects every account (no logout); give it time.
+TimeoutStopSec=40
+KillSignal=SIGTERM
+LimitNOFILE=1048576
+StateDirectory=wagw
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/wagw
+
+[Install]
+WantedBy=multi-user.target

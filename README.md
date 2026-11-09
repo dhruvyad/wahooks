@@ -268,6 +268,8 @@ wahooks/
 │   ├── typescript/       TypeScript SDK (npm: wahooks)
 │   └── mcp/              MCP server (OAuth via Supabase)
 ├── cli/                  Go CLI (Cobra)
+├── gateway/              WhatsApp gateway (Go, whatsmeow): many accounts per process behind a WAHA-compatible API
+├── migrate/              Converter that moves WAHA (NOWEB) sessions to the gateway without a QR re-scan
 ├── terraform/            k3s cluster provisioning
 └── k8s/                  Kubernetes manifests
 ```
@@ -285,6 +287,7 @@ Join our [Discord](https://discord.gg/B2XNf97Vby) to discuss ideas and get help.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The gateway links [whatsmeow](https://github.com/tulir/whatsmeow) (MPL-2.0) and, through it, libsignal
+(GPL-3.0), so a gateway binary as a whole is GPL-3.0; see [`gateway/README.md`](gateway/README.md#license).
 
 ---

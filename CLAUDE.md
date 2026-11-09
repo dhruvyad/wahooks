@@ -17,6 +17,8 @@ wahooks/
     config/       -- Shared ESLint + TypeScript configs
     shared-types/ -- Domain types shared across apps
     db/           -- Drizzle ORM schema + migrations (Supabase Postgres)
+  gateway/        -- Go WhatsApp gateway (whatsmeow), WAHA-compatible API; build with gateway/build.sh (applies whatsmeow-patches/)
+  migrate/        -- Go converter: WAHA NOWEB auth state -> whatsmeow store (no re-scan)
   turbo.json
   pnpm-workspace.yaml
 ```

@@ -1,0 +1,6 @@
+id,data
+100000000000102@lid,"{""id"":""100000000000102@lid"",""phoneNumber"":""15555550102@s.whatsapp.net"",""name"":""Bob Fixture"",""notify"":""bob""}"
+120363000000000001@g.us,"{""id"":""120363000000000001@g.us"",""name"":""a group is not a contact""}"
+15555550101@s.whatsapp.net,"{""id"":""15555550101@s.whatsapp.net"",""lid"":""100000000000101@lid"",""name"":""Alice Fixture"",""notify"":""alice""}"
+15555550103@s.whatsapp.net,"{""id"":""15555550103@s.whatsapp.net"",""name"":""Carol Fixture""}"
+15555550110@s.whatsapp.net,"{""id"":""15555550110@s.whatsapp.net"",""notify"":""shop"",""verifiedName"":""Fixture Shop""}"

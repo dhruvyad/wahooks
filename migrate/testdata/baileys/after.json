@@ -1,0 +1,99 @@
+{
+	"dms": [
+		{
+			"from": "alice",
+			"addr": "100000000000101_1.0",
+			"type": "msg",
+			"ciphertext": "MwohBYF41jCC5uPvMO2myspdZndGhjGqblMgg90isKxfdC9rEAEYACIgCoFxubDW4jLfeqm4oz+Zjy+uVOAbWrVFQSroDWs2NWmDV3NQoifJxw==",
+			"plaintext": "YWxpY2UgMyAoZGVsYXllZCk="
+		},
+		{
+			"from": "alice",
+			"addr": "100000000000101_1.0",
+			"type": "msg",
+			"ciphertext": "MwohBYF41jCC5uPvMO2myspdZndGhjGqblMgg90isKxfdC9rEAMYACIQaC/REERXyaazt0ci6bqDknZlPAUtTOYs",
+			"plaintext": "YWxpY2UgNQ=="
+		},
+		{
+			"from": "carol",
+			"addr": "15555550103.2",
+			"type": "pkmsg",
+			"ciphertext": "MwgEEiEF4QJ2uQbj1c699DvfClvKaDjwCu+Jtn63PAKJwehC/yMaIQV1Stda3E2CiEdWrWkzvWGNjsNx3OlBuj9yfEOnUvxCFCJCMwohBfIxg5Lreey2iJ3eteiiXD4Q2qR2cofBJUFVdhhg8uRUEAEYACIQHAYKlypRwUCVzf4zuu3qaPS4FuXowjKaKKQBMAE=",
+			"plaintext": "Y2Fyb2wgMw=="
+		},
+		{
+			"from": "phone",
+			"addr": "15555550123.0",
+			"type": "pkmsg",
+			"ciphertext": "MwgDEiEFuCz3djg/cVjNNPUo5gzKkXWk/0OF0CohPoD7FOY+iVMaIQWkrClQH52t5BeGspDqQEY5yQDErauoItNkT9MKsSwgfyJCMwohBb2TZGigkX2sRkrz4Y5rVt7d4hdWLLKOHwYeUYjCw/JnEAEYACIQ4V+d3SauY9PZQw2hwpRrahnwwoOkWdUKKKcBMAE=",
+			"plaintext": "cGhvbmUgMg=="
+		},
+		{
+			"from": "dave",
+			"addr": "15555550104.0",
+			"type": "pkmsg",
+			"ciphertext": "MwgjEiEFSPgvr+zHvX9Zk3Wnx1ThRuRKeEuBGAdttsWHN5D1SlIaIQX9F/BsYyKnk6bt5ZU4jYPpCDYN7qmaSyorLpM97nAMHCJCMwohBY0us43Kwzqo7N/+Hl4S/V1pi/Z1e/ShIiomJ3uxQcRpEAAYACIQkxbuMGNqb/gm5u/m0yvmKI0o28LZtBs5KL8BMAE=",
+			"plaintext": "ZGF2ZSAx"
+		},
+		{
+			"from": "frank",
+			"addr": "100000000000106_1.0",
+			"pnAddr": "15555550106.0",
+			"type": "msg",
+			"ciphertext": "MwohBdG3817epuzHH2MK+BdQhhLoNBOQYY4kodiHEKrJ6nRJEAEYACIQ2jjJXbLlDNwU6fvBtqt56kI9GFR9iMTG",
+			"plaintext": "ZnJhbmsgNA=="
+		},
+		{
+			"from": "erin",
+			"addr": "15555550105.0",
+			"type": "msg",
+			"ciphertext": "MwohBQd++xpVsCGxOIyMj8lgtu6bmBMV/sYsHFNmvbIMKJItEAEYACIgEudxOBqauuuojLjGqrdPefboGk5xMjvRBIMjmJMM6klXkccETm/NKA==",
+			"plaintext": "ZXJpbiA4IChkZWxheWVkKQ=="
+		},
+		{
+			"from": "erin",
+			"addr": "15555550105.0",
+			"type": "msg",
+			"ciphertext": "MwohBUmk9wbNf2AHxAmwf4astLgjFp/cdhvqbk/3alQOWX0DEAAYASIQiAULLJhTmL+ujS6vIxZP8wPnkbINJNKk",
+			"plaintext": "ZXJpbiA5"
+		}
+	],
+	"groups": [
+		{
+			"group": "120363000000000001@g.us",
+			"from": "alice2",
+			"addr": "100000000000101_1.0",
+			"ciphertext": "MwiV9YupAhACGiAPN0ibjea+PTgFlTXxKF1HjNfs2oQD9yGzR04mPBNRK6fmMW2K0W8mpVPNfyZ4Q6wsoxiGs2jc5r8GpHRCpepNQX6OuCBiaVTPoAujxgIXDqsUB+lGZDE5Y3j5lI54/QE=",
+			"plaintext": "Z3JvdXAgYWxpY2UgKG5ldyBpbnN0YWxsKSAy"
+		},
+		{
+			"group": "120363000000000001@g.us",
+			"from": "alice",
+			"addr": "100000000000101_1.0",
+			"ciphertext": "Mwiw7a++AhACGiBsReUYRDOwlzEew0FOFM3SZCannMl6e/jyeD3cOvyrFwhrZ8gfEksgIXzDRp+3q9EivedX1w6XIUSo+ULeGb6XFTsC6w0W1r9l/w8lLnF/zUs1+u5udv1qV3G2i06/2gQ=",
+			"plaintext": "Z3JvdXAgYWxpY2UgMiAoZGVsYXllZCk="
+		},
+		{
+			"group": "120363000000000001@g.us",
+			"from": "alice",
+			"addr": "100000000000101_1.0",
+			"ciphertext": "Mwiw7a++AhAGGhDKrtV5btKD6O6OgvnSHuGo1+DbBoFyzDWyIEjAi1E1XQF3Q1WL81d2ElZxgVr4e/QvMCzcbwyAWtgWz88gC5s6sTPQSmGq5mz5fKJH9ExXBg==",
+			"plaintext": "Z3JvdXAgYWxpY2UgNA=="
+		}
+	],
+	"appState": [
+		{
+			"name": "regular_low",
+			"patch": "CgIIBBKnAQgAEqIBCiIKIEcaIto/upBIoqsQIyBfKoj+Td4yeC6coHaKRlsLiVd3EnIKcAOCjuRCuR2yqUNDVDO4Hf7AuAIKmpgvYn4Non2i4HhTJkbq8XPcrxprf/ZIyNv8UyuHp2SVllMc4z6BajtdwwU0DcwNH4C/BSn2LxNaGlPj3WoW9hi5RN8EYVyqj9x/ziuXpP4fDVGmBlnG2AVCPGgaCAoGUfsDv99mIiBwuDu2f3JcPNGgqxeamBmQ+2WiF/zBzMd5arxIdEKfbCogJfgSOHkfZByXSX2oPD0zVSp/CfNRUkkn41XIWq0Dkg8yCAoGUfsDv99m",
+			"fromVersion": 3,
+			"toVersion": 4,
+			"expect": {
+				"index": [
+					"archive",
+					"15555550101@s.whatsapp.net"
+				],
+				"archived": false
+			}
+		}
+	]
+}

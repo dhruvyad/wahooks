@@ -1,0 +1,113 @@
+{
+	"jid": "15555550123:23@s.whatsapp.net",
+	"lid": "100000000000001:23@lid",
+	"registrationId": 0,
+	"platform": "android",
+	"pushName": "Fixture Push Name",
+	"noisePub": "F3CeVqU4I89+jAyIGO3sxegKt1UCSu9bL9EB9NFanBk=",
+	"identityPub": "OCy695ySGsI5pKB55cAxrPQAhgQz0YZWXtgZW9/SSUo=",
+	"signedPreKey": {
+		"id": 1,
+		"pub": "0iY/tvrTy4qlhGrRfkY141VY4o0/QKbAXOVDqKivODk=",
+		"sig": "xVR+5pCVQNazYykxIhefWfkHOJptGoGiC/3PbM76/uabvubGBv0j8Ok2GwZYqSdXpbC4+cVlb2vUPCBa7AnyBg=="
+	},
+	"accountSignatureKey": "pKwpUB+dreQXhrKQ6kBGOckAxK2rqCLTZE/TCrEsIH8=",
+	"preKeys": {
+		"1": "1MFhx5x5bq2S0ICifsVZ3Z9Z6xUsEVM64FNGXKT63WM=",
+		"2": "cBxQD/VbKAuS5Qz+Ml1cYvivjcaBkx02f2yQNFAvzGI=",
+		"3": "Y/+hMubb9d5PeXMTDpsCZ02Ib18vlGVm9BqW67I0cF8=",
+		"4": "oCH7mStUnd5YYAzO1/k08TGyc35mFUEQPTFBR91DD0I=",
+		"5": "fSFRSgdNGyPFo/Yl7AtrbnuZzLTxIpkrd0Ue0kkp0HA=",
+		"6": "QuGdOQb/0xtRR9tL6zmhBKz1g1a6k0l/CHw6EIzydTk=",
+		"7": "J0ub/MNAgG68VgVqP5XV1pcUGw/iH2gGOqsQ1atmImk=",
+		"8": "dOfsUyrfi+61fJV7aUz3qrhtnPwy1nh7WNHSBHWGjGY=",
+		"9": "m2c6yF8ffE7wlBC0BFfPuk3bxAZlfr0Sg9YL9foIOHQ=",
+		"10": "0oS1/13fV6CqRGNBjwOF9fXtbxpHCtng8jfZWJgSC2c=",
+		"11": "2A/DrmQH3uFSZYlOJMgtEtoMmaz6fr4RIJYcenY4UwA=",
+		"12": "hFXjT3w9WWzg27Ad2Rp8yjJwLHBW+PHONpw1mCTIbwY=",
+		"13": "IZvcWfFV+iZEYGnkWdMElpAmTxPcCZvVNxu26uAGdC0=",
+		"14": "HHVARJ+MrzoDPiS8gn7Kbq0a9ziYrj2PWgAZiy/rF20=",
+		"15": "t1dX9yGyAH640WoLzSgtbdaPVB5h7Bo39Nora8ZqRwg=",
+		"16": "gmOtqnN+3y5f1kjbCXUNfhQPfN6LIRVlGGkQIC1u4mc=",
+		"17": "1kRQsQPUfUjpRXAcw4xvrsVxcrXCuTjbieeedLoZqXM=",
+		"18": "HFvNzfg8oQUz4cAaWjo+bNWPW6Jt7CdT70NH8yKh03w=",
+		"19": "Cc9iuVhTIHhS5lo2eICX8GWkQiUSjoSfQSjedPqzRT8=",
+		"20": "kLn1cIWSzjytclKddo/YqC1XIISvOJz2Cd63J3n3mFo=",
+		"21": "HVne4Dz/0fadcGsZprCRwXOVb+QKyqYlmWL4CVKyEEE=",
+		"22": "SCi85i4UL24j2toSX4UmZ4Fdd8Cx7z50+WV7LwJPqGs=",
+		"23": "G9+O9XsgGFRdrnQX3KBEQIvxZ3YD1MZYIVNWFYXj2R4=",
+		"24": "sap/bjAU1L2YmkNaJKjKupg2CqBV46dY0aXeaiOE2jg=",
+		"25": "qwO2grZBa5JDj5MKaP3gfQi6CLUhOGL67M2SGFJni1Y=",
+		"26": "scKPingvP/190fguMahi47vFj0J7LYti1PEawzqX8Ds=",
+		"27": "Pr/rJd0dM6gPop83SfyBCYMKJHR0g2OpLFG9KikRkGg=",
+		"28": "2lz9Uejq6iTgIXUbyTRvFB+uRrBSiGyYL7FqvbucCls=",
+		"29": "AQK6lsLcghxYljYSfvrza2CP+3jeMlt4fQ+8Ai7F4wQ=",
+		"30": "eG3YhnvNcH8kc6gSw//131EmLZKR3HAqlYETJG98oTg=",
+		"31": "PXBx+oXMB3qR84LSJElmDl+Bpk388UPaRIqjBjsOt1A=",
+		"32": "jzi3VueG38kJrUzR6Ywvs9t/IO7pM7ssdmpAK7NGK1E=",
+		"33": "5MfWDiK5H6hPDyos+9ZXs6AMYh12byiuQtdfsaDUXiw=",
+		"34": "1mC7LDcRssICDd1F6VqzLRxhFMCCHuSc25StB21LFyg=",
+		"35": "yR63Pg2pDcIEh8X0OIYaACcNk3giw6c7IkEukdWuwG8=",
+		"36": "KB5n1vV0fvCRH+VQzm6S2tpEoKR6AN736HDGJuEMQzk=",
+		"37": "LYCBpN8PSqRcvilCC8sKlu0SkBLAQuWRRQnogQZQ/1A=",
+		"38": "BN/y2Xsya8hslMKDMKwVMp4Ayd6SpQSTJWBI2T2a8VA=",
+		"39": "Tf/Lhf/a5Ck+6/HkulV7gaxpvE48xjZ3iGl0HY7NGGo=",
+		"40": "n4ZuAD34ZVMzg0B6jLnaED5fjZo+Kxq7cmbLAW+0bmE="
+	},
+	"nextPreKeyId": 41,
+	"appStateKeyId": "UfsDv99m",
+	"appStateVersions": {
+		"regular_low": 3
+	},
+	"sessions": [
+		"100000000000101_1.0",
+		"100000000000102_1.0",
+		"15555550103.2",
+		"15555550123.0",
+		"100000000000106_1.0",
+		"15555550105.0"
+	],
+	"droppedSessions": {
+		"15555550106.0": "superseded by the LID-addressed row Baileys uses"
+	},
+	"senderKeyStates": {
+		"120363000000000001@g.us::100000000000101_1::0": 2,
+		"120363000000000001@g.us::100000000000001_1::23": 1
+	},
+	"senderKeys": [
+		"120363000000000001@g.us::100000000000101_1::0",
+		"120363000000000001@g.us::100000000000001_1::23"
+	],
+	"lidMappings": {
+		"15555550101": "100000000000101",
+		"15555550106": "100000000000106"
+	},
+	"storeLidMappings": {
+		"15555550107": "100000000000107"
+	},
+	"storeContacts": {
+		"15555550101@s.whatsapp.net": {
+			"full": "Alice Fixture",
+			"push": "alice"
+		},
+		"100000000000101@lid": {
+			"full": "Alice Fixture",
+			"push": "alice"
+		},
+		"100000000000102@lid": {
+			"full": "Bob Fixture",
+			"push": "bob"
+		},
+		"15555550102@s.whatsapp.net": {
+			"full": "Bob Fixture",
+			"push": "bob"
+		},
+		"15555550103@s.whatsapp.net": {
+			"full": "Carol Fixture"
+		},
+		"15555550110@s.whatsapp.net": {
+			"push": "shop",
+			"business": "Fixture Shop"
+		}
+	}
+}

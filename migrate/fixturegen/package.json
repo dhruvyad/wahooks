@@ -1,0 +1,16 @@
+{
+  "name": "wahooks-migrate-fixturegen",
+  "private": true,
+  "type": "module",
+  "description": "Generates synthetic WAHA NOWEB auth rows with the exact Baileys build WAHA uses. Never connects to WhatsApp.",
+  "scripts": {
+    "gen": "node gen.mjs ../testdata/baileys"
+  },
+  "dependencies": {
+    "baileys": "github:devlikeapro/Baileys#f6bf3cfdf9c9acab637e9807d0d069209aa83b7e",
+    "libsignal": "6.0.0"
+  },
+  "overrides": {
+    "whatsapp-rust-bridge": "npm:@devlikeapro/whatsapp-rust-bridge@0.5.2"
+  }
+}

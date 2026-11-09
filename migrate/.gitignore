@@ -1,0 +1,8 @@
+/bin/
+fixturegen/node_modules/
+*.db
+*.db-shm
+*.db-wal
+# real exports must never be committed
+/exports/
+*.auth.csv
