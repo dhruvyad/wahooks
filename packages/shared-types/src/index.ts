@@ -1,6 +1,9 @@
 // Worker statuses
 export type WorkerStatus = "provisioning" | "active" | "draining" | "stopped";
 
+// What a worker runs: a WAHA pod, or a box of the WAHooks gateway (gateway/)
+export type WorkerKind = "waha" | "gateway";
+
 // Session statuses
 export type SessionStatus =
   | "pending"
@@ -45,6 +48,7 @@ export interface PaginatedResponse<T> {
 export interface WorkerInfo {
   id: string;
   status: WorkerStatus;
+  kind: WorkerKind;
   maxSessions: number;
   currentSessions: number;
 }

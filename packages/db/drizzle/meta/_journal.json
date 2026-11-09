@@ -50,6 +50,13 @@
       "when": 1794211200000,
       "tag": "0006_webhook_log_index",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794225600000,
+      "tag": "0007_worker_kind",
+      "breakpoints": true
     }
   ]
 }
