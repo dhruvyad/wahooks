@@ -8,6 +8,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WorkersService } from './workers.service';
+import { GatewayResources, GatewayResourcesService } from './gateway-resources.service';
 
 @Controller('infrastructure')
 @UseGuards(AuthGuard, AdminGuard)
@@ -18,6 +19,7 @@ export class WorkersController {
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
     private readonly workersService: WorkersService,
+    private readonly gatewayResources: GatewayResourcesService,
   ) {}
 
   @Get()
@@ -69,8 +71,22 @@ export class WorkersController {
       }
     }
 
+    // CPU, memory and connection utilization of each active gateway box
+    // (cached ~60 s; a failing source leaves its part null, never fails this).
+    let resources = new Map<string, GatewayResources>();
+    try {
+      resources = await this.gatewayResources.resourcesFor(
+        workers.filter((w: any) => w.kind === 'gateway' && w.status === 'active'),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to read gateway resources: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     // Build per-worker info. `currentSessions` is the capacity-driving live count
     // (matches the reconciled counter); `failedSessions` is shown separately.
+    // `resources` is null for WAHA pods and gateways that aren't active.
     const workerInfo = workers.map((w: any) => {
       const live = liveMap[w.id] ?? 0;
       return {
@@ -84,6 +100,7 @@ export class WorkersController {
         utilization: w.maxSessions > 0
           ? Math.round((live / w.maxSessions) * 100)
           : 0,
+        resources: resources.get(w.id) ?? null,
       };
     });
 
