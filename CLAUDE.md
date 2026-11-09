@@ -50,7 +50,7 @@ wahooks/
 | `waha/` | HTTP client for the WAHA REST API (sessions, QR codes, start/stop/restart) |
 | `health/` | Cron jobs: 3-min worker health poll (syncs WAHA status to DB; restarts a FAILED session from persisted auth up to 5× per pod lifetime, then STOPS it — auth kept, row `failed`; retires a session left in SCAN_QR_CODE after 30 min if it was ever linked, 2 h if never; an unreachable worker only gets its `pending` sessions created; on a gateway it never re-creates a session that was ever linked, deletes only sessions whose row is `stopped`, adds the events secret to live sessions' webhook config, and records reachability for `checks.gateways`), 5-min scaling check |
 | `webhooks/` | Webhook config CRUD (url, events filter, signing secret) + event log queries |
-| `events/` | WAHA event ingestion endpoint (with `EVENTS_SECRET` set, gateway sessions must send `X-WAHooks-Events-Secret` and a sent one must match) + BullMQ `webhook-delivery` queue + delivery processor with HMAC-SHA256 signing |
+| `events/` | WAHA event ingestion endpoint (with `EVENTS_SECRET` set, gateway sessions must send `X-WAHooks-Events-Secret` and a sent one must match) + BullMQ `webhook-delivery` queue + delivery processor with HMAC-SHA256 signing. `EventMetricsService` counts events received and delivery outcomes per minute in Redis for `GET /api/infrastructure/events` (see Key Design Details) |
 | `billing/` | Stripe checkout/portal, hourly usage metering (`UsageService` cron), Stripe webhook handler |
 
 ### Web (`apps/web/src/`)
@@ -145,6 +145,8 @@ All routes prefixed with `/api`. Auth = Supabase JWT in `Authorization: Bearer` 
 | `DELETE` | `/api/webhooks/:id` | Yes | Delete webhook config |
 | `GET` | `/api/webhooks/:id/logs` | Yes | Get delivery logs (last 100) |
 | `POST` | `/api/events/waha` | No | WAHA event ingestion (internal) |
+| `GET` | `/api/infrastructure` | Admin | Workers, capacity, gateway utilization, webhook queue counts (`failed` stops at `failedKept`; `failedLast24h` from the event counters) |
+| `GET` | `/api/infrastructure/events?range=1h\|24h\|7d` | Admin | Events received + webhook deliveries over time: buckets `{t, received, messages, delivered, failed, retried}` (1 min / 5 min / 1 h), totals, `ratePerMinute`, `byType` |
 | `GET` | `/api/billing/status` | Yes | Billing status + usage |
 | `GET` | `/api/billing/usage` | Yes | Usage summary |
 | `POST` | `/api/billing/checkout` | Yes | Stripe Checkout session |
@@ -214,7 +216,8 @@ Tables in `packages/db/src/schema/`:
 - Scale up: only when NO worker has available capacity AND pending sessions exist. Scale down: all workers <30% for sustained period (never to zero)
 - WAHA Core mode: `WAHA_MAX_SESSIONS=1`, session name always resolves to `default`
 - Outbound webhooks signed with HMAC-SHA256 (`X-WAHooks-Signature` header)
-- Webhook delivery: BullMQ with 5 attempts, exponential backoff (5s base), last 1000 failed jobs retained
+- Webhook delivery: BullMQ with 5 attempts, exponential backoff (5s base), last 1000 failed jobs retained (so the queue's failed count saturates at 1,000: a retention window, not a backlog)
+- Event volume counters (`events/event-metrics.ts`): one Redis hash per UTC hour, `wahooks:events:<YYYY-MM-DDTHH>`, with `<mm>:<counter>` per minute and a `<counter>` hourly rollup (what the 7-day range reads), plus `<hash>:types` by event type; all expire 8 days after their last write. Counters: `received` (events accepted for a known connection), `messages` (`message` events), `delivered`, `failed` (final attempt), `retried`. One pipelined round trip per event or delivery attempt on the queue's Redis connection, fire-and-forget: a failure never fails ingestion or delivery and is logged at most once a minute
 - Delivery log (`webhook_event_logs`): the processor writes a row when a delivery's first attempt ends (the id is fixed at enqueue), and `WebhookLogRetentionService` keeps the newest 100 per webhook (every 5 min for webhooks with new deliveries, daily sweep). Unbounded, it had grown to 8.5 GB of the database by 2026-11-09
 - Usage metering: hourly cron records connection-hours, separate cron reports to Stripe
 - Supabase DB connectivity: `supabase-db` → PgBouncer (`k8s/pgbouncer.yaml`, session mode, 2 replicas × 35 server connections) → `supabase-db-direct` → socat DaemonSet bridging IPv4→IPv6 (Supabase has IPv6-only DNS, k3s pods can't route IPv6) → Postgres (`max_connections` 90). WAHA opens up to 10 connections per session store (hard-coded), so without the cap bursts failed every write with "remaining connection slots are reserved". The `postgres` role has `idle_session_timeout` 15min: socat never closes a dead pod's connections by itself
