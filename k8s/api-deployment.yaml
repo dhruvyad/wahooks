@@ -64,7 +64,7 @@ spec:
             # secret, so flip it in this file. "gateway" also lets WAHA scale to zero once
             # no WAHA worker holds a session.
             - name: NEW_CONNECTION_WORKER_KIND
-              value: "waha"
+              value: "gateway"
             # Session cap a newly registered gateway row gets (existing rows keep theirs),
             # and the gateway used/capacity at which another box is provisioned.
             - name: GATEWAY_MAX_SESSIONS
