@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useApiData } from "@/lib/cache";
+import { EventVolumeSection } from "./event-volume";
 
 // CPU, memory and connections of a gateway server; null parts carry a reason in `errors`.
 interface GatewayResources {
@@ -35,9 +36,11 @@ interface WebhookQueue {
   waiting: number;
   active: number;
   delayed: number;
-  failed: number;
+  failed: number; // failed jobs BullMQ keeps: stops at failedKept
   completed: number;
   reachable: boolean;
+  failedKept?: number; // BullMQ's removeOnFail cap
+  failedLast24h?: number | null; // deliveries given up on in the last 24 h; null when unreadable
 }
 
 interface InfraStatus {
@@ -132,6 +135,40 @@ function Sparkline({
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+/**
+ * BullMQ keeps only the newest `failedKept` failed jobs, so the queue's failed
+ * count stops there: a retention window, not a backlog. The deliveries given up
+ * on in the last 24 h come from the event counters.
+ */
+function FailedJobsCard({ queue }: { queue: WebhookQueue }) {
+  const kept = queue.failedKept;
+  const last24h = queue.failedLast24h;
+  return (
+    <div
+      className="rounded-lg border border-border-primary bg-bg-secondary p-4"
+      title={
+        kept
+          ? `BullMQ keeps only the newest ${kept.toLocaleString()} failed jobs, so this count stops at ${kept.toLocaleString()}. It is a retention window, not a backlog.`
+          : undefined
+      }
+    >
+      <p className="text-2xl font-bold text-text-primary">{queue.failed.toLocaleString()}</p>
+      <p className="text-xs text-text-tertiary">
+        Failed jobs kept{kept ? ` (newest ${kept.toLocaleString()})` : ""}
+      </p>
+      {last24h !== undefined && (
+        <p
+          className={`mt-1 text-[11px] ${
+            last24h ? "text-status-error-text" : "text-text-tertiary"
+          }`}
+        >
+          {last24h === null ? "Failed in last 24h: unknown" : `${last24h.toLocaleString()} failed in last 24h`}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -457,6 +494,9 @@ export default function InfrastructurePage() {
             />
           </div>
 
+          {/* Events received and webhook deliveries over time (server-side counters) */}
+          <EventVolumeSection />
+
           {/* Webhook delivery queue */}
           <h2 className="mt-6 text-sm font-semibold text-text-primary">
             Webhook Delivery Queue
@@ -486,12 +526,7 @@ export default function InfrastructurePage() {
                   </p>
                   <p className="text-xs text-text-tertiary">Delayed (retry)</p>
                 </div>
-                <div className="rounded-lg border border-border-primary bg-bg-secondary p-4">
-                  <p className="text-2xl font-bold text-status-error-text">
-                    {data.webhookQueue.failed.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-text-tertiary">Failed (DLQ)</p>
-                </div>
+                <FailedJobsCard queue={data.webhookQueue} />
               </div>
 
               <div className="mt-3 rounded-lg border border-border-primary bg-bg-secondary p-4">
