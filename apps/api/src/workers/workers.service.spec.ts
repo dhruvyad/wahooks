@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { WorkersService, gatewayScaleDecision } from './workers.service';
+import { WorkersService, gatewayScaleDecision, DRAIN_BLOCKING_STATUSES, DRAIN_STOPPABLE_STATUSES } from './workers.service';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WORKER_ORCHESTRATORS_TOKEN } from '../orchestration/orchestrator.interface';
 
@@ -585,6 +585,14 @@ describe('WorkersService', () => {
       // Reconcile ×2, stop its idle sessions, re-reconcile (count + update), mark draining.
       expect(db.update).toHaveBeenCalledTimes(5);
     });
+  });
+
+  it('never soft-deletes a linked session when draining: failed blocks a drain like working', () => {
+    expect(DRAIN_BLOCKING_STATUSES).toEqual(expect.arrayContaining(['working', 'failed']));
+    for (const s of DRAIN_BLOCKING_STATUSES) {
+      expect(DRAIN_STOPPABLE_STATUSES as readonly string[]).not.toContain(s);
+    }
+    expect(DRAIN_STOPPABLE_STATUSES as readonly string[]).not.toContain('stopped');
   });
 
   // ---- Worker kinds ----

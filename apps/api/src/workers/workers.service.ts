@@ -10,6 +10,14 @@ import {
   ProvisionResult,
 } from '../orchestration/orchestrator.interface';
 
+/**
+ * A WAHA pod holding a session in one of these is never drained: 'working' is live, and 'failed' still has its
+ * auth (the health poll stopped it, or a migration froze it while it moves to a gateway).
+ */
+export const DRAIN_BLOCKING_STATUSES = ['working', 'failed'] as const;
+/** Sessions a drain marks 'stopped': ones that never linked a device. */
+export const DRAIN_STOPPABLE_STATUSES = ['scan_qr', 'pending'] as const;
+
 export interface ScaleUpFailure {
   kind: WorkerKind;
   reason: string;
@@ -732,29 +740,32 @@ export class WorkersService {
       // other worker would stop its sessions and then keep the pod anyway.
       const target = this.highestOrdinal(workers);
 
-      // Never drain a worker with 'working' sessions (active WhatsApp connections)
-      const [working] = await this.db
+      // Never drain a worker with 'working' or 'failed' sessions. A failed session still has its auth (the
+      // health poll stops it, keeps the login and marks it failed; a migration freezes a session as failed
+      // while it moves to a gateway); marking it stopped below would soft-delete a linked connection, and on a
+      // gateway the orphan sweep would then unlink it.
+      const [live] = await this.db
         .select({ count: sql`count(*)` })
         .from(wahaSessions)
         .where(
           and(
             eq(wahaSessions.workerId, target.id),
-            eq(wahaSessions.status, 'working'),
+            inArray(wahaSessions.status, [...DRAIN_BLOCKING_STATUSES]),
           ),
         );
 
-      if (Number(working?.count ?? 0) > 0) {
+      if (Number(live?.count ?? 0) > 0) {
         this.logger.log(
-          `All workers below 30% but ${target.podName} (highest ordinal) has working sessions — skipping drain`,
+          `All workers below 30% but ${target.podName} (highest ordinal) has working or failed sessions — skipping drain`,
         );
         return;
       }
 
       this.logger.log(
-        `All workers below 30%, draining ${target.podName} (${target.currentSessions} sessions, 0 working)`,
+        `All workers below 30%, draining ${target.podName} (${target.currentSessions} sessions, none working or failed)`,
       );
 
-      // Stop non-working sessions (scan_qr, pending, failed) on this worker
+      // Stop the sessions that never linked (scan_qr, pending) on this worker
       if (target.currentSessions > 0) {
         await this.db
           .update(wahaSessions)
@@ -762,8 +773,7 @@ export class WorkersService {
           .where(
             and(
               eq(wahaSessions.workerId, target.id),
-              ne(wahaSessions.status, 'stopped'),
-              ne(wahaSessions.status, 'working'),
+              inArray(wahaSessions.status, [...DRAIN_STOPPABLE_STATUSES]),
             ),
           );
         await this.reconcileWorkerCounter(target.id);
