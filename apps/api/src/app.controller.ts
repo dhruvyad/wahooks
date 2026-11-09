@@ -30,7 +30,10 @@ export class AppController {
    */
   @Get("health")
   async deepHealth() {
-    const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
+    const checks: Record<
+      string,
+      { status: string; latency?: number; error?: string; [detail: string]: unknown }
+    > = {};
     let healthy = true;
 
     // Database check
@@ -94,6 +97,28 @@ export class AppController {
         }
       : { status: "ok" };
     if (scaleUpFailure) healthy = false;
+
+    // Gateway boxes as the last 3-minute health poll found them, so an uptime
+    // monitor can alert on a box that's down ("unknown" until the first poll).
+    const gatewayHealth = this.workersService.getGatewayHealth();
+    if (!gatewayHealth) {
+      checks.gateways = { status: "unknown", boxes: [] };
+    } else {
+      const down = gatewayHealth.boxes.filter((b) => !b.reachable);
+      checks.gateways = {
+        status: down.length > 0 ? "error" : "ok",
+        checkedAt: gatewayHealth.checkedAt.toISOString(),
+        boxes: gatewayHealth.boxes.map((b) => ({
+          name: b.podName,
+          reachable: b.reachable,
+          ...(b.unreachableSince ? { unreachableSince: b.unreachableSince.toISOString() } : {}),
+        })),
+        ...(down.length > 0
+          ? { error: `Unreachable gateway: ${down.map((b) => b.podName).join(", ")}` }
+          : {}),
+      };
+      if (down.length > 0) healthy = false;
+    }
 
     return {
       status: healthy ? "ok" : "degraded",

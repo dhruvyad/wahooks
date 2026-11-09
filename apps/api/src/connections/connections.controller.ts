@@ -267,7 +267,7 @@ export class ConnectionsController {
       this.logger.log(`Reusing idle connection ${session.id} (status: ${session.status})`);
       connectionId = session.id;
 
-      const wahaName = this.wahaService.resolveSessionName(session.sessionName);
+      const wahaName = this.wahaService.resolveSessionName(session.sessionName, worker.kind);
       const apiUrl = this.configService.get<string>('API_URL', 'http://localhost:3001');
       const webhookUrl = `${apiUrl}/api/events/waha`;
       await this.wahaService.resetSession(
@@ -275,6 +275,7 @@ export class ConnectionsController {
         worker.apiKeyEnc,
         wahaName,
         webhookUrl,
+        worker.kind,
       );
       await this.db
         .update(wahaSessions)
@@ -373,7 +374,7 @@ export class ConnectionsController {
         'http://localhost:3001',
       );
       const webhookUrl = `${apiUrl}/api/events/waha`;
-      const wahaName = this.wahaService.resolveSessionName(sessionName);
+      const wahaName = this.wahaService.resolveSessionName(sessionName, worker.kind);
 
       // Clean up any existing session on this worker before creating a new one.
       // In WAHA Core mode (1 session/pod), there can only be one session named "default".
@@ -423,6 +424,7 @@ export class ConnectionsController {
         worker.apiKey,
         wahaName,
         webhookUrl,
+        worker.kind,
       );
       await this.wahaService.startSession(
         worker.internalIp,
@@ -517,6 +519,7 @@ export class ConnectionsController {
             worker.apiKeyEnc,
             wahaName,
             webhookUrl,
+            worker.kind,
           );
           await this.db
             .update(wahaSessions)
@@ -573,6 +576,7 @@ export class ConnectionsController {
       worker.apiKeyEnc,
       wahaName,
       webhookUrl,
+      worker.kind,
     );
 
     const [updated] = await this.db

@@ -124,6 +124,28 @@ describe('K8sOrchestrator', () => {
       expect(appsV1.patchNamespacedStatefulSet).not.toHaveBeenCalled();
     });
 
+    it('keeps the last replica unless WAHA may go to zero', async () => {
+      cluster(1, {});
+
+      await expect(orchestrator.destroyWorker('waha-0')).resolves.toBe(false);
+      await expect(orchestrator.destroyWorker('waha-0', { allowLast: false })).resolves.toBe(false);
+      expect(appsV1.patchNamespacedStatefulSet).not.toHaveBeenCalled();
+
+      await expect(orchestrator.destroyWorker('waha-0', { allowLast: true })).resolves.toBe(true);
+      expect(appsV1.patchNamespacedStatefulSet).toHaveBeenCalledWith(
+        'waha', 'default', { spec: { replicas: 0 } },
+        undefined, undefined, undefined, undefined, undefined,
+        expect.anything(),
+      );
+    });
+
+    it('reports a pod gone when the StatefulSet is already at zero', async () => {
+      cluster(0, {});
+
+      await expect(orchestrator.destroyWorker('waha-0', { allowLast: true })).resolves.toBe(true);
+      expect(appsV1.patchNamespacedStatefulSet).not.toHaveBeenCalled();
+    });
+
     it('removes the highest-ordinal pod', async () => {
       cluster(4, {});
 

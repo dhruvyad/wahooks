@@ -1,14 +1,18 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { eq, and, ne, sql } from 'drizzle-orm';
+import { eq, and, ne, sql, inArray } from 'drizzle-orm';
 import { wahaWorkers, wahaSessions } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WahaService } from '../waha/waha.service';
+import { WahaSessionResponse } from '../waha/waha.types';
 import { WorkersService } from '../workers/workers.service';
+import { withEventsSecretHeader } from '../events/events-secret';
+
+const isGateway = (worker: { kind?: string | null }) => worker.kind === 'gateway';
 
 @Injectable()
-export class HealthService {
+export class HealthService implements OnApplicationBootstrap {
   private readonly logger = new Logger(HealthService.name);
 
   // Bounded, in-pod recovery tracking. A worker replacement briefly leaves
@@ -33,12 +37,71 @@ export class HealthService {
   // hammering the WAHA API.
   private readonly MAX_ORPHAN_DELETIONS_PER_POLL = 25;
 
+  // Gateway sessions must send this with their events (see EventsController);
+  // the poll adds it to any gateway session created without it.
+  private readonly eventsSecret: string | null;
+  private readonly BOOT_SYNC_TIMEOUT_MS = 20_000;
+
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     private readonly wahaService: WahaService,
     private readonly workersService: WorkersService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    this.eventsSecret = this.configService.get<string>('EVENTS_SECRET')?.trim() || null;
+  }
+
+  /**
+   * Before this pod takes traffic, give every gateway session the events
+   * secret it is about to be required to send (sessions migrated from WAHA or
+   * created before EVENTS_SECRET was set lack it). Bounded, never fatal; the
+   * 3-minute poll repeats it.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    if (!this.eventsSecret) return;
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), this.BOOT_SYNC_TIMEOUT_MS);
+      timer.unref?.();
+    });
+    try {
+      const result = await Promise.race([this.syncAllGatewayEventsSecrets(), timeout]);
+      if (result === 'timeout') {
+        this.logger.warn('Gateway events-secret sync at boot is still running — the health poll finishes it');
+      }
+    } catch (error) {
+      this.logger.error(
+        `Gateway events-secret sync at boot failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async syncAllGatewayEventsSecrets(): Promise<void> {
+    const gateways = await this.db
+      .select()
+      .from(wahaWorkers)
+      .where(and(eq(wahaWorkers.status, 'active'), eq(wahaWorkers.kind, 'gateway')));
+    if (gateways.length === 0) return;
+    const active = await this.db
+      .select({ sessionName: wahaSessions.sessionName })
+      .from(wahaSessions)
+      .where(ne(wahaSessions.status, 'stopped'));
+    const names = new Set<string>(active.map((s: { sessionName: string }) => s.sessionName));
+    await Promise.all(
+      gateways.map(async (gateway: any) => {
+        try {
+          const listed = await this.wahaService.listSessions(gateway.internalIp, gateway.apiKeyEnc);
+          await this.syncGatewayEventsSecret(gateway, listed, names);
+        } catch (error) {
+          this.logger.warn(
+            `Events-secret sync skipped for gateway ${this.label(gateway)}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }),
+    );
+  }
 
   @Cron('*/3 * * * *') // Every 3 minutes instead of every minute
   async pollWorkerHealth(): Promise<void> {
@@ -51,6 +114,7 @@ export class HealthService {
 
     if (activeWorkers.length === 0) {
       this.logger.log('No active workers to check');
+      this.workersService.recordGatewayHealth([]);
       return;
     }
 
@@ -70,10 +134,15 @@ export class HealthService {
         this.wahaService.resolveSessionName(s.sessionName),
       ),
     );
+    // A gateway lists the names as stored (never WAHA Core's 'default').
+    const activeSessionNames = new Set<string>(
+      allActive.map((s: { sessionName: string }) => s.sessionName),
+    );
 
+    const reachable = new Map<string, boolean>();
     for (const worker of activeWorkers) {
       try {
-        await this.checkWorkerSessions(worker, globalActiveNames);
+        await this.checkWorkerSessions(worker, globalActiveNames, activeSessionNames, reachable);
         // Reconcile counter after each worker check to fix any drift
         await this.workersService.reconcileWorkerCounter(worker.id);
       } catch (error) {
@@ -83,13 +152,29 @@ export class HealthService {
       }
     }
 
+    // GET /api/health reports these, so an uptime monitor sees a box that's down.
+    this.workersService.recordGatewayHealth(
+      activeWorkers.filter(isGateway).map((w: any) => ({
+        id: w.id,
+        podName: w.podName ?? w.id,
+        reachable: reachable.get(w.id) ?? false,
+      })),
+    );
+
     this.logger.log('Worker health poll complete');
+  }
+
+  private label(worker: any): string {
+    return worker.podName ?? worker.id;
   }
 
   private async checkWorkerSessions(
     worker: any,
     globalActiveNames: Set<string>,
+    activeSessionNames: Set<string>,
+    reachable: Map<string, boolean>,
   ): Promise<void> {
+    const gateway = isGateway(worker);
     let wahaSessions_: Awaited<ReturnType<WahaService['listSessions']>> = [];
     let workerReachable = false;
 
@@ -101,9 +186,10 @@ export class HealthService {
       workerReachable = true;
     } catch (error) {
       this.logger.warn(
-        `Cannot reach worker ${worker.id} at ${worker.internalIp}: ${error instanceof Error ? error.message : String(error)}`,
+        `Cannot reach ${gateway ? 'gateway' : 'worker'} ${worker.id} at ${worker.internalIp}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    reachable.set(worker.id, workerReachable);
 
     const dbSessions = await this.db
       .select()
@@ -135,6 +221,7 @@ export class HealthService {
     for (const dbSession of dbSessions) {
       const wahaName = this.wahaService.resolveSessionName(
         dbSession.sessionName,
+        gateway ? 'gateway' : 'waha',
       );
       const wahaStatus = wahaSessionMap.get(wahaName);
 
@@ -145,11 +232,28 @@ export class HealthService {
       }
 
       if (!wahaStatus) {
+        // WAHA keeps a session's auth in its own database, so re-creating it
+        // reconnects. A gateway doesn't list a session another box owns, or
+        // one whose auth is gone: a new one would only be a blank device with
+        // a QR (and would race a migration that moved the row first). So a
+        // gateway re-creates only a session that was never linked.
+        if (gateway && (dbSession.phoneNumber || dbSession.status === 'working')) {
+          this.logger.warn(
+            `Linked session "${dbSession.sessionName}" (${dbSession.status}) is missing from gateway ${this.label(worker)} — not re-creating it; check the box's store and session leases`,
+          );
+          continue;
+        }
         await this.tryAutoCreateSession(worker, dbSession);
         continue;
       }
 
       await this.reconcileSessionStatus(worker, dbSession, wahaStatus);
+    }
+
+    if (gateway) {
+      await this.syncGatewayEventsSecret(worker, wahaSessions_, activeSessionNames);
+      await this.sweepGatewayOrphans(worker, [...wahaSessionMap.keys()], activeSessionNames);
+      return;
     }
 
     // Clean up orphan WAHA sessions — ones with no active (non-stopped) DB record.
@@ -193,6 +297,94 @@ export class HealthService {
     }
   }
 
+  /**
+   * A gateway's DELETE logs the account out, which unlinks the WhatsApp
+   * device for good. So a session goes only when WAHooks has a row for it and
+   * that row is `stopped` (its connection was deleted). A name WAHooks has no
+   * row for (a test account, a session being migrated) is logged, never
+   * deleted; a name with a live row anywhere is kept.
+   */
+  private async sweepGatewayOrphans(
+    worker: any,
+    listedNames: string[],
+    activeSessionNames: Set<string>,
+  ): Promise<void> {
+    const candidates = listedNames.filter(
+      (name) => name !== 'default' && !activeSessionNames.has(name),
+    );
+    if (candidates.length === 0) return;
+
+    const rows: Array<{ sessionName: string; status: string }> = await this.db
+      .select({ sessionName: wahaSessions.sessionName, status: wahaSessions.status })
+      .from(wahaSessions)
+      .where(inArray(wahaSessions.sessionName, candidates));
+    const statusByName = new Map(rows.map((r) => [r.sessionName, r.status]));
+
+    const unknown = candidates.filter((name) => !statusByName.has(name));
+    if (unknown.length > 0) {
+      this.logger.warn(
+        `Gateway ${this.label(worker)} holds ${unknown.length} session(s) WAHooks has no record of — leaving them: ${unknown.slice(0, 10).join(', ')}${unknown.length > 10 ? ', …' : ''}`,
+      );
+    }
+
+    let deleted = 0;
+    for (const name of candidates) {
+      // Not stopped: it went live after this poll's snapshot.
+      if (statusByName.get(name) !== 'stopped') continue;
+      if (deleted >= this.MAX_ORPHAN_DELETIONS_PER_POLL) {
+        this.logger.log(
+          `Orphan-deletion cap (${this.MAX_ORPHAN_DELETIONS_PER_POLL}) reached on gateway ${this.label(worker)} — the rest go next poll`,
+        );
+        break;
+      }
+      deleted++;
+      this.logger.log(
+        `Deleting session "${name}" on gateway ${this.label(worker)}: its connection was deleted`,
+      );
+      try {
+        await this.wahaService.deleteSession(worker.internalIp, worker.apiKeyEnc, name);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete "${name}" on gateway ${this.label(worker)}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Give the WAHooks events webhook of each live gateway session the events
+   * secret (PUT config; a gateway applies it without a restart). Covers
+   * sessions migrated from WAHA, created before EVENTS_SECRET was set, or
+   * holding an older secret.
+   */
+  private async syncGatewayEventsSecret(
+    worker: any,
+    listed: WahaSessionResponse[],
+    activeSessionNames: Set<string>,
+  ): Promise<void> {
+    if (!this.eventsSecret) return;
+    for (const session of listed) {
+      if (!activeSessionNames.has(session.name)) continue;
+      const config = withEventsSecretHeader(session.config, this.eventsSecret);
+      if (!config) continue;
+      try {
+        await this.wahaService.updateSessionConfig(
+          worker.internalIp,
+          worker.apiKeyEnc,
+          session.name,
+          config,
+        );
+        this.logger.log(
+          `Gave session "${session.name}" on gateway ${this.label(worker)} the events secret`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Couldn't give session "${session.name}" on gateway ${this.label(worker)} the events secret: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
   private async tryAutoCreateSession(
     worker: any,
     dbSession: any,
@@ -205,8 +397,10 @@ export class HealthService {
       return;
     }
 
+    const kind = isGateway(worker) ? 'gateway' : 'waha';
     const wahaName = this.wahaService.resolveSessionName(
       dbSession.sessionName,
+      kind,
     );
     this.logger.log(
       `Session "${dbSession.sessionName}" (waha: "${wahaName}") not found on worker ${worker.id} — auto-creating`,
@@ -224,6 +418,7 @@ export class HealthService {
         worker.apiKeyEnc,
         wahaName,
         webhookUrl,
+        kind,
       );
       await this.wahaService.startSession(
         worker.internalIp,
@@ -252,7 +447,10 @@ export class HealthService {
     wahaStatus: string,
   ): Promise<void> {
     const sessionName = dbSession.sessionName;
-    const wahaName = this.wahaService.resolveSessionName(sessionName);
+    const wahaName = this.wahaService.resolveSessionName(
+      sessionName,
+      isGateway(worker) ? 'gateway' : 'waha',
+    );
     const dbStatus = dbSession.status;
 
     switch (wahaStatus) {

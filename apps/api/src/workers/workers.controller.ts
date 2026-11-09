@@ -77,6 +77,7 @@ export class WorkersController {
         id: w.id,
         podName: w.podName,
         status: w.status,
+        kind: w.kind ?? 'waha',
         currentSessions: live,
         failedSessions: failedMap[w.id] ?? 0,
         maxSessions: w.maxSessions,

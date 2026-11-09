@@ -5,7 +5,9 @@ export interface WahaSessionResponse {
     webhooks?: Array<{
       url: string;
       events: string[];
+      customHeaders?: Array<{ name: string; value: string }>;
     }>;
+    [key: string]: unknown;
   };
   me?: {
     id: string;

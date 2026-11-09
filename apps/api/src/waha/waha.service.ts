@@ -7,11 +7,14 @@ import {
   WahaMeResponse,
   WahaSendTextResponse,
 } from './waha.types';
+import type { WorkerKind } from '../orchestration/orchestrator.interface';
+import { EVENTS_SECRET_HEADER } from '../events/events-secret';
 
 @Injectable()
 export class WahaService {
   private readonly logger = new Logger(WahaService.name);
   private readonly maxSessions: number;
+  private readonly eventsSecret: string | null;
 
   // Cache of resolved send targets (phone digits → canonical WAHA chatId) so we
   // don't hit WAHA's check-exists on every send. Keyed by `${sessionName}:${digits}`
@@ -32,14 +35,30 @@ export class WahaService {
     this.maxSessions = Number(
       this.configService.get('WAHA_MAX_SESSIONS', '1'),
     );
+    this.eventsSecret = this.configService.get<string>('EVENTS_SECRET')?.trim() || null;
   }
 
   /**
    * Resolve the WAHA session name. WAHA Core only supports 'default'.
-   * WAHA Plus supports custom session names.
+   * WAHA Plus supports custom session names, and a gateway always uses them.
    */
-  resolveSessionName(dbSessionName: string): string {
-    return this.maxSessions === 1 ? 'default' : dbSessionName;
+  resolveSessionName(dbSessionName: string, kind: WorkerKind = 'waha'): string {
+    return kind === 'waha' && this.maxSessions === 1 ? 'default' : dbSessionName;
+  }
+
+  /**
+   * The webhook a session posts its events to. On a gateway it carries the
+   * events secret (when EVENTS_SECRET is set): POST /api/events/waha refuses
+   * gateway events without it.
+   */
+  eventsWebhook(webhookUrl: string, kind: WorkerKind = 'waha'): Record<string, unknown> {
+    return {
+      url: webhookUrl,
+      events: ['*'],
+      ...(kind === 'gateway' && this.eventsSecret
+        ? { customHeaders: [{ name: EVENTS_SECRET_HEADER, value: this.eventsSecret }] }
+        : {}),
+    };
   }
 
   /**
@@ -51,6 +70,7 @@ export class WahaService {
     apiKey: string,
     sessionName: string,
     webhookUrl: string,
+    kind: WorkerKind = 'waha',
   ): Promise<void> {
     this.logger.log(
       `Resetting session "${sessionName}" on worker ${workerUrl}`,
@@ -70,7 +90,7 @@ export class WahaService {
     } catch {
       // Ignore — may not exist
     }
-    await this.createSession(workerUrl, apiKey, sessionName, webhookUrl);
+    await this.createSession(workerUrl, apiKey, sessionName, webhookUrl, kind);
     await this.startSession(workerUrl, apiKey, sessionName);
   }
 
@@ -202,6 +222,7 @@ export class WahaService {
     apiKey: string,
     sessionName: string,
     webhookUrl?: string,
+    kind: WorkerKind = 'waha',
   ): Promise<WahaSessionResponse> {
     const url = this.buildUrl(workerUrl, '/api/sessions');
     const headers = this.buildHeaders(apiKey);
@@ -217,16 +238,27 @@ export class WahaService {
             fullSync: true,
           },
         },
-        webhooks: webhookUrl
-          ? [
-              {
-                url: webhookUrl,
-                events: ['*'],
-              },
-            ]
-          : [],
+        webhooks: webhookUrl ? [this.eventsWebhook(webhookUrl, kind)] : [],
       },
     });
+  }
+
+  /**
+   * Replace a session's config (PUT /api/sessions/{name}). Only used on
+   * gateways, which apply it live without restarting the session.
+   */
+  async updateSessionConfig(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    config: Record<string, unknown>,
+  ): Promise<void> {
+    const url = this.buildUrl(
+      workerUrl,
+      `/api/sessions/${encodeURIComponent(sessionName)}`,
+    );
+    this.logger.log(`Updating config of session "${sessionName}" on worker ${workerUrl}`);
+    await this.request<void>('PUT', url, this.buildHeaders(apiKey), { config });
   }
 
   async startSession(

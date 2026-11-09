@@ -103,7 +103,10 @@ export class K8sOrchestrator implements ContainerOrchestrator {
       .map((p) => this.worker(p));
   }
 
-  async destroyWorker(podName: string): Promise<boolean> {
+  async destroyWorker(
+    podName: string,
+    opts?: { allowLast?: boolean },
+  ): Promise<boolean> {
     const { body: sts } = await this.appsV1.readNamespacedStatefulSet(
       this.statefulSetName,
       this.namespace,
@@ -111,7 +114,12 @@ export class K8sOrchestrator implements ContainerOrchestrator {
 
     const currentReplicas = sts.spec?.replicas ?? 0;
 
-    if (currentReplicas <= 1) {
+    // Already at zero: no pod is left to remove.
+    if (currentReplicas === 0) return true;
+
+    // The last replica goes only when the caller says WAHA may reach zero
+    // (new connections are placed on gateways and no WAHA session is left).
+    if (currentReplicas === 1 && !opts?.allowLast) {
       this.logger.warn(
         `Cannot scale ${this.statefulSetName} below 1 replica — skipping destroy of ${podName}`,
       );

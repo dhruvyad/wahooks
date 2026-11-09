@@ -16,6 +16,8 @@ export class HetznerOrchestrator implements ContainerOrchestrator {
   private readonly location: string;
   private readonly databaseUrl: string;
 
+  // Legacy WAHA-on-VMs orchestrator (ORCHESTRATOR=hetzner). Gateway boxes are
+  // GatewayOrchestrator's; it reads the same HETZNER_API_TOKEN.
   constructor(private readonly configService: ConfigService) {
     this.token = this.configService.getOrThrow<string>('HETZNER_API_TOKEN');
     this.networkId =

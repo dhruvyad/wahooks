@@ -42,6 +42,7 @@ describe('HealthService', () => {
     workersService = {
       checkScaling: jest.fn(),
       reconcileWorkerCounter: jest.fn(),
+      recordGatewayHealth: jest.fn(),
     } as any;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -147,7 +148,7 @@ describe('HealthService', () => {
       await service.pollWorkerHealth();
 
       expect(wahaService.createSession).toHaveBeenCalledTimes(1);
-      expect(wahaService.createSession).toHaveBeenCalledWith('10.0.0.1', 'key', 'new1', expect.any(String));
+      expect(wahaService.createSession).toHaveBeenCalledWith('10.0.0.1', 'key', 'new1', expect.any(String), 'waha');
       expect(wahaService.restartSession).not.toHaveBeenCalled();
     });
   });
@@ -478,6 +479,174 @@ describe('HealthService', () => {
       workersService.checkScaling!.mockRejectedValueOnce(new Error('Scaling error'));
 
       await expect(service.checkScaling()).resolves.not.toThrow();
+    });
+  });
+
+  describe('gateway workers', () => {
+    const API = 'https://api.example.com';
+    const EVENTS = `${API}/api/events/waha`;
+    const gw = {
+      id: 'gw-1', podName: 'wagw-0a1b2c3d', internalIp: '10.0.1.5',
+      apiKeyEnc: 'gateway-test-key', status: 'active', kind: 'gateway',
+    };
+    let gwDb: any;
+    let waha: Record<string, jest.Mock>;
+    let workers: Record<string, jest.Mock>;
+    let svc: HealthService;
+    let warn: jest.SpyInstance;
+
+    function make(env: Record<string, string> = {}) {
+      gwDb = chainable();
+      waha = {
+        listSessions: jest.fn(),
+        createSession: jest.fn().mockResolvedValue({}),
+        startSession: jest.fn().mockResolvedValue(undefined),
+        stopSession: jest.fn(),
+        restartSession: jest.fn().mockResolvedValue(undefined),
+        deleteSession: jest.fn().mockResolvedValue(undefined),
+        logoutSession: jest.fn(),
+        resetSession: jest.fn(),
+        updateSessionConfig: jest.fn().mockResolvedValue(undefined),
+        getMe: jest.fn(),
+        // WAHA Core naming, to show a gateway always uses the stored name.
+        resolveSessionName: jest.fn((name: string, kind?: string) => (kind === 'gateway' ? name : 'default')),
+      };
+      workers = { reconcileWorkerCounter: jest.fn(), recordGatewayHealth: jest.fn(), checkScaling: jest.fn() };
+      const values: Record<string, string> = { API_URL: API, ...env };
+      const config = { get: jest.fn((key: string, def?: unknown) => (key in values ? values[key] : def)) };
+      svc = new HealthService(gwDb, waha as any, workers as any, config as any);
+      warn = jest.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
+      jest.spyOn((svc as any).logger, 'log').mockImplementation(() => undefined);
+    }
+
+    /** Queue: active workers, live session names, this gateway's rows, then whatever follows. */
+    function poll(listed: any[], liveNames: string[], rows: any[], ...rest: any[]) {
+      gwDb.where.mockResolvedValueOnce([gw]).mockResolvedValueOnce(liveNames.map((sessionName) => ({ sessionName })));
+      gwDb.where.mockResolvedValueOnce(rows);
+      for (const r of rest) gwDb.where.mockResolvedValueOnce(r);
+      waha.listSessions.mockResolvedValueOnce(listed);
+      return svc.pollWorkerHealth();
+    }
+
+    beforeEach(() => make());
+
+    it("deletes a session only when its connection was deleted; a name WAHooks doesn't know is logged, never deleted", async () => {
+      await poll(
+        [
+          { name: 'u_live', status: 'WORKING' },
+          { name: 'u_deleted', status: 'STOPPED' },
+          { name: 'u_unknown', status: 'WORKING' },
+          { name: 'default', status: 'STOPPED' },
+        ],
+        ['u_live'],
+        [{ id: 's1', sessionName: 'u_live', status: 'working', phoneNumber: '4470000' }],
+        [{ sessionName: 'u_deleted', status: 'stopped' }], // rows for the names nobody holds live
+      );
+
+      expect(waha.deleteSession).toHaveBeenCalledTimes(1);
+      expect(waha.deleteSession).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_deleted');
+      expect(waha.logoutSession).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('u_unknown'));
+      // Only the names nobody holds live are looked up.
+      expect(gwDb.where).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps a session whose row went live after the snapshot', async () => {
+      await poll([{ name: 'u_new', status: 'SCAN_QR_CODE' }], [], [], [{ sessionName: 'u_new', status: 'pending' }]);
+
+      expect(waha.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('re-creates a never-linked session missing from a gateway, but never a linked one', async () => {
+      await poll(
+        [],
+        ['u_linked', 'u_new'],
+        [
+          { id: 'a', sessionName: 'u_linked', status: 'working', phoneNumber: '4470000' },
+          { id: 'b', sessionName: 'u_new', status: 'pending', phoneNumber: null },
+        ],
+      );
+
+      expect(waha.createSession).toHaveBeenCalledTimes(1);
+      expect(waha.createSession).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_new', EVENTS, 'gateway');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Linked session "u_linked"'));
+    });
+
+    it('restarts a FAILED gateway session from its auth, never logging it out', async () => {
+      await poll(
+        [{ name: 'u_f', status: 'FAILED' }],
+        ['u_f'],
+        [{ id: 'f', sessionName: 'u_f', status: 'working', phoneNumber: '1' }],
+      );
+
+      expect(waha.restartSession).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_f');
+      expect(waha.logoutSession).not.toHaveBeenCalled();
+      expect(waha.deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('gives live sessions the events secret, keeping the rest of their config', async () => {
+      make({ EVENTS_SECRET: 'test-events-secret' });
+      const customerHook = { url: 'https://customer.example.com/hook', events: ['message'] };
+      await poll(
+        [
+          { name: 'u_a', status: 'WORKING', config: { noweb: { store: { enabled: true } }, webhooks: [{ url: EVENTS, events: ['*'] }, customerHook] } },
+          {
+            name: 'u_b', status: 'WORKING',
+            config: { webhooks: [{ url: EVENTS, events: ['*'], customHeaders: [{ name: 'X-WAHooks-Events-Secret', value: 'test-events-secret' }] }] },
+          },
+        ],
+        ['u_a', 'u_b'],
+        [
+          { id: 'a', sessionName: 'u_a', status: 'working', phoneNumber: '1' },
+          { id: 'b', sessionName: 'u_b', status: 'working', phoneNumber: '2' },
+        ],
+      );
+
+      expect(waha.updateSessionConfig).toHaveBeenCalledTimes(1);
+      expect(waha.updateSessionConfig).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_a', {
+        noweb: { store: { enabled: true } },
+        webhooks: [
+          { url: EVENTS, events: ['*'], customHeaders: [{ name: 'X-WAHooks-Events-Secret', value: 'test-events-secret' }] },
+          customerHook,
+        ],
+      });
+    });
+
+    it('does the same at boot, before the pod takes traffic', async () => {
+      make({ EVENTS_SECRET: 'test-events-secret' });
+      gwDb.where.mockResolvedValueOnce([gw]).mockResolvedValueOnce([{ sessionName: 'u_a' }]);
+      waha.listSessions.mockResolvedValueOnce([{ name: 'u_a', status: 'WORKING', config: { webhooks: [{ url: EVENTS, events: ['*'] }] } }]);
+
+      await svc.onApplicationBootstrap();
+
+      expect(waha.updateSessionConfig).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_a', expect.anything());
+    });
+
+    it('skips the boot sync without EVENTS_SECRET', async () => {
+      await svc.onApplicationBootstrap();
+      expect(gwDb.select).not.toHaveBeenCalled();
+    });
+
+    it('records which gateways answered, for /api/health', async () => {
+      const gw2 = { ...gw, id: 'gw-2', podName: 'wagw-22222222', internalIp: '10.0.1.6' };
+      const wahaPod = { id: 'w0', podName: 'waha-0', internalIp: 'waha-0.waha', apiKeyEnc: 'k', status: 'active', kind: 'waha' };
+      gwDb.where
+        .mockResolvedValueOnce([gw, gw2, wahaPod])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]) // gw rows
+        .mockResolvedValueOnce([]) // gw2 rows
+        .mockResolvedValueOnce([]); // waha-0 rows
+      waha.listSessions
+        .mockRejectedValueOnce(new Error('connect ETIMEDOUT'))
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await svc.pollWorkerHealth();
+
+      expect(workers.recordGatewayHealth).toHaveBeenCalledWith([
+        { id: 'gw-1', podName: 'wagw-0a1b2c3d', reachable: false },
+        { id: 'gw-2', podName: 'wagw-22222222', reachable: true },
+      ]);
     });
   });
 });

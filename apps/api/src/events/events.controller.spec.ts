@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { EventsController } from './events.controller';
+import { eventsSecretMatches } from './events-secret';
 import { EventsGateway } from './events.gateway';
 import { WebhookLogRetentionService } from './webhook-log-retention.service';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -382,6 +384,128 @@ describe('EventsController', () => {
       expect(job1.logId).not.toEqual(job2.logId);
       expect(logRetention.touch).toHaveBeenCalledWith('wh-1');
       expect(logRetention.touch).toHaveBeenCalledWith('wh-2');
+    });
+  });
+
+  describe('events secret', () => {
+    const SECRET = 'test-events-secret';
+    const gatewaySession = { id: 'sess-g', sessionName: 'u_g_s_1', userId: 'user-1', workerId: 'gw-1', status: 'working' };
+    const wahaSession = { id: 'sess-w', sessionName: 'u_w_s_1', userId: 'user-1', workerId: 'w-0', status: 'working' };
+    const hook = { id: 'wh-1', url: 'https://example.com/hook', events: ['*'], signingSecret: 's', active: true };
+    let kinds: { getWorkerKind: jest.Mock; getWorkerForSession: jest.Mock };
+    let warn: jest.SpyInstance;
+
+    /** A controller with this EVENTS_SECRET (or none). */
+    function make(secret?: string) {
+      kinds = {
+        getWorkerKind: jest.fn(async (id: string) => (id.startsWith('gw') ? 'gateway' : 'waha')),
+        getWorkerForSession: jest.fn(),
+      };
+      warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const values: Record<string, string> = { API_URL: 'http://localhost:3001', ...(secret ? { EVENTS_SECRET: secret } : {}) };
+      return new EventsController(
+        db,
+        webhookQueue as any,
+        wahaService as any,
+        kinds as any,
+        { broadcastEvent: jest.fn() } as any,
+        { get: jest.fn((key: string, def?: unknown) => (key in values ? values[key] : def)) } as any,
+        logRetention as any,
+      );
+    }
+    const event = (session: string) => ({ event: 'message', session, payload: { body: 'hi' } });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('refuses a gateway session that sends no secret, and names the session', async () => {
+      const ctrl = make(SECRET);
+      db.where.mockResolvedValueOnce([gatewaySession]);
+
+      await expect(ctrl.ingestWahaEvent(event('u_g_s_1'))).rejects.toThrow(UnauthorizedException);
+
+      expect(webhookQueue.add).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"u_g_s_1"'));
+    });
+
+    it('accepts a gateway session that sends the secret', async () => {
+      const ctrl = make(SECRET);
+      db.where.mockResolvedValueOnce([gatewaySession]).mockResolvedValueOnce([hook]);
+
+      await expect(ctrl.ingestWahaEvent(event('u_g_s_1'), SECRET)).resolves.toEqual({ received: true });
+
+      expect(webhookQueue.add).toHaveBeenCalledTimes(1);
+      // A sent secret already proves the caller: no kind lookup needed.
+      expect(kinds.getWorkerKind).not.toHaveBeenCalled();
+    });
+
+    it('refuses a wrong secret from anyone, before looking anything up', async () => {
+      const ctrl = make(SECRET);
+
+      await expect(ctrl.ingestWahaEvent(event('u_w_s_1'), 'test-events-secreT')).rejects.toThrow(UnauthorizedException);
+      await expect(ctrl.ingestWahaEvent(event('u_w_s_1'), '')).rejects.toThrow(UnauthorizedException);
+
+      expect(db.where).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"u_w_s_1"'));
+    });
+
+    it('accepts a WAHA session without the header, as before', async () => {
+      const ctrl = make(SECRET);
+      db.where.mockResolvedValueOnce([wahaSession]).mockResolvedValueOnce([hook]);
+
+      await expect(ctrl.ingestWahaEvent(event('u_w_s_1'))).resolves.toEqual({ received: true });
+      expect(webhookQueue.add).toHaveBeenCalledTimes(1);
+    });
+
+    it("looks the worker's kind up in the cache, not with a query per event", async () => {
+      const ctrl = make(SECRET);
+      db.where.mockResolvedValueOnce([wahaSession]).mockResolvedValueOnce([hook]);
+
+      await ctrl.ingestWahaEvent(event('u_w_s_1'));
+
+      expect(kinds.getWorkerKind).toHaveBeenCalledWith('w-0');
+      // The session row and its webhook configs: the queries this endpoint always made.
+      expect(db.where).toHaveBeenCalledTimes(2);
+    });
+
+    it('without EVENTS_SECRET: accepts as before, and warns once at boot', async () => {
+      const ctrl = make();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('EVENTS_SECRET is not set'));
+      db.where.mockResolvedValueOnce([gatewaySession]).mockResolvedValueOnce([hook]);
+
+      await expect(ctrl.ingestWahaEvent(event('u_g_s_1'))).resolves.toEqual({ received: true });
+      await expect(
+        (async () => {
+          db.where.mockResolvedValueOnce([gatewaySession]).mockResolvedValueOnce([hook]);
+          return ctrl.ingestWahaEvent(event('u_g_s_1'), 'anything');
+        })(),
+      ).resolves.toEqual({ received: true });
+      expect(kinds.getWorkerKind).not.toHaveBeenCalled();
+      expect(warn.mock.calls.filter(([m]) => String(m).includes('EVENTS_SECRET'))).toHaveLength(1);
+    });
+  });
+
+  describe('eventsSecretMatches', () => {
+    it('compares in constant time over any length', () => {
+      expect(eventsSecretMatches('abc', 'abc')).toBe(true);
+      expect(eventsSecretMatches('abd', 'abc')).toBe(false);
+      expect(eventsSecretMatches('abcd', 'abc')).toBe(false);
+      expect(eventsSecretMatches('', 'abc')).toBe(false);
+    });
+  });
+
+  describe('createSession on a gateway', () => {
+    it("carries the events secret in the WAHooks webhook's customHeaders", () => {
+      const waha = new WahaService({ get: (key: string, def?: unknown) => (key === 'EVENTS_SECRET' ? 'test-events-secret' : def) } as any);
+      expect(waha.eventsWebhook('https://api.example.com/api/events/waha', 'gateway')).toEqual({
+        url: 'https://api.example.com/api/events/waha',
+        events: ['*'],
+        customHeaders: [{ name: 'X-WAHooks-Events-Secret', value: 'test-events-secret' }],
+      });
+      // WAHA sessions are created as before.
+      expect(waha.eventsWebhook('https://api.example.com/api/events/waha', 'waha')).toEqual({
+        url: 'https://api.example.com/api/events/waha',
+        events: ['*'],
+      });
     });
   });
 });

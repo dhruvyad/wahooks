@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { WorkersService } from './workers.service';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { WorkersService, gatewayScaleDecision } from './workers.service';
 import { DRIZZLE_TOKEN } from '../database/database.module';
-import { ORCHESTRATOR_TOKEN } from '../orchestration/orchestrator.interface';
+import { WORKER_ORCHESTRATORS_TOKEN } from '../orchestration/orchestrator.interface';
 
 /**
  * Creates a mock DB where each method returns a proxy that is:
@@ -48,37 +49,55 @@ function createMockDb() {
   db.mockResult = (value: any) => {
     resultQueue.push(value);
   };
+  db.shift = () => (resultQueue.length > 0 ? resultQueue.shift() : []);
 
   return db;
+}
+
+/** The SQL text and parameters of a drizzle condition. */
+function sqlOf(condition: any): { sql: string; params: unknown[] } {
+  return new PgDialect().sqlToQuery(condition);
 }
 
 describe('WorkersService', () => {
   let service: WorkersService;
   let db: ReturnType<typeof createMockDb>;
   let orchestrator: any;
+  let gatewayOrchestrator: any;
 
-  beforeEach(async () => {
+  const mockOrchestrator = () => ({
+    provisionWorker: jest.fn(),
+    destroyWorker: jest.fn(),
+    getWorkerStatus: jest.fn(),
+    listReadyWorkers: jest.fn().mockResolvedValue([]),
+  });
+
+  /** A service over a fresh mock DB with this env (and gateway orchestrator, if any). */
+  async function build(env: Record<string, string> = {}, gateway: any = null) {
     db = createMockDb();
-    orchestrator = {
-      provisionWorker: jest.fn(),
-      destroyWorker: jest.fn(),
-      getWorkerStatus: jest.fn(),
-      listReadyWorkers: jest.fn().mockResolvedValue([]),
-    };
-
+    orchestrator = mockOrchestrator();
+    gatewayOrchestrator = gateway;
+    const values: Record<string, string> = { WAHA_MAX_SESSIONS: '35', ...env };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkersService,
         { provide: DRIZZLE_TOKEN, useValue: db },
-        { provide: ORCHESTRATOR_TOKEN, useValue: orchestrator },
+        { provide: WORKER_ORCHESTRATORS_TOKEN, useValue: { waha: orchestrator, gateway } },
         {
           provide: ConfigService,
-          useValue: { get: jest.fn().mockReturnValue('35') },
+          useValue: { get: jest.fn((key: string, def?: unknown) => (key in values ? values[key] : def)) },
         },
       ],
     }).compile();
 
     service = module.get<WorkersService>(WorkersService);
+    for (const level of ['log', 'warn', 'error'] as const) {
+      jest.spyOn((service as any).logger, level).mockImplementation(() => undefined);
+    }
+  }
+
+  beforeEach(async () => {
+    await build();
   });
 
   describe('findOrProvisionWorker', () => {
@@ -99,6 +118,7 @@ describe('WorkersService', () => {
         id: 'worker-1',
         internalIp: '10.0.0.1',
         apiKey: 'enc-key-123',
+        kind: 'waha',
       });
       expect(db.select).toHaveBeenCalled();
       expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
@@ -129,6 +149,7 @@ describe('WorkersService', () => {
         id: 'worker-new',
         internalIp: '10.0.0.99',
         apiKey: 'new-api-key',
+        kind: 'waha',
       });
     });
   });
@@ -147,11 +168,11 @@ describe('WorkersService', () => {
       // No "find available worker" SELECT — goes straight to provisioning.
       expect(orchestrator.provisionWorker).toHaveBeenCalledTimes(1);
       expect(db.insert).toHaveBeenCalled();
-      expect(result).toEqual({ id: 'worker-new', internalIp: '10.0.0.99', apiKey: 'new-key' });
+      expect(result).toEqual({ id: 'worker-new', internalIp: '10.0.0.99', apiKey: 'new-key', kind: 'waha' });
     });
 
     it('throws (and does not double-provision) when a provision is already in progress', async () => {
-      (service as any).provisioningInProgress = true;
+      (service as any).provisioning.waha = true;
       await expect(service.provisionNewWorker()).rejects.toThrow('already in progress');
       expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
     });
@@ -331,7 +352,7 @@ describe('WorkersService', () => {
 
       await service.destroyWorker('worker-drain');
 
-      expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0');
+      expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0', { allowLast: false });
     });
 
     it('should do nothing when no active workers exist', async () => {
@@ -382,7 +403,7 @@ describe('WorkersService', () => {
 
       await service.destroyWorker('worker-empty');
 
-      expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0');
+      expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0', { allowLast: false });
       expect(db.update).toHaveBeenCalledTimes(1); // marked stopped
     });
 
@@ -460,7 +481,7 @@ describe('WorkersService', () => {
       // waha-0 is already in use and waha-1 is being emptied on purpose.
       expect(inserts.map((c) => c.values.podName)).toEqual(['waha-2', 'waha-3']);
       for (const call of inserts) {
-        expect(call.values).toMatchObject({ status: 'active', maxSessions: 35 });
+        expect(call.values).toMatchObject({ status: 'active', kind: 'waha', maxSessions: 35 });
         // A revived row (waha-2 had a stale cap of 50) takes the configured cap.
         expect(call.onConflict.set).toMatchObject({ status: 'active', currentSessions: 0, maxSessions: 35 });
       }
@@ -475,7 +496,7 @@ describe('WorkersService', () => {
       const worker = await service.provisionNewWorker();
 
       expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
-      expect(worker).toEqual({ id: 'row-waha-2', internalIp: pod(2).internalIp, apiKey: 'waha-key' });
+      expect(worker).toEqual({ id: 'row-waha-2', internalIp: pod(2).internalIp, apiKey: 'waha-key', kind: 'waha' });
     });
 
     it('adopts before judging capacity on every scaling check', async () => {
@@ -563,6 +584,437 @@ describe('WorkersService', () => {
 
       // Reconcile ×2, stop its idle sessions, re-reconcile (count + update), mark draining.
       expect(db.update).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  // ---- Worker kinds ----
+
+  /** Records each insert/update chain's arguments; awaiting one takes the next queued result. */
+  function record(method: 'insert' | 'update') {
+    const calls: Array<Record<string, any>> = [];
+    db[method] = jest.fn((table: unknown) => {
+      const call: Record<string, any> = { table };
+      calls.push(call);
+      const chain: any = new Proxy(
+        {},
+        {
+          get(_target, prop: string) {
+            if (prop === 'then') {
+              return (resolve: any, reject: any) => Promise.resolve(db.shift()).then(resolve, reject);
+            }
+            return (arg: unknown) => ((call[prop] = arg), chain);
+          },
+        },
+      );
+      return chain;
+    });
+    return calls;
+  }
+
+  /** Records the condition of every select's where(); results come from the queue. */
+  function recordSelectWheres() {
+    const wheres: any[] = [];
+    db.select = jest.fn(() => {
+      const chain: any = new Proxy(
+        {},
+        {
+          get(_target, prop: string) {
+            if (prop === 'then') {
+              return (resolve: any, reject: any) => Promise.resolve(db.shift()).then(resolve, reject);
+            }
+            return (arg: unknown) => {
+              if (prop === 'where') wheres.push(arg);
+              return chain;
+            };
+          },
+        },
+      );
+      return chain;
+    });
+    return wheres;
+  }
+
+  /** Queue what checkScaling reads before deciding: active rows, their reconciles, no draining rows. */
+  function queueScalingCheck(active: any[], draining: any[] = []) {
+    db.mockResult(active); // active workers
+    for (const w of active) {
+      db.mockResult([{ count: w.currentSessions }]); // reconcile count
+      db.mockResult([]); // reconcile update
+    }
+    db.mockResult(active); // re-fetch active
+    db.mockResult(draining); // draining workers
+  }
+
+  const gatewayBox = (over: Record<string, unknown> = {}) => ({
+    id: 'gw-1', podName: 'wagw-0a1b2c3d', internalIp: '10.0.1.5', apiKeyEnc: 'gateway-test-key',
+    status: 'active', kind: 'gateway', currentSessions: 0, maxSessions: 5000, ...over,
+  });
+  const wahaPod = (n: number, current: number, over: Record<string, unknown> = {}) => ({
+    id: `w${n}`, podName: `waha-${n}`, internalIp: `waha-${n}.waha`, apiKeyEnc: 'waha-key',
+    status: 'active', kind: 'waha', currentSessions: current, maxSessions: 35, ...over,
+  });
+
+  describe('placement by kind', () => {
+    it('places new connections on WAHA by default, never on a gateway', async () => {
+      const wheres = recordSelectWheres();
+      db.mockResult([wahaPod(0, 3)]);
+
+      const worker = await service.findOrProvisionWorker();
+
+      expect(service.newConnectionKind).toBe('waha');
+      expect(worker).toMatchObject({ id: 'w0', kind: 'waha' });
+      expect(sqlOf(wheres[0]).sql).toContain('"kind" = $');
+      expect(sqlOf(wheres[0]).params).toEqual(['active', 'waha']);
+    });
+
+    it('places new connections on the least-loaded gateway with room when NEW_CONNECTION_WORKER_KIND=gateway', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, mockOrchestrator());
+      const wheres = recordSelectWheres();
+      db.mockResult([gatewayBox({ currentSessions: 10 })]);
+
+      const worker = await service.findOrProvisionWorker();
+
+      expect(worker).toEqual({ id: 'gw-1', internalIp: '10.0.1.5', apiKey: 'gateway-test-key', kind: 'gateway' });
+      expect(sqlOf(wheres[0]).params).toEqual(['active', 'gateway']);
+      // "with room": current_sessions < max_sessions, so a pinned max-0 row never qualifies.
+      expect(sqlOf(wheres[0]).sql).toMatch(/"current_sessions" < "waha_workers"\."max_sessions"/);
+    });
+
+    it('provisions a gateway box when none has room: its key is recorded before the wait, its cap is GATEWAY_MAX_SESSIONS', async () => {
+      const gw = mockOrchestrator();
+      const box = { podName: 'wagw-1a2b3c4d', internalIp: '10.0.1.9', apiKey: 'gateway-test-key' };
+      gw.provisionWorker.mockImplementation(async (hooks: any) => {
+        await hooks.onCreated(box);
+        return box;
+      });
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway', GATEWAY_MAX_SESSIONS: '2' }, gw);
+      const inserts = record('insert');
+      db.mockResult([]); // no gateway with room
+      db.mockResult(undefined); // provisioning row
+      db.mockResult([{ id: 'gw-new', internalIp: box.internalIp, apiKeyEnc: box.apiKey, kind: 'gateway' }]);
+
+      const worker = await service.findOrProvisionWorker();
+
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+      expect(gw.provisionWorker).toHaveBeenCalledTimes(1);
+      expect(inserts[0].values).toMatchObject({
+        podName: box.podName, internalIp: box.internalIp, apiKeyEnc: box.apiKey,
+        status: 'provisioning', kind: 'gateway', maxSessions: 2,
+      });
+      expect(inserts[1].values).toMatchObject({ podName: box.podName, status: 'active', kind: 'gateway', maxSessions: 2 });
+      expect(inserts[1].onConflictDoUpdate.set).toMatchObject({ status: 'active', kind: 'gateway', maxSessions: 2 });
+      expect(worker).toEqual({ id: 'gw-new', internalIp: box.internalIp, apiKey: box.apiKey, kind: 'gateway' });
+    });
+
+    it('fails, and says why on /api/health, when gateways take new connections but none can be provisioned', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, null);
+      db.mockResult([]); // no gateway with room
+
+      await expect(service.findOrProvisionWorker()).rejects.toThrow('No orchestrator for gateway workers');
+      expect(service.getScaleUpFailure()).toMatchObject({ kind: 'gateway', failedAttempts: 1 });
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+    });
+
+    it("falls back to WAHA for a NEW_CONNECTION_WORKER_KIND it doesn't know", async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gatway' });
+      expect(service.newConnectionKind).toBe('waha');
+    });
+  });
+
+  describe('per-kind scaling', () => {
+    it('no longer lets a pinned gateway row (max_sessions 0) block WAHA scale-down', async () => {
+      const pinned = gatewayBox({ id: 'gw-a', podName: 'wagw-a', currentSessions: 1, maxSessions: 0 });
+      queueScalingCheck([wahaPod(0, 1), wahaPod(2, 1), pinned]);
+      db.mockResult([{ count: 0 }]); // working sessions on waha-2
+      const drain = jest.spyOn(service, 'drainWorker');
+
+      await service.checkScaling();
+
+      expect(drain).toHaveBeenCalledWith('w2');
+      // Not a gateway scale-up either: the pinned row counts for no room and no load.
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [4, 5, true], // 80 %: at the default GATEWAY_SCALE_UP_AT
+      [3, 5, false], // 60 %
+    ])('with %i/%i gateway sessions, provisions a box: %s', async (current, max, provisions) => {
+      const gw = mockOrchestrator();
+      gw.provisionWorker.mockResolvedValue({ podName: 'wagw-new', internalIp: '10.0.1.6', apiKey: 'gateway-test-key' });
+      await build({}, gw);
+      queueScalingCheck([gatewayBox({ currentSessions: current, maxSessions: max })]);
+      db.mockResult([{ id: 'gw-2', internalIp: '10.0.1.6', apiKeyEnc: 'gateway-test-key', kind: 'gateway' }]);
+
+      await service.checkScaling();
+
+      expect(gw.provisionWorker).toHaveBeenCalledTimes(provisions ? 1 : 0);
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+    });
+
+    it('honours GATEWAY_SCALE_UP_AT', async () => {
+      const gw = mockOrchestrator();
+      await build({ GATEWAY_SCALE_UP_AT: '0.5' }, gw);
+      gw.provisionWorker.mockResolvedValue({ podName: 'wagw-new', internalIp: '10.0.1.6', apiKey: 'gateway-test-key' });
+      queueScalingCheck([gatewayBox({ currentSessions: 3, maxSessions: 6 })]);
+
+      await service.checkScaling();
+
+      expect(gw.provisionWorker).toHaveBeenCalledTimes(1);
+    });
+
+    it('with a small GATEWAY_MAX_SESSIONS, a box registers with that cap and filling it adds the next box', async () => {
+      const gw = mockOrchestrator();
+      gw.provisionWorker.mockResolvedValue({ podName: 'wagw-0002', internalIp: '10.0.1.7', apiKey: 'gateway-test-key' });
+      await build({ GATEWAY_MAX_SESSIONS: '2', NEW_CONNECTION_WORKER_KIND: 'gateway' }, gw);
+      const inserts = record('insert');
+      queueScalingCheck([gatewayBox({ podName: 'wagw-0001', currentSessions: 2, maxSessions: 2 })]);
+      db.mockResult([{ id: 'gw-2', internalIp: '10.0.1.7', apiKeyEnc: 'gateway-test-key', kind: 'gateway' }]);
+
+      await service.checkScaling();
+
+      expect(gw.provisionWorker).toHaveBeenCalledTimes(1);
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0].values).toMatchObject({ podName: 'wagw-0002', kind: 'gateway', status: 'active', maxSessions: 2 });
+    });
+
+    it('never provisions two gateway boxes at once', async () => {
+      let finish!: (r: any) => void;
+      const gw = mockOrchestrator();
+      gw.provisionWorker.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+      await build({}, gw);
+
+      const first = service.provisionNewWorker('gateway');
+      await expect(service.provisionNewWorker('gateway')).rejects.toThrow('already in progress');
+
+      // A scaling check meanwhile sees a full fleet but leaves the box in flight alone.
+      queueScalingCheck([gatewayBox({ currentSessions: 5000 })]);
+      await service.checkScaling();
+      expect(gw.provisionWorker).toHaveBeenCalledTimes(1);
+
+      // A WAHA pod can still be added alongside.
+      orchestrator.provisionWorker.mockResolvedValue({ podName: 'waha-1', internalIp: 'waha-1.waha', apiKey: 'waha-key' });
+      db.mockResult([{ id: 'w1', internalIp: 'waha-1.waha', apiKeyEnc: 'waha-key', kind: 'waha' }]);
+      await expect(service.provisionNewWorker('waha')).resolves.toMatchObject({ id: 'w1' });
+
+      db.mockResult([{ id: 'gw-2', internalIp: '10.0.1.6', apiKeyEnc: 'gateway-test-key', kind: 'gateway' }]);
+      finish({ podName: 'wagw-new', internalIp: '10.0.1.6', apiKey: 'gateway-test-key' });
+      await expect(first).resolves.toMatchObject({ id: 'gw-2', kind: 'gateway' });
+      expect(service.getScaleUpFailure()).toBeNull();
+    });
+
+    it('adds no WAHA pod while new connections go to gateways, however full WAHA is', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, null);
+      queueScalingCheck([wahaPod(0, 35)]);
+      db.mockResult([{ count: 35 }]); // sessions still on WAHA: not going to zero
+
+      await service.checkScaling();
+
+      expect(orchestrator.provisionWorker).not.toHaveBeenCalled();
+    });
+
+    it('logs instead of scaling a gateway fleet nobody can provision for', async () => {
+      await build({}, null);
+      queueScalingCheck([gatewayBox({ currentSessions: 4900 })]);
+
+      await service.checkScaling();
+
+      expect((service as any).logger.warn).toHaveBeenCalledWith(expect.stringContaining('no gateway orchestrator'));
+      expect(service.getScaleUpFailure()).toBeNull();
+    });
+  });
+
+  describe('gatewayScaleDecision', () => {
+    it('ignores pinned (max 0) rows for load and room', () => {
+      expect(gatewayScaleDecision([{ currentSessions: 1, maxSessions: 0 }, { currentSessions: 3, maxSessions: 10 }], 0.8, false))
+        .toEqual({ scaleUp: false, used: 3, capacity: 10, ratio: 0.3 });
+    });
+
+    it('wants a box with no gateway room only while new connections go to gateways', () => {
+      expect(gatewayScaleDecision([{ currentSessions: 1, maxSessions: 0 }], 0.8, false).scaleUp).toBe(false);
+      expect(gatewayScaleDecision([{ currentSessions: 1, maxSessions: 0 }], 0.8, true).scaleUp).toBe(true);
+      expect(gatewayScaleDecision([], 0.8, true).scaleUp).toBe(true);
+      expect(gatewayScaleDecision([], 0.8, false).scaleUp).toBe(false);
+    });
+  });
+
+  describe('WAHA to zero', () => {
+    it('drains the highest-ordinal WAHA pod once new connections go to gateways and no WAHA session is left', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, null);
+      const wheres = recordSelectWheres();
+      queueScalingCheck([wahaPod(0, 0), wahaPod(1, 0)]);
+      db.mockResult([{ count: 0 }]); // non-stopped sessions on WAHA workers
+      const drain = jest.spyOn(service, 'drainWorker');
+
+      await service.checkScaling();
+
+      expect(drain).toHaveBeenCalledTimes(1);
+      expect(drain).toHaveBeenCalledWith('w1');
+      // Counted over WAHA workers that still exist, every non-stopped session (failed too).
+      const count = sqlOf(wheres[wheres.length - 1]);
+      expect(count.params).toEqual(['waha', 'stopped', 'stopped']);
+    });
+
+    it('drains the last WAHA pod too, and lets the orchestrator remove it', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, null);
+      const last = wahaPod(0, 0, { status: 'draining' });
+      queueScalingCheck([], [last]);
+      db.mockResult([{ count: 0 }]); // reconcile count
+      db.mockResult([]); // reconcile update
+      db.mockResult([last]); // getWorker
+      db.mockResult([{ count: 0 }]); // no WAHA session left
+      db.mockResult([last]); // destroyWorker → getWorker
+      orchestrator.destroyWorker.mockResolvedValue(true);
+
+      await service.checkScaling();
+
+      expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0', { allowLast: true });
+    });
+
+    it('keeps the last WAHA pod while any WAHA worker holds a session', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, null);
+      const last = wahaPod(0, 0, { status: 'draining' });
+      queueScalingCheck([], [last]);
+      db.mockResult([{ count: 0 }]);
+      db.mockResult([]);
+      db.mockResult([last]);
+      db.mockResult([{ count: 1 }]); // a failed session still on a WAHA worker
+      db.mockResult([last]);
+      orchestrator.destroyWorker.mockResolvedValue(false);
+
+      await service.checkScaling();
+
+      expect(orchestrator.destroyWorker).toHaveBeenCalledWith('waha-0', { allowLast: false });
+    });
+
+    it('waits for every WAHA session to move before draining the last pod', async () => {
+      await build({ NEW_CONNECTION_WORKER_KIND: 'gateway' }, null);
+      queueScalingCheck([wahaPod(0, 0)]);
+      db.mockResult([{ count: 1 }]);
+      const drain = jest.spyOn(service, 'drainWorker');
+
+      await service.checkScaling();
+
+      expect(drain).not.toHaveBeenCalled();
+    });
+
+    it('never goes to zero while new connections are placed on WAHA', async () => {
+      queueScalingCheck([wahaPod(0, 0)]);
+      const drain = jest.spyOn(service, 'drainWorker');
+
+      await service.checkScaling();
+
+      expect(drain).not.toHaveBeenCalled();
+    });
+
+    it('never destroys a drained gateway box (removing one is a human decision)', async () => {
+      const gw = mockOrchestrator();
+      await build({}, gw);
+      const drained = gatewayBox({ status: 'draining' });
+      queueScalingCheck([], [drained]);
+      db.mockResult([{ count: 0 }]);
+      db.mockResult([]);
+      db.mockResult([drained]); // getWorker
+      const updates = record('update');
+
+      await service.checkScaling();
+
+      expect(gw.destroyWorker).not.toHaveBeenCalled();
+      expect(updates.some((u) => u.set?.status === 'stopped')).toBe(false);
+    });
+  });
+
+  describe('adopting gateway boxes', () => {
+    const handMade = { id: 'gw-a', podName: 'wagw-a', internalIp: '10.255.0.250', apiKeyEnc: 'hand-key' };
+
+    it('matches a box registered by hand under another name by its address, and never registers it twice', async () => {
+      const gw = mockOrchestrator();
+      gw.listReadyWorkers.mockResolvedValue([{ podName: 'wahooks-gw-1', internalIp: '10.255.0.250', apiKey: '' }]);
+      await build({}, gw);
+      const wheres = recordSelectWheres();
+      db.mockResult([{ ...handMade, status: 'active' }]);
+      const inserts = record('insert');
+      const updates = record('update');
+
+      await expect(service.adoptReadyWorkers('gateway')).resolves.toEqual([]);
+
+      expect(inserts).toHaveLength(0);
+      expect(updates).toHaveLength(0);
+      expect(sqlOf(wheres[0]).params).toEqual(['wahooks-gw-1', '10.255.0.250']);
+    });
+
+    it('revives a stopped hand-made row in place, keeping its name and key', async () => {
+      const gw = mockOrchestrator();
+      gw.listReadyWorkers.mockResolvedValue([{ podName: 'wahooks-gw-1', internalIp: '10.255.0.250', apiKey: '' }]);
+      await build({}, gw);
+      db.mockResult([{ ...handMade, status: 'stopped' }]);
+      db.mockResult([{ ...handMade, kind: 'gateway', status: 'active' }]);
+      const inserts = record('insert');
+      const updates = record('update');
+
+      const [worker] = await service.adoptReadyWorkers('gateway');
+
+      expect(inserts).toHaveLength(0);
+      expect(updates).toHaveLength(1);
+      expect(updates[0].set).toMatchObject({ status: 'active', kind: 'gateway', apiKeyEnc: 'hand-key' });
+      expect(updates[0].set).not.toHaveProperty('podName');
+      expect(worker).toEqual({ id: 'gw-a', internalIp: '10.255.0.250', apiKey: 'hand-key', kind: 'gateway' });
+    });
+
+    it('activates a box whose provision timed out with the key its provisioning row kept', async () => {
+      const gw = mockOrchestrator();
+      gw.listReadyWorkers.mockResolvedValue([{ podName: 'wagw-1234abcd', internalIp: '10.0.1.7', apiKey: '' }]);
+      await build({}, gw);
+      db.mockResult([{ id: 'row-p', podName: 'wagw-1234abcd', internalIp: '10.0.1.7', status: 'provisioning', apiKeyEnc: 'kept-test-key' }]);
+      db.mockResult([{ id: 'row-p', internalIp: '10.0.1.7', apiKeyEnc: 'kept-test-key', kind: 'gateway' }]);
+      const inserts = record('insert');
+
+      await service.adoptReadyWorkers('gateway');
+
+      expect(inserts[0].values).toMatchObject({ podName: 'wagw-1234abcd', apiKeyEnc: 'kept-test-key', status: 'active', kind: 'gateway' });
+    });
+
+    it("leaves a ready box without a row alone: its key isn't known", async () => {
+      const gw = mockOrchestrator();
+      gw.listReadyWorkers.mockResolvedValue([{ podName: 'wagw-ffff0000', internalIp: '10.0.1.8', apiKey: '' }]);
+      await build({}, gw);
+      db.mockResult([]);
+      const inserts = record('insert');
+
+      await expect(service.adoptReadyWorkers('gateway')).resolves.toEqual([]);
+      expect(inserts).toHaveLength(0);
+    });
+  });
+
+  describe('getWorkerKind', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('answers from a cache: one query for a burst of events, refreshed after a minute', async () => {
+      jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      db.mockResult([{ id: 'w0', kind: 'waha' }, { id: 'gw-1', kind: 'gateway' }]);
+
+      const kinds = await Promise.all(['gw-1', 'w0', 'gw-1', 'w0'].map((id) => service.getWorkerKind(id)));
+
+      expect(kinds).toEqual(['gateway', 'waha', 'gateway', 'waha']);
+      expect(db.select).toHaveBeenCalledTimes(1);
+      // An id it doesn't know, right after a load: no query.
+      await expect(service.getWorkerKind('nope')).resolves.toBeNull();
+      expect(db.select).toHaveBeenCalledTimes(1);
+
+      jest.spyOn(Date, 'now').mockReturnValue(1_000_000 + 61_000);
+      db.mockResult([{ id: 'gw-1', kind: 'gateway' }]);
+      await service.getWorkerKind('gw-1');
+      expect(db.select).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('gateway reachability', () => {
+    it('remembers since when a box has been unreachable', () => {
+      service.recordGatewayHealth([{ id: 'gw-1', podName: 'wagw-a', reachable: false }]);
+      const since = service.getGatewayHealth()!.boxes[0].unreachableSince;
+      service.recordGatewayHealth([{ id: 'gw-1', podName: 'wagw-a', reachable: false }]);
+      expect(service.getGatewayHealth()!.boxes[0].unreachableSince).toBe(since);
+      service.recordGatewayHealth([{ id: 'gw-1', podName: 'wagw-a', reachable: true }]);
+      expect(service.getGatewayHealth()!.boxes[0].unreachableSince).toBeNull();
     });
   });
 });

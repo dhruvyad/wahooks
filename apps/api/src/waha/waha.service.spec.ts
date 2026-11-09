@@ -63,6 +63,25 @@ describe('WahaService', () => {
       expect(result).toEqual(responseData);
     });
 
+    it('gives a gateway session the events secret header, and a WAHA one none', async () => {
+      // This spec's ConfigService answers '50' for every key, EVENTS_SECRET included.
+      fetchSpy.mockResolvedValue(mockFetchResponse({ name: 's', status: 'STARTING' }));
+
+      await service.createSession(workerUrl, apiKey, 's', 'https://hooks.example.com/wh', 'gateway');
+      await service.createSession(workerUrl, apiKey, 's', 'https://hooks.example.com/wh', 'waha');
+
+      expect(JSON.parse(fetchSpy.mock.calls[0][1].body).config.webhooks).toEqual([
+        {
+          url: 'https://hooks.example.com/wh',
+          events: ['*'],
+          customHeaders: [{ name: 'X-WAHooks-Events-Secret', value: '50' }],
+        },
+      ]);
+      expect(JSON.parse(fetchSpy.mock.calls[1][1].body).config.webhooks).toEqual([
+        { url: 'https://hooks.example.com/wh', events: ['*'] },
+      ]);
+    });
+
     it('should send empty webhooks array when no webhookUrl provided', async () => {
       fetchSpy.mockResolvedValueOnce(mockFetchResponse({ name: 'sess', status: 'STARTING' }));
 

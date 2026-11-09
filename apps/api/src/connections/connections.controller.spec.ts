@@ -168,7 +168,7 @@ describe('ConnectionsController', () => {
     const NOW = Date.parse('2026-10-21T22:00:00Z');
     const minutesAgo = (m: number) => new Date(NOW - m * 60_000);
     const fullWorker = { id: 'w0', status: 'active', currentSessions: 35, maxSessions: 35, internalIp: 'waha-0.waha', apiKeyEnc: 'k' };
-    const roomyWorker = { id: 'w2', status: 'active', currentSessions: 3, maxSessions: 35, internalIp: 'waha-2.waha', apiKeyEnc: 'k' };
+    const roomyWorker = { id: 'w2', status: 'active', kind: 'waha', currentSessions: 3, maxSessions: 35, internalIp: 'waha-2.waha', apiKeyEnc: 'k' };
     const session = (id: string, status: string, updatedAt: Date) => ({
       id, userId: 'user-123', sessionName: `u_s_${id}`, status, updatedAt,
     });
@@ -191,7 +191,7 @@ describe('ConnectionsController', () => {
 
       expect(result).toEqual({ id: 'scannable', status: 'scan_qr', qr: 'QR' });
       expect(wahaService.resetSession).toHaveBeenCalledTimes(1);
-      expect(wahaService.resetSession).toHaveBeenCalledWith('waha-2.waha', 'k', 'u_s_scannable', expect.any(String));
+      expect(wahaService.resetSession).toHaveBeenCalledWith('waha-2.waha', 'k', 'u_s_scannable', expect.any(String), 'waha');
       // The stuck one is soft-deleted with the reason recorded.
       expect(db.set).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'stopped', statusReason: expect.stringContaining('stuck pending') }),
@@ -259,7 +259,7 @@ describe('ConnectionsController', () => {
     it('should insert a session, provision worker, create/start WAHA session, and return updated record when user has available slots', async () => {
       const created = { id: 'sess-new', userId: 'user-123', sessionName: 'u_user123_s_uuid', status: 'pending' };
       const updated = { ...created, status: 'scan_qr' };
-      const worker = { id: 'worker-1', internalIp: '10.0.0.1', apiKey: 'key-123' };
+      const worker = { id: 'worker-1', internalIp: '10.0.0.1', apiKey: 'key-123', kind: 'gateway' };
       const dbUser = { id: 'user-123', email: 'test@example.com', stripeCustomerId: 'cus_123' };
 
       // First where() for user lookup (billing check)
@@ -289,6 +289,7 @@ describe('ConnectionsController', () => {
         'key-123',
         expect.any(String),
         'http://localhost:3001/api/events/waha',
+        'gateway',
       );
       expect(wahaService.startSession).toHaveBeenCalledWith(
         '10.0.0.1',

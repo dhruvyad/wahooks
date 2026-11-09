@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Inject, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Headers,
+  Inject,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -11,6 +19,7 @@ import { WahaService } from '../waha/waha.service';
 import { WorkersService } from '../workers/workers.service';
 import { EventsGateway } from './events.gateway';
 import { WebhookLogRetentionService } from './webhook-log-retention.service';
+import { EVENTS_SECRET_HEADER, eventsSecretMatches } from './events-secret';
 
 interface WahaEvent {
   event: string;
@@ -29,6 +38,10 @@ export class EventsController {
   private readonly LID_UNKNOWN_TTL_MS = 10 * 60 * 1000;
   private readonly LID_PHONE_CACHE_MAX = 10_000;
 
+  // Shared secret workers send in EVENTS_SECRET_HEADER. Gateway sessions must
+  // send it; WAHA sessions don't yet, but one that does must send it right.
+  private readonly eventsSecret: string | null;
+
   constructor(
     @Inject(DRIZZLE_TOKEN) private readonly db: any,
     @InjectQueue('webhook-delivery') private readonly webhookQueue: Queue,
@@ -37,17 +50,39 @@ export class EventsController {
     private readonly eventsGateway: EventsGateway,
     private readonly configService: ConfigService,
     private readonly logRetention: WebhookLogRetentionService,
-  ) {}
+  ) {
+    this.eventsSecret = this.configService.get<string>('EVENTS_SECRET')?.trim() || null;
+    if (!this.eventsSecret) {
+      this.logger.warn(
+        'EVENTS_SECRET is not set: POST /api/events/waha accepts any event that names a session',
+      );
+    }
+  }
 
   /**
    * Ingestion endpoint for WAHA webhook events.
-   * No auth guard — this receives internal traffic from WAHA worker containers.
+   * No auth guard — this receives internal traffic from WAHA worker containers
+   * and gateway boxes. With EVENTS_SECRET set, gateway sessions must send it in
+   * X-WAHooks-Events-Secret, and a header that is sent must match.
    */
   @Post('waha')
-  async ingestWahaEvent(@Body() event: WahaEvent) {
+  async ingestWahaEvent(
+    @Body() event: WahaEvent,
+    @Headers(EVENTS_SECRET_HEADER.toLowerCase()) eventsSecret?: string,
+  ) {
     this.logger.log(
       `Received WAHA event: ${event.event} for session: ${event.session}`,
     );
+
+    // A wrong secret is refused before any lookup.
+    if (this.eventsSecret && eventsSecret !== undefined) {
+      if (!eventsSecretMatches(String(eventsSecret), this.eventsSecret)) {
+        this.logger.warn(
+          `Refused event for session ${this.logName(event.session)}: wrong ${EVENTS_SECRET_HEADER}`,
+        );
+        throw new UnauthorizedException();
+      }
+    }
 
     // 1. Look up the session by sessionName
     // WAHA Core (single session) always reports session name as "default",
@@ -77,6 +112,24 @@ export class EventsController {
         `No session found for sessionName: ${event.session}, ignoring event`,
       );
       return { received: true };
+    }
+
+    // No secret sent: fine for a WAHA session (as before), not for a gateway's.
+    if (this.eventsSecret && eventsSecret === undefined && session.workerId) {
+      let kind: string | null = null;
+      try {
+        kind = await this.workersService.getWorkerKind(session.workerId);
+      } catch (error) {
+        this.logger.warn(
+          `Worker kind lookup failed for session ${session.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (kind === 'gateway') {
+        this.logger.warn(
+          `Refused event for gateway session ${this.logName(event.session)}: no ${EVENTS_SECRET_HEADER}`,
+        );
+        throw new UnauthorizedException();
+      }
     }
 
     // 1b. session.status events carry the live connection state. Reflect it in
@@ -174,6 +227,11 @@ export class EventsController {
     }
 
     return { received: true };
+  }
+
+  /** A caller-supplied session name, bounded for the log. */
+  private logName(name: unknown): string {
+    return JSON.stringify(String(name ?? '').slice(0, 80));
   }
 
   /**
