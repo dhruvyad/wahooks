@@ -137,6 +137,15 @@ From a laptop: `ssh -N -L 13000:127.0.0.1:3000 <box>`, then `http://localhost:13
 - On an IPv6-only box, set `WAGW_WEBHOOK_RESOLVE` if the API's hostname has no AAAA record.
 - Existing NOWEB sessions move without a re-scan with the converter in [`../migrate`](../migrate).
 
+## Importing a migrated session's WAHA history
+
+`gateway import-history -session <name> -dump <pg_dump -Fc archive of waha_noweb_…>` (or `-messages`/`-chats` CSV,
+`-dry-run`) writes WAHA NOWEB's stored messages and chats as if the gateway had received them: same parse and
+skips as history sync, `waha.ToRow`, LID/PN alternates from Baileys' key. Only inserts absent messages, never moves
+a chat back or overwrites its live state, honours retention and the per-chat cap, prints counts. Safe while
+running. Use a build that has the subcommand (`gateway version` 2026.11.1-wagw or later): this build exits on an
+unknown subcommand, older ones start the gateway instead.
+
 ## Density notes
 
 Per account the gateway adds no goroutines; whatsmeow keeps a few per connected client. Caches that grow with

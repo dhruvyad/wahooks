@@ -1,0 +1,251 @@
+{
+	"me": {
+		"pn": "15555550123:23@s.whatsapp.net",
+		"lid": "100000000000001:23@lid"
+	},
+	"chats": [
+		{
+			"id": "15555550101@s.whatsapp.net",
+			"name": "Alice Fixture",
+			"conversationTimestamp": 1794099950,
+			"unreadCount": 2
+		},
+		{
+			"id": "120363000000000001@g.us",
+			"name": "Fixture Group",
+			"conversationTimestamp": 1794099800,
+			"unreadCount": 0,
+			"archived": true
+		},
+		{
+			"id": "100000000000107@lid",
+			"conversationTimestamp": 1794099900,
+			"unreadCount": 0,
+			"markedAsUnread": true
+		}
+	],
+	"messages": [
+		{
+			"name": "text",
+			"id": "3EB0TEXT0001",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099400,
+			"pushName": "alice",
+			"status": 3,
+			"skip": null,
+			"wire": "ChBoZWxsbyBmcm9tIGFsaWNl"
+		},
+		{
+			"name": "reply (fromMe, quoted)",
+			"id": "3EB0REPLY002",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": true,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099500,
+			"pushName": "",
+			"status": 4,
+			"skip": null,
+			"wire": "MksKCGhpIGFsaWNligE+CgwzRUIwVEVYVDAwMDESGjE1NTU1NTUwMTAxQHMud2hhdHNhcHAubmV0GhIKEGhlbGxvIGZyb20gYWxpY2U="
+		},
+		{
+			"name": "image with media keys",
+			"id": "3EB0IMAGE003",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099600,
+			"pushName": "alice",
+			"status": 3,
+			"skip": null,
+			"wire": "GqkCCjJodHRwczovL21tZy53aGF0c2FwcC5uZXQvdi90NjIuNzExOC0yNC9maXh0dXJlLmVuYxIKaW1hZ2UvanBlZxoJYSBwaWN0dXJlIiChFsntRtYgdzSkMxfTD9iPUqyGNMN9kEu/TkHYZfkEdSixqAMwgAU44ANCIBeUIx2VC55MGamWLxkC4dDo5/n3Kxllj3nszK09d/5pSiBfsqt27ZvaA0sZLEjHBpNZJS/M2haNklrMCufTFsC1PlojL3YvdDYyLjcxMTgtMjQvZml4dHVyZS5lbmM/Y2NiPTExLTRgvJW/1waCAUA5UaRgY+N/TvQ9CP/bhvsCfQQnlcEiYZTXhNqbiOwrTzm6ryPHYn8rAzDazFzUtiWIPqFD9MYcUZWqqeWpbA8v",
+			"mediaKey": "F5QjHZULnkwZqZYvGQLh0Ojn+fcrGWWPeezMrT13/mk="
+		},
+		{
+			"name": "reaction",
+			"id": "3EB0REACT004",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099700,
+			"pushName": "alice",
+			"status": 0,
+			"skip": "reaction",
+			"wire": "8gI7CiwKGjE1NTU1NTUwMTAxQHMud2hhdHNhcHAubmV0EAAaDDNFQjBURVhUMDAwMRIE8J+RjSCgwrPFmzQ="
+		},
+		{
+			"name": "group message (LID participant)",
+			"id": "3EB0GROUP005",
+			"chat": "120363000000000001@g.us",
+			"fromMe": false,
+			"participant": "100000000000102@lid",
+			"alt": "15555550102@s.whatsapp.net",
+			"ts": 1794099800,
+			"pushName": "bob",
+			"status": 3,
+			"skip": null,
+			"wire": "Cgtncm91cCBoZWxsbw=="
+		},
+		{
+			"name": "LID-addressed chat, incoming",
+			"id": "3EB0LIDIN006",
+			"chat": "100000000000107@lid",
+			"fromMe": false,
+			"participant": "",
+			"alt": "15555550107@s.whatsapp.net",
+			"ts": 1794099850,
+			"pushName": "gina",
+			"status": 3,
+			"skip": null,
+			"wire": "CglsaWQgaGVsbG8="
+		},
+		{
+			"name": "LID-addressed chat, fromMe",
+			"id": "3EB0LIDME007",
+			"chat": "100000000000107@lid",
+			"fromMe": true,
+			"participant": "",
+			"alt": "15555550107@s.whatsapp.net",
+			"ts": 1794099900,
+			"pushName": "",
+			"status": 2,
+			"skip": null,
+			"wire": "CglsaWQgcmVwbHk="
+		},
+		{
+			"name": "disappearing (ephemeral wrapper)",
+			"id": "3EB0EPHEM008",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099950,
+			"pushName": "alice",
+			"status": 3,
+			"skip": null,
+			"wire": "wgIdChsyGQoPdGhpcyBkaXNhcHBlYXJzigEFyAGA9SQ="
+		},
+		{
+			"name": "document",
+			"id": "3EB0DOCUM010",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099955,
+			"pushName": "alice",
+			"status": 3,
+			"skip": null,
+			"wire": "OukBCiRodHRwczovL21tZy53aGF0c2FwcC5uZXQvZC9mL2RvYy5lbmMSD2FwcGxpY2F0aW9uL3BkZhoGcmVwb3J0IiDq7ntKLmEOtoqbEdxkkRmXygORm04r9y/ffn3cKsl5xSjOwvEFMAM6IB6uZ55PUryOkqcNHu9+6VKjueRr21F2zs7aXR1zhtpEQgpyZXBvcnQucGRmSiAH1lkr5C+n78OqZNv22D+83t+b4ae9tJ7zoorbq+yKzFIWL3YvdDYyLjcxMTktMjQvZG9jLmVuY1jylb/XBoIBEFwjxdXOKZrL8G5xFT005QY="
+		},
+		{
+			"name": "voice note",
+			"id": "3EB0AUDIO011",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": true,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099956,
+			"pushName": "",
+			"status": 5,
+			"skip": null,
+			"wire": "QoQCCh5odHRwczovL21tZy53aGF0c2FwcC5uZXQvYS5lbmMSFmF1ZGlvL29nZzsgY29kZWNzPW9wdXMaIHKgb9WVC0A0kHnc1h1LzAZnp2xqyhEx5uj3WOIbwLZiIIAgKAcwATogIxvtLugMK83ZhXWTRxCcx9lKGm5W8XTLHTnpMdzFzZNCIPqC/ZNis6WVHXQSWzszO+x5SQ7xjX5uLXOh+1CNsuEfShQvdi90NjIuNzExNy0yNC9hLmVuY1Dzlb/XBpoBQHEUsiCvCSF8NVQ0/uHVsbcsxtdu5Kuw/jeGjxCeGyB8JkUYeIDO8yzp9/Sg7nCZp5KZIuJ/6GNa/EcgqFgf1mQ="
+		},
+		{
+			"name": "video",
+			"id": "3EB0VIDEO012",
+			"chat": "120363000000000001@g.us",
+			"fromMe": false,
+			"participant": "100000000000102@lid",
+			"alt": "15555550102@s.whatsapp.net",
+			"ts": 1794099957,
+			"pushName": "bob",
+			"status": 3,
+			"skip": null,
+			"wire": "StQBCh5odHRwczovL21tZy53aGF0c2FwcC5uZXQvdi5lbmMSCXZpZGVvL21wNBogJr1uRYqxGw01p8cFY4wdzOcSrrM6gSKyVdOn5gALwq0ggIl6KAwyIJ8BqiD1Yr1185o+BuhGtZjLyayVkhykOqWDyfa85948OgRjbGlwQABI0AVQgApaIFq0SM1z5z9b2GCnp0heRNuE1bB1voRNe3MgD74DKVCoahQvdi90NjIuNzE2MS0yNC92LmVuY3D0lb/XBoIBED7pO5aKFtx44hc5IvU7fH8="
+		},
+		{
+			"name": "sticker",
+			"id": "3EB0STICK013",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099958,
+			"pushName": "alice",
+			"status": 3,
+			"skip": null,
+			"wire": "0gHGAQoeaHR0cHM6Ly9tbWcud2hhdHNhcHAubmV0L3MuZW5jEiDa0p4xf6oXRo+C1lFGRLD14kPwFiGzBSao6uofCB6HsxogZeK8r2+g+4X98BWuu8bMKswHPrDRZFDMeslnPv9vlMwiINCYFqRfJI+UeO46QkQAmvv6EgKa6eYTWFQ06MyfJqMdKgppbWFnZS93ZWJwMIAEOIAEQhUvdi90NjIuMTU1NzUtMjQvcy5lbmNIoJwBUPWVv9cGaACCAQjKHZrQyu+pKw=="
+		},
+		{
+			"name": "location",
+			"id": "3EB0LOCAT014",
+			"chat": "100000000000107@lid",
+			"fromMe": false,
+			"participant": "",
+			"alt": "15555550107@s.whatsapp.net",
+			"ts": 1794099959,
+			"pushName": "gina",
+			"status": 3,
+			"skip": null,
+			"wire": "KjQJRdREn49CSkARzsR0IVbPKkAaCVNvbWV3aGVyZSIKQSBzdHJlZXQgMYIBCH8Cl4JE4itH"
+		},
+		{
+			"name": "contact card",
+			"id": "3EB0VCARD015",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": true,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099960,
+			"pushName": "",
+			"status": 2,
+			"skip": null,
+			"wire": "IlYKB1NvbWVvbmWCAUpCRUdJTjpWQ0FSRApWRVJTSU9OOjMuMApGTjpTb21lb25lClRFTDt0eXBlPUNFTEw6KzEgNTU1IDU1NSAwMTk5CkVORDpWQ0FSRA=="
+		},
+		{
+			"name": "poll",
+			"id": "3EB0POLLS016",
+			"chat": "120363000000000001@g.us",
+			"fromMe": true,
+			"participant": "",
+			"alt": "",
+			"ts": 1794099961,
+			"pushName": "",
+			"status": 2,
+			"skip": null,
+			"wire": "mgIiGiCsRaFMqmze2h89OwyTE6V3Io3eBGo5VzWC6rPoj/DpU4IEFxIGTHVuY2g/GgUKA3llcxoECgJubyAB"
+		},
+		{
+			"name": "group text with mention",
+			"id": "3EB0MENTN017",
+			"chat": "120363000000000001@g.us",
+			"fromMe": false,
+			"participant": "100000000000102@lid",
+			"alt": "15555550102@s.whatsapp.net",
+			"ts": 1794099962,
+			"pushName": "bob",
+			"status": 4,
+			"skip": null,
+			"wire": "Mi4KFGhleSBAMTAwMDAwMDAwMDAwMDAxigEVehMxMDAwMDAwMDAwMDAwMDFAbGlk"
+		},
+		{
+			"name": "older than retention",
+			"id": "3EB0OLDOLD09",
+			"chat": "15555550101@s.whatsapp.net",
+			"fromMe": false,
+			"participant": "",
+			"alt": "",
+			"ts": 1788916000,
+			"pushName": "alice",
+			"status": 4,
+			"skip": "retention",
+			"wire": "Cg50d28gbW9udGhzIGFnbw=="
+		}
+	]
+}

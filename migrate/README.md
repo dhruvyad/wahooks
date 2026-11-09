@@ -282,6 +282,17 @@ Regenerate fixtures (Node ≥ 20, Docker):
 cd fixturegen && npm ci && node gen.mjs ../testdata/baileys && ./export-formats.sh
 ```
 
+## 7b. Message history
+`gateway import-history` (in the gateway binary, `gateway/internal/wahaimport`) imports WAHA's `messages` and
+`chats` tables from a `pg_dump -Fc` archive of the session database (or CSV) into `gw_messages` / `gw_chats`, after
+the session has been converted and adopted. Baileys' stored objects are mapped onto whatsmeow's protobufs by field
+descriptor (name differences such as `fileSha256`/`fileSHA256`, `remoteJid`/`remoteJID`,
+`senderTimestampMs`/`senderTimestampMS`; BufferJSON bytes; numeric longs and enums), then go through the gateway's
+own history path. Tested against a real `pg_dump` archive of Baileys-made messages (`fixturegen/history.mjs`,
+`export-history.sh`): text, quoted reply, image, document, voice note, video, sticker, location, contact card,
+poll, group mention, both directions in a LID chat, an ephemeral wrapper; each stores and renders exactly as when
+whatsmeow receives the same bytes.
+
 ## 7. For the gateway
 Convert into the gateway's store, then attach the device with `gateway adopt-device`: the converter's output
 and the gateway's tables (`gw_sessions`, `gw_messages`, `gw_chats`) share one store. Both pin whatsmeow `79dc2a8c33df`.

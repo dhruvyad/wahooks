@@ -1,0 +1,17 @@
+[
+	{
+		"id": "15555550101@s.whatsapp.net",
+		"conversationTimestamp": 1794099950,
+		"data": "{\"id\":\"15555550101@s.whatsapp.net\",\"unreadCount\":2,\"conversationTimestamp\":1794099950,\"name\":\"Alice Fixture\"}"
+	},
+	{
+		"id": "120363000000000001@g.us",
+		"conversationTimestamp": 1794099800,
+		"data": "{\"id\":\"120363000000000001@g.us\",\"unreadCount\":0,\"conversationTimestamp\":1794099800,\"name\":\"Fixture Group\",\"archived\":true}"
+	},
+	{
+		"id": "100000000000107@lid",
+		"conversationTimestamp": 1794099900,
+		"data": "{\"id\":\"100000000000107@lid\",\"unreadCount\":0,\"conversationTimestamp\":1794099900,\"markedAsUnread\":true}"
+	}
+]

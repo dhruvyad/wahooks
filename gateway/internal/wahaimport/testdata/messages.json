@@ -1,0 +1,104 @@
+[
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0TEXT0001",
+		"messageTimestamp": 1794099400,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0TEXT0001\"},\"message\":{\"conversation\":\"hello from alice\"},\"messageTimestamp\":1794099400,\"status\":3,\"pushName\":\"alice\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0REPLY002",
+		"messageTimestamp": 1794099500,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":true,\"id\":\"3EB0REPLY002\"},\"message\":{\"extendedTextMessage\":{\"text\":\"hi alice\",\"contextInfo\":{\"stanzaId\":\"3EB0TEXT0001\",\"participant\":\"15555550101@s.whatsapp.net\",\"quotedMessage\":{\"conversation\":\"hello from alice\"}}}},\"messageTimestamp\":1794099500,\"status\":4}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0IMAGE003",
+		"messageTimestamp": 1794099600,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0IMAGE003\"},\"message\":{\"imageMessage\":{\"url\":\"https://mmg.whatsapp.net/v/t62.7118-24/fixture.enc\",\"mimetype\":\"image/jpeg\",\"caption\":\"a picture\",\"fileSha256\":{\"type\":\"Buffer\",\"data\":\"oRbJ7UbWIHc0pDMX0w/Yj1KshjTDfZBLv05B2GX5BHU=\"},\"fileLength\":54321,\"height\":640,\"width\":480,\"mediaKey\":{\"type\":\"Buffer\",\"data\":\"F5QjHZULnkwZqZYvGQLh0Ojn+fcrGWWPeezMrT13/mk=\"},\"fileEncSha256\":{\"type\":\"Buffer\",\"data\":\"X7Krdu2b2gNLGSxIxwaTWSUvzNoWjZJazArn0xbAtT4=\"},\"directPath\":\"/v/t62.7118-24/fixture.enc?ccb=11-4\",\"mediaKeyTimestamp\":1794099900,\"jpegThumbnail\":{\"type\":\"Buffer\",\"data\":\"OVGkYGPjf070PQj/24b7An0EJ5XBImGU14Tam4jsK085uq8jx2J/KwMw2sxc1LYliD6hQ/TGHFGVqqnlqWwPLw==\"}}},\"messageTimestamp\":1794099600,\"status\":3,\"pushName\":\"alice\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0REACT004",
+		"messageTimestamp": 1794099700,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0REACT004\"},\"message\":{\"reactionMessage\":{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0TEXT0001\"},\"text\":\"👍\",\"senderTimestampMs\":1789804732704}},\"messageTimestamp\":1794099700,\"pushName\":\"alice\"}"
+	},
+	{
+		"jid": "120363000000000001@g.us",
+		"id": "3EB0GROUP005",
+		"messageTimestamp": 1794099800,
+		"data": "{\"key\":{\"remoteJid\":\"120363000000000001@g.us\",\"fromMe\":false,\"id\":\"3EB0GROUP005\",\"participant\":\"100000000000102@lid\",\"participantAlt\":\"15555550102@s.whatsapp.net\",\"addressingMode\":\"lid\"},\"message\":{\"conversation\":\"group hello\"},\"messageTimestamp\":1794099800,\"status\":3,\"pushName\":\"bob\"}"
+	},
+	{
+		"jid": "100000000000107@lid",
+		"id": "3EB0LIDIN006",
+		"messageTimestamp": 1794099850,
+		"data": "{\"key\":{\"remoteJid\":\"100000000000107@lid\",\"fromMe\":false,\"id\":\"3EB0LIDIN006\",\"remoteJidAlt\":\"15555550107@s.whatsapp.net\",\"addressingMode\":\"lid\"},\"message\":{\"conversation\":\"lid hello\"},\"messageTimestamp\":1794099850,\"status\":3,\"pushName\":\"gina\"}"
+	},
+	{
+		"jid": "100000000000107@lid",
+		"id": "3EB0LIDME007",
+		"messageTimestamp": 1794099900,
+		"data": "{\"key\":{\"remoteJid\":\"100000000000107@lid\",\"fromMe\":true,\"id\":\"3EB0LIDME007\",\"remoteJidAlt\":\"15555550107@s.whatsapp.net\",\"addressingMode\":\"lid\"},\"message\":{\"conversation\":\"lid reply\"},\"messageTimestamp\":1794099900,\"status\":2}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0EPHEM008",
+		"messageTimestamp": 1794099950,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0EPHEM008\"},\"message\":{\"ephemeralMessage\":{\"message\":{\"extendedTextMessage\":{\"text\":\"this disappears\",\"contextInfo\":{\"expiration\":604800}}}}},\"messageTimestamp\":1794099950,\"status\":3,\"pushName\":\"alice\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0DOCUM010",
+		"messageTimestamp": 1794099955,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0DOCUM010\"},\"message\":{\"documentMessage\":{\"url\":\"https://mmg.whatsapp.net/d/f/doc.enc\",\"mimetype\":\"application/pdf\",\"title\":\"report\",\"fileSha256\":{\"type\":\"Buffer\",\"data\":\"6u57Si5hDraKmxHcZJEZl8oDkZtOK/cv33593CrJecU=\"},\"fileLength\":12345678,\"pageCount\":3,\"mediaKey\":{\"type\":\"Buffer\",\"data\":\"Hq5nnk9SvI6Spw0e737pUqO55GvbUXbOztpdHXOG2kQ=\"},\"fileName\":\"report.pdf\",\"fileEncSha256\":{\"type\":\"Buffer\",\"data\":\"B9ZZK+Qvp+/DqmTb9tg/vN7fm+GnvbSe86KK26vsisw=\"},\"directPath\":\"/v/t62.7119-24/doc.enc\",\"mediaKeyTimestamp\":1794099954,\"jpegThumbnail\":{\"type\":\"Buffer\",\"data\":\"XCPF1c4pmsvwbnEVPTTlBg==\"}}},\"messageTimestamp\":1794099955,\"status\":3,\"pushName\":\"alice\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0AUDIO011",
+		"messageTimestamp": 1794099956,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":true,\"id\":\"3EB0AUDIO011\"},\"message\":{\"audioMessage\":{\"url\":\"https://mmg.whatsapp.net/a.enc\",\"mimetype\":\"audio/ogg; codecs=opus\",\"fileSha256\":{\"type\":\"Buffer\",\"data\":\"cqBv1ZULQDSQedzWHUvMBmenbGrKETHm6PdY4hvAtmI=\"},\"fileLength\":4096,\"seconds\":7,\"ptt\":true,\"mediaKey\":{\"type\":\"Buffer\",\"data\":\"IxvtLugMK83ZhXWTRxCcx9lKGm5W8XTLHTnpMdzFzZM=\"},\"fileEncSha256\":{\"type\":\"Buffer\",\"data\":\"+oL9k2KzpZUddBJbOzM77HlJDvGNfm4tc6H7UI2y4R8=\"},\"directPath\":\"/v/t62.7117-24/a.enc\",\"mediaKeyTimestamp\":1794099955,\"waveform\":{\"type\":\"Buffer\",\"data\":\"cRSyIK8JIXw1VDT+4dWxtyzG127kq7D+N4aPEJ4bIHwmRRh4gM7zLOn39KDucJmnkpki4n/oY1r8RyCoWB/WZA==\"}}},\"messageTimestamp\":1794099956,\"status\":5}"
+	},
+	{
+		"jid": "120363000000000001@g.us",
+		"id": "3EB0VIDEO012",
+		"messageTimestamp": 1794099957,
+		"data": "{\"key\":{\"remoteJid\":\"120363000000000001@g.us\",\"fromMe\":false,\"id\":\"3EB0VIDEO012\",\"participant\":\"100000000000102@lid\",\"participantAlt\":\"15555550102@s.whatsapp.net\",\"addressingMode\":\"lid\"},\"message\":{\"videoMessage\":{\"url\":\"https://mmg.whatsapp.net/v.enc\",\"mimetype\":\"video/mp4\",\"fileSha256\":{\"type\":\"Buffer\",\"data\":\"Jr1uRYqxGw01p8cFY4wdzOcSrrM6gSKyVdOn5gALwq0=\"},\"fileLength\":2000000,\"seconds\":12,\"mediaKey\":{\"type\":\"Buffer\",\"data\":\"nwGqIPVivXXzmj4G6Ea1mMvJrJWSHKQ6pYPJ9rzn3jw=\"},\"caption\":\"clip\",\"gifPlayback\":false,\"height\":720,\"width\":1280,\"fileEncSha256\":{\"type\":\"Buffer\",\"data\":\"WrRIzXPnP1vYYKenSF5E24TVsHW+hE17cyAPvgMpUKg=\"},\"directPath\":\"/v/t62.7161-24/v.enc\",\"mediaKeyTimestamp\":1794099956,\"jpegThumbnail\":{\"type\":\"Buffer\",\"data\":\"Puk7looW3HjiFzki9Tt8fw==\"}}},\"messageTimestamp\":1794099957,\"status\":3,\"pushName\":\"bob\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0STICK013",
+		"messageTimestamp": 1794099958,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0STICK013\"},\"message\":{\"stickerMessage\":{\"url\":\"https://mmg.whatsapp.net/s.enc\",\"fileSha256\":{\"type\":\"Buffer\",\"data\":\"2tKeMX+qF0aPgtZRRkSw9eJD8BYhswUmqOrqHwgeh7M=\"},\"fileEncSha256\":{\"type\":\"Buffer\",\"data\":\"ZeK8r2+g+4X98BWuu8bMKswHPrDRZFDMeslnPv9vlMw=\"},\"mediaKey\":{\"type\":\"Buffer\",\"data\":\"0JgWpF8kj5R47jpCRACa+/oSAprp5hNYVDTozJ8mox0=\"},\"mimetype\":\"image/webp\",\"height\":512,\"width\":512,\"directPath\":\"/v/t62.15575-24/s.enc\",\"fileLength\":20000,\"mediaKeyTimestamp\":1794099957,\"isAnimated\":false,\"pngThumbnail\":{\"type\":\"Buffer\",\"data\":\"yh2a0MrvqSs=\"}}},\"messageTimestamp\":1794099958,\"status\":3,\"pushName\":\"alice\"}"
+	},
+	{
+		"jid": "100000000000107@lid",
+		"id": "3EB0LOCAT014",
+		"messageTimestamp": 1794099959,
+		"data": "{\"key\":{\"remoteJid\":\"100000000000107@lid\",\"fromMe\":false,\"id\":\"3EB0LOCAT014\",\"remoteJidAlt\":\"15555550107@s.whatsapp.net\",\"addressingMode\":\"lid\"},\"message\":{\"locationMessage\":{\"degreesLatitude\":52.520008,\"degreesLongitude\":13.404954,\"name\":\"Somewhere\",\"address\":\"A street 1\",\"jpegThumbnail\":{\"type\":\"Buffer\",\"data\":\"fwKXgkTiK0c=\"}}},\"messageTimestamp\":1794099959,\"status\":3,\"pushName\":\"gina\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0VCARD015",
+		"messageTimestamp": 1794099960,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":true,\"id\":\"3EB0VCARD015\"},\"message\":{\"contactMessage\":{\"displayName\":\"Someone\",\"vcard\":\"BEGIN:VCARD\\nVERSION:3.0\\nFN:Someone\\nTEL;type=CELL:+1 555 555 0199\\nEND:VCARD\"}},\"messageTimestamp\":1794099960,\"status\":2}"
+	},
+	{
+		"jid": "120363000000000001@g.us",
+		"id": "3EB0POLLS016",
+		"messageTimestamp": 1794099961,
+		"data": "{\"key\":{\"remoteJid\":\"120363000000000001@g.us\",\"fromMe\":true,\"id\":\"3EB0POLLS016\"},\"message\":{\"messageContextInfo\":{\"messageSecret\":{\"type\":\"Buffer\",\"data\":\"rEWhTKps3tofPTsMkxOldyKN3gRqOVc1guqz6I/w6VM=\"}},\"pollCreationMessageV3\":{\"options\":[{\"optionName\":\"yes\"},{\"optionName\":\"no\"}],\"name\":\"Lunch?\",\"selectableOptionsCount\":1}},\"messageTimestamp\":1794099961,\"status\":2}"
+	},
+	{
+		"jid": "120363000000000001@g.us",
+		"id": "3EB0MENTN017",
+		"messageTimestamp": 1794099962,
+		"data": "{\"key\":{\"remoteJid\":\"120363000000000001@g.us\",\"fromMe\":false,\"id\":\"3EB0MENTN017\",\"participant\":\"100000000000102@lid\",\"participantAlt\":\"15555550102@s.whatsapp.net\",\"addressingMode\":\"lid\"},\"message\":{\"extendedTextMessage\":{\"text\":\"hey @100000000000001\",\"contextInfo\":{\"mentionedJid\":[\"100000000000001@lid\"]}}},\"messageTimestamp\":1794099962,\"status\":4,\"pushName\":\"bob\"}"
+	},
+	{
+		"jid": "15555550101@s.whatsapp.net",
+		"id": "3EB0OLDOLD09",
+		"messageTimestamp": 1788916000,
+		"data": "{\"key\":{\"remoteJid\":\"15555550101@s.whatsapp.net\",\"fromMe\":false,\"id\":\"3EB0OLDOLD09\"},\"message\":{\"conversation\":\"two months ago\"},\"messageTimestamp\":1788916000,\"status\":4,\"pushName\":\"alice\"}"
+	}
+]

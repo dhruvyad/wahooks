@@ -39,6 +39,9 @@ func main() {
 		case "adopt-device":
 			adopt(os.Args[2:])
 			return
+		case "import-history":
+			importHistory(os.Args[2:])
+			return
 		case "derive-ip":
 			deriveIP(os.Args[2:])
 			return
@@ -54,6 +57,12 @@ func main() {
 		case "version", "-v", "--version":
 			fmt.Println(api.Version)
 			return
+		default:
+			// The service runs with no arguments. Starting the full gateway for a subcommand this
+			// build doesn't know (an older binary given a newer runbook's command) would open a
+			// second WhatsApp client on the live device, so refuse instead.
+			fmt.Fprintf(os.Stderr, "unknown subcommand %q (this build: %s)\n", os.Args[1], api.Version)
+			os.Exit(2)
 		}
 	}
 	serve()

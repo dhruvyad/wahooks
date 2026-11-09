@@ -25,7 +25,7 @@ import (
 	"github.com/dhruvyad/wahooks/gateway/internal/waha"
 )
 
-const Version = "2026.11.0-wagw"
+const Version = "2026.11.1-wagw" // 2026.11.1: import-history; unknown subcommands exit 2
 
 type Server struct {
 	M       *session.Manager

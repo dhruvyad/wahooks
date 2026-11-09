@@ -1,0 +1,4 @@
+id,conversationTimestamp,data
+100000000000107@lid,1794099900,"{""id"":""100000000000107@lid"",""unreadCount"":0,""conversationTimestamp"":1794099900,""markedAsUnread"":true}"
+120363000000000001@g.us,1794099800,"{""id"":""120363000000000001@g.us"",""unreadCount"":0,""conversationTimestamp"":1794099800,""name"":""Fixture Group"",""archived"":true}"
+15555550101@s.whatsapp.net,1794099950,"{""id"":""15555550101@s.whatsapp.net"",""unreadCount"":2,""conversationTimestamp"":1794099950,""name"":""Alice Fixture""}"

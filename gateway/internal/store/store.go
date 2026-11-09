@@ -367,6 +367,55 @@ func (s *DB) PutMessages(ctx context.Context, ms []*MessageRow) error {
 	return tx.Commit()
 }
 
+// ImportMessages inserts messages that are not stored yet (imported history never replaces a row
+// the gateway wrote itself) in transactions of at most 500 rows, so a running gateway sharing a
+// SQLite store waits at most one short transaction. It returns how many rows were new.
+func (s *DB) ImportMessages(ctx context.Context, ms []*MessageRow) (int, error) {
+	inserted := 0
+	for start := 0; start < len(ms); start += 500 {
+		end := min(start+500, len(ms))
+		tx, err := s.SQL.BeginTx(ctx, nil)
+		if err != nil {
+			return inserted, err
+		}
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO gw_messages (`+msgCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (session, chat, id) DO NOTHING`)
+		if err != nil {
+			_ = tx.Rollback()
+			return inserted, err
+		}
+		n := 0
+		for _, m := range ms[start:end] {
+			res, err := stmt.ExecContext(ctx, m.Session, m.Chat, m.ID, m.Sender, m.SenderAlt, m.ChatAlt, b2i(m.FromMe), m.TS, m.PushName, m.Kind, m.Ack, m.Source, m.Msg)
+			if err != nil {
+				stmt.Close()
+				_ = tx.Rollback()
+				return inserted, err
+			}
+			if k, err := res.RowsAffected(); err == nil {
+				n += int(k)
+			}
+		}
+		stmt.Close()
+		if err := tx.Commit(); err != nil {
+			return inserted, err
+		}
+		inserted += n
+	}
+	return inserted, nil
+}
+
+// ImportChat records an imported chat. A new chat gets everything; an existing one (the gateway
+// has seen it live) keeps its own name, unread count and flags, and only moves forward in time.
+func (s *DB) ImportChat(ctx context.Context, c *ChatRow) error {
+	_, err := s.SQL.ExecContext(ctx, `INSERT INTO gw_chats (session, chat, name, last_ts, last_id, unread, marked_unread, archived) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (session, chat) DO UPDATE SET
+			name = CASE WHEN gw_chats.name = '' THEN excluded.name ELSE gw_chats.name END,
+			last_id = CASE WHEN excluded.last_ts > gw_chats.last_ts AND excluded.last_id <> '' THEN excluded.last_id ELSE gw_chats.last_id END,
+			last_ts = CASE WHEN excluded.last_ts > gw_chats.last_ts THEN excluded.last_ts ELSE gw_chats.last_ts END`,
+		c.Session, c.Chat, c.Name, c.LastTS, c.LastID, c.Unread, b2i(c.MarkedUnread), b2i(c.Archived))
+	return err
+}
+
 // UpdateMessageBody replaces the stored content of a message (edits).
 func (s *DB) UpdateMessageBody(ctx context.Context, session string, chats []string, id string, msg []byte) error {
 	q, args := inClause(`UPDATE gw_messages SET msg=$1 WHERE session=$2 AND id=$3 AND chat IN (%s)`, 4, chats)
