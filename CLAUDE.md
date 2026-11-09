@@ -45,12 +45,12 @@ wahooks/
 | `auth/` | Supabase JWT verification guard (`AuthGuard`) + `@CurrentUser()` decorator |
 | `database/` | Global Drizzle ORM provider (`DRIZZLE_TOKEN`) connected to Supabase Postgres |
 | `connections/` | CRUD for WhatsApp connections; provisions WAHA sessions on workers, QR code flow |
-| `workers/` | Worker pool management: find/provision workers (a ready pod nobody registered is adopted first), assign/unassign sessions, auto-scaling (80% up, 30% down; scale-down only drains the highest-ordinal pod). A failing scale-up is logged as an ERROR and exposed as `scaleUpFailure` on `GET /api/infrastructure` and `checks.scaleUp` on `GET /api/health` |
-| `orchestration/` | `ContainerOrchestrator` interface + K8s (prod) / Hetzner (legacy) / Mock (dev) implementations. Lazy factory — only selected orchestrator is instantiated. |
+| `workers/` | Worker pool management per worker kind (see Worker kinds): find/provision workers (a ready pod or box nobody registered is adopted first, matched by name or internal IP), assign/unassign sessions, auto-scaling (WAHA: 80% up, 30% down, scale-down only drains the highest-ordinal pod, to zero once new connections go to gateways; gateway: a box added at `GATEWAY_SCALE_UP_AT`, never removed automatically). A failing scale-up is logged as an ERROR and exposed as `scaleUpFailure` on `GET /api/infrastructure` and `checks.scaleUp` on `GET /api/health` |
+| `orchestration/` | `ContainerOrchestrator` interface, one per worker kind (`WORKER_ORCHESTRATORS_TOKEN`). WAHA: K8s (prod) / Hetzner (legacy) / Mock (dev) by `ORCHESTRATOR`, lazily. Gateway: `GatewayOrchestrator` (Hetzner Cloud boxes set up by cloud-init) only when its env is set, else none. |
 | `waha/` | HTTP client for the WAHA REST API (sessions, QR codes, start/stop/restart) |
-| `health/` | Cron jobs: 3-min worker health poll (syncs WAHA status to DB; restarts a FAILED session from persisted auth up to 5× per pod lifetime, then STOPS it — auth kept, row `failed`; retires a session left in SCAN_QR_CODE after 30 min if it was ever linked, 2 h if never; an unreachable worker only gets its `pending` sessions created), 5-min scaling check |
+| `health/` | Cron jobs: 3-min worker health poll (syncs WAHA status to DB; restarts a FAILED session from persisted auth up to 5× per pod lifetime, then STOPS it — auth kept, row `failed`; retires a session left in SCAN_QR_CODE after 30 min if it was ever linked, 2 h if never; an unreachable worker only gets its `pending` sessions created; on a gateway it never re-creates a session that was ever linked, deletes only sessions whose row is `stopped`, adds the events secret to live sessions' webhook config, and records reachability for `checks.gateways`), 5-min scaling check |
 | `webhooks/` | Webhook config CRUD (url, events filter, signing secret) + event log queries |
-| `events/` | WAHA event ingestion endpoint + BullMQ `webhook-delivery` queue + delivery processor with HMAC-SHA256 signing |
+| `events/` | WAHA event ingestion endpoint (with `EVENTS_SECRET` set, gateway sessions must send `X-WAHooks-Events-Secret` and a sent one must match) + BullMQ `webhook-delivery` queue + delivery processor with HMAC-SHA256 signing |
 | `billing/` | Stripe checkout/portal, hourly usage metering (`UsageService` cron), Stripe webhook handler |
 
 ### Web (`apps/web/src/`)
@@ -60,6 +60,69 @@ Next.js 15 app router with Supabase Auth SSR integration and Tailwind CSS.
 - `@wahooks/db` -- Drizzle schema: `users`, `waha_workers`, `waha_sessions`, `webhook_configs`, `webhook_event_logs`, `usage_records`
 - `@wahooks/shared-types` -- TypeScript domain types shared between apps
 - `@wahooks/config` -- Shared ESLint + TypeScript config
+
+## Worker kinds
+
+A `waha_workers` row is a WAHA pod (`kind = 'waha'`: StatefulSet `waha`, shared `WAHA_API_KEY`) or a gateway box
+(`kind = 'gateway'`: the Go gateway in `gateway/`, WAHA-compatible API, thousands of accounts per box, its own API key,
+all boxes sharing one Postgres store). The API talks to both the same way (`http://<internal_ip>:3000`, `X-Api-Key`).
+
+- **Placement:** new connections go to the least-loaded active worker of kind `NEW_CONNECTION_WORKER_KIND` with
+  `current_sessions < max_sessions`, else a new one of that kind is provisioned. A row with `max_sessions 0` is pinned
+  (takes no new connections) and counts for neither load nor room in scaling.
+- **WAHA scaling:** the rules above, over WAHA rows only; a WAHA pod is added only while new connections go to WAHA.
+  **To zero:** with `NEW_CONNECTION_WORKER_KIND=gateway` and no non-stopped session on any WAHA worker, each scaling check
+  drains the highest-ordinal pod, and the last one is removed too (`destroyWorker(…, { allowLast })`).
+- **Gateway scaling:** a box is provisioned when gateway used/capacity ≥ `GATEWAY_SCALE_UP_AT` (or when there is no gateway
+  room while new connections go to gateways). One provision per kind at a time. Boxes are never removed automatically:
+  a drained, empty gateway row is only logged (delete the box by hand, then mark the row `stopped`).
+- **GatewayOrchestrator:** creates an Ubuntu 24.04 server labelled `role=wagw`, named `wagw-<8 hex>` (also its
+  `WAGW_BOX_ID`), on `GATEWAY_NETWORK_ID`, with `GATEWAY_FIREWALL_ID` / `GATEWAY_SSH_KEYS`, public IPv4 and IPv6. Its
+  cloud-init (`orchestration/gateway-cloud-init.ts`) does what `gateway/deploy/install.sh` does: downloads
+  `GATEWAY_BINARY_URL` and installs it only if it matches `GATEWAY_BINARY_SHA256`, installs `wagw.service` verbatim, reads
+  the box's private IP and IPv6 /64 from Hetzner's metadata service, and writes `/etc/wagw/wagw.env` (0640 root:wagw).
+  The key is random per box. The row is written as `provisioning` (with the key) as soon as the server exists, and
+  becomes `active` once `/health` answers (~5 min timeout). A box that doesn't answer stays up for inspection and blocks
+  new boxes until it answers or is deleted; the next scaling check adopts it when it comes up.
+- **Health poll on a gateway:** a gateway's DELETE logs the account out (unlinks the device), so a session is deleted
+  only if its `waha_sessions` row exists and is `stopped`; unknown names are logged, never deleted. A linked session
+  missing from the box is not re-created (warned instead). With `EVENTS_SECRET` set, live sessions whose WAHooks webhook
+  lacks the header get it through `PUT /api/sessions/{name}` (applied live, no restart), at boot and on every poll.
+- **Events auth:** with `EVENTS_SECRET` set, `POST /api/events/waha` refuses (401) a gateway session's event without
+  `X-WAHooks-Events-Secret`, and any event with a wrong one (constant-time compare). WAHA sessions are still accepted
+  without it. The worker kind comes from an in-memory cache (60 s), not a query per event.
+- **`GET /api/health`:** `checks.gateways` lists each active gateway and whether the last poll reached it (status
+  `error`, and overall `degraded`, when one didn't; `unknown` before the first poll).
+
+| Env | Default | Meaning |
+|-----|---------|---------|
+| `NEW_CONNECTION_WORKER_KIND` | `waha` | Where new connections go: `waha` or `gateway` |
+| `GATEWAY_MAX_SESSIONS` | `5000` | `max_sessions` of a newly registered gateway row |
+| `GATEWAY_SCALE_UP_AT` | `0.8` | Gateway used/capacity at which a box is added |
+| `EVENTS_SECRET` | unset | Secret for `X-WAHooks-Events-Secret`; unset = no events auth (warned at boot) |
+| `HETZNER_API_TOKEN` | — | Required for gateway provisioning (the legacy HetznerOrchestrator's name) |
+| `GATEWAY_NETWORK_ID` | — | Required: the Hetzner network the API reaches boxes on |
+| `GATEWAY_BINARY_URL` / `GATEWAY_BINARY_SHA256` | — | Required: https URL of the linux/amd64 gateway binary, and its SHA-256 |
+| `GATEWAY_DB_URL` | — | Required: the boxes' shared store, `postgres://…?search_path=wagw&sslmode=require` |
+| `GATEWAY_DB_MAX_CONNS` | `4` | `WAGW_DB_MAX_CONNS` per box |
+| `GATEWAY_FIREWALL_ID` / `GATEWAY_SSH_KEYS` | none | Firewall ID; comma-separated SSH key names |
+| `GATEWAY_SERVER_TYPE` / `GATEWAY_LOCATION` | `cx23` / `fsn1` | Server type and location |
+| `GATEWAY_WEBHOOK_RESOLVE` | unset | Passed through as `WAGW_WEBHOOK_RESOLVE` |
+
+Without the required gateway env no box is created (a partial set is logged as an error and disables it too); rows
+registered by hand still work. Secrets and IDs go in `wahooks-api-secret`; the plain values are in
+`k8s/api-deployment.yaml`.
+
+### Testing gateway scaling
+
+- **Unit:** `pnpm --filter @wahooks/api test -- workers gateway`. `gatewayScaleDecision` is a pure function, and the
+  specs drive `checkScaling` with a small `GATEWAY_MAX_SESSIONS` (2/2 sessions → a box is provisioned).
+- **Live, away from production:** use a separate Hetzner project (its own token, network and a scratch gateway store) and
+  run the API on a server attached to that network (it must reach the boxes' private IPs on :3000), against a scratch
+  database, with `ORCHESTRATOR=mock`, `NEW_CONNECTION_WORKER_KIND=gateway` and `GATEWAY_MAX_SESSIONS=1`. The first scaling
+  check (or `POST /api/connections`) provisions box 1 (cap 1); once a connection holds it, the next scaling check
+  (every 5 min) provisions box 2. Watch `GET /api/infrastructure` (rows go `provisioning` → `active`)
+  and `GET /api/health` (`checks.gateways`, `checks.scaleUp`). Delete the boxes (label `role=wagw`) afterwards.
 
 ## Key API Endpoints
 
@@ -136,7 +199,7 @@ Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test
 
 Tables in `packages/db/src/schema/`:
 - **users** -- synced from Supabase Auth, has `stripe_customer_id`
-- **waha_workers** -- k8s pods: `pod_name`, `internal_ip`, `api_key_enc` (encrypted), `status`, `max_sessions`, `current_sessions`
+- **waha_workers** -- WAHA pods and gateway boxes: `pod_name`, `internal_ip`, `api_key_enc` (encrypted), `status`, `kind` (`waha` | `gateway`), `max_sessions`, `current_sessions`
 - **waha_sessions** -- user-to-worker mapping: `session_name`, `phone_number`, `status`, `engine`
 - **webhook_configs** -- per-session webhook: `url`, `events[]`, `signing_secret`, `active`
 - **webhook_event_logs** -- delivery tracking: `event_type`, `payload` (JSONB), `status`, `attempts`

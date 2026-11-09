@@ -59,6 +59,59 @@ spec:
               value: "waha"
             - name: WAHA_HEADLESS_SERVICE
               value: "waha"
+            # ── Worker kinds: WAHA pods and gateway boxes (CLAUDE.md "Worker kinds") ──
+            # Where new connections go: "waha" or "gateway". A value here wins over the
+            # secret, so flip it in this file. "gateway" also lets WAHA scale to zero once
+            # no WAHA worker holds a session.
+            - name: NEW_CONNECTION_WORKER_KIND
+              value: "waha"
+            # Session cap a newly registered gateway row gets (existing rows keep theirs),
+            # and the gateway used/capacity at which another box is provisioned.
+            - name: GATEWAY_MAX_SESSIONS
+              value: "5000"
+            - name: GATEWAY_SCALE_UP_AT
+              value: "0.8"
+            - name: GATEWAY_SERVER_TYPE
+              value: "cx23"
+            - name: GATEWAY_LOCATION
+              value: "fsn1"
+            # Postgres pool per box: every box's connections count against the store's
+            # max_connections.
+            - name: GATEWAY_DB_MAX_CONNS
+              value: "4"
+            # Secrets and deployment-specific IDs, all optional, from wahooks-api-secret
+            # (envFrom injects them too; listed here so the set is visible). Without the
+            # required ones (HETZNER_API_TOKEN, GATEWAY_NETWORK_ID, GATEWAY_BINARY_URL,
+            # GATEWAY_BINARY_SHA256, GATEWAY_DB_URL) the API creates no gateway box; boxes
+            # registered by hand still work. Without EVENTS_SECRET, /api/events/waha stays
+            # unauthenticated.
+            - name: EVENTS_SECRET
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: EVENTS_SECRET, optional: true }
+            - name: HETZNER_API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: HETZNER_API_TOKEN, optional: true }
+            - name: GATEWAY_NETWORK_ID
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_NETWORK_ID, optional: true }
+            - name: GATEWAY_FIREWALL_ID
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_FIREWALL_ID, optional: true }
+            - name: GATEWAY_SSH_KEYS
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_SSH_KEYS, optional: true }
+            - name: GATEWAY_BINARY_URL
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_BINARY_URL, optional: true }
+            - name: GATEWAY_BINARY_SHA256
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_BINARY_SHA256, optional: true }
+            - name: GATEWAY_DB_URL
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_DB_URL, optional: true }
+            - name: GATEWAY_WEBHOOK_RESOLVE
+              valueFrom:
+                secretKeyRef: { name: wahooks-api-secret, key: GATEWAY_WEBHOOK_RESOLVE, optional: true }
           readinessProbe:
             httpGet:
               path: /api
