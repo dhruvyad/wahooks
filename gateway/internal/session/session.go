@@ -450,7 +450,7 @@ func (s *Session) checkOwner(ctx context.Context) error {
 	if err != nil {
 		return nil
 	}
-	if r.Owner != "" && r.Owner != s.m.Cfg.BoxID && r.LeaseUntil > time.Now().Unix() {
+	if r.Owner != "" && r.Owner != s.m.Cfg.BoxID && s.m.DB.LeaseLive(ctx, r) {
 		return ErrLeased{Owner: r.Owner}
 	}
 	return nil

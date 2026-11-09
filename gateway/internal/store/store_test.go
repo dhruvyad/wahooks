@@ -22,7 +22,7 @@ func backends(t *testing.T) map[string]*DB {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, q := range []string{"DELETE FROM gw_messages", "DELETE FROM gw_chats", "DELETE FROM gw_sessions"} {
+		for _, q := range []string{"DELETE FROM gw_messages", "DELETE FROM gw_chats", "DELETE FROM gw_sessions", "DELETE FROM gw_boxes"} {
 			_, _ = pg.SQL.Exec(q)
 		}
 		out["postgres"] = pg
@@ -136,6 +136,56 @@ func TestStoreLive(t *testing.T) {
 			}
 			if c, _ := db.GetChat(ctx, "u_live", []string{chat}); c.LastID != "L3" || c.Unread != 1 {
 				t.Fatalf("incoming: %+v", c)
+			}
+		})
+	}
+}
+
+// A box's heartbeat keeps every session it owns leased after the session's own lease_until has passed; once the
+// heartbeat lapses too, another box may take the session.
+func TestLeaseHeartbeat(t *testing.T) {
+	ctx := context.Background()
+	for name, db := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			defer db.Close()
+			if err := db.InsertSession(ctx, &SessionRow{Name: "u_hb", Config: "{}", Desired: "stopped"}); err != nil {
+				t.Fatal(err)
+			}
+			// box-a takes the session with a lease that is already over, but its heartbeat is live
+			if err := db.RenewLeases(ctx, "box-a", time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			if ok, _, err := db.AcquireLease(ctx, "u_hb", "box-a", -time.Minute); err != nil || !ok {
+				t.Fatal("take", ok, err)
+			}
+			if ok, owner, err := db.AcquireLease(ctx, "u_hb", "box-b", time.Minute); err != nil || ok || owner != "box-a" {
+				t.Fatalf("box-b took a session whose owner's heartbeat is live: %v %q %v", ok, owner, err)
+			}
+			r, _ := db.GetSession(ctx, "u_hb")
+			if !db.LeaseLive(ctx, r) {
+				t.Fatal("LeaseLive false with a live heartbeat")
+			}
+			// renewing twice is one upsert, not an error
+			if err := db.RenewLeases(ctx, "box-a", time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			// box-a's heartbeat lapses: now box-b may take it
+			if err := db.RenewLeases(ctx, "box-a", -time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			if db.LeaseLive(ctx, r) {
+				t.Fatal("LeaseLive true with both leases over")
+			}
+			if ok, _, err := db.AcquireLease(ctx, "u_hb", "box-b", time.Minute); err != nil || !ok {
+				t.Fatal("box-b could not take an expired session", ok, err)
+			}
+			// box-b's fresh session lease protects it even before box-b has any heartbeat row
+			if ok, owner, _ := db.AcquireLease(ctx, "u_hb", "box-a", time.Minute); ok || owner != "box-b" {
+				t.Fatalf("box-a retook a session box-b just took: %v %q", ok, owner)
+			}
+			var n int
+			if err := db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM gw_boxes`).Scan(&n); err != nil || n != 1 {
+				t.Fatalf("gw_boxes rows %d %v", n, err)
 			}
 		})
 	}

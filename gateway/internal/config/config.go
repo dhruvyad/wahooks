@@ -133,16 +133,9 @@ func Load() (*Config, error) {
 	if c.APIKey == "" && !c.NoAuth {
 		return nil, fmt.Errorf("WAGW_API_KEY is required (or set WAGW_INSECURE_NO_AUTH=1 for local tests)")
 	}
-	db := env("WAGW_DB", "sqlite:///var/lib/wagw/wagw.db")
-	switch {
-	case strings.HasPrefix(db, "postgres://"), strings.HasPrefix(db, "postgresql://"):
-		c.DBDialect, c.DBDSN = "postgres", db
-	case strings.HasPrefix(db, "sqlite://"):
-		c.DBDialect, c.DBDSN = "sqlite", strings.TrimPrefix(db, "sqlite://")
-	case strings.HasPrefix(db, "file:"):
-		c.DBDialect, c.DBDSN = "sqlite", strings.TrimPrefix(db, "file:")
-	default:
-		return nil, fmt.Errorf("WAGW_DB must start with postgres://, postgresql://, sqlite:// or file:")
+	var err error
+	if c.DBDialect, c.DBDSN, err = ParseDB(env("WAGW_DB", "sqlite:///var/lib/wagw/wagw.db")); err != nil {
+		return nil, fmt.Errorf("WAGW_DB: %w", err)
 	}
 	if p := os.Getenv("WAGW_IPV6_PREFIX"); p != "" {
 		pfx, err := netip.ParsePrefix(p)
@@ -173,4 +166,17 @@ func Load() (*Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// ParseDB splits a WAGW_DB-style URL into the store dialect ("sqlite" or "postgres") and its DSN.
+func ParseDB(db string) (dialect, dsn string, err error) {
+	switch {
+	case strings.HasPrefix(db, "postgres://"), strings.HasPrefix(db, "postgresql://"):
+		return "postgres", db, nil
+	case strings.HasPrefix(db, "sqlite://"):
+		return "sqlite", strings.TrimPrefix(db, "sqlite://"), nil
+	case strings.HasPrefix(db, "file:"):
+		return "sqlite", strings.TrimPrefix(db, "file:"), nil
+	}
+	return "", "", fmt.Errorf("must start with postgres://, postgresql://, sqlite:// or file:")
 }

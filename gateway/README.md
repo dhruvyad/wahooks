@@ -99,6 +99,10 @@ Gateway extension on create: `"x-gateway-source-ip": "<addr>"` pins a session's 
   `information_schema.tables` by name without a schema, so no other schema in that database may hold `whatsmeow_*`
   tables, or it will think they exist and fail.
 - Pool size is per box (`WAGW_DB_MAX_CONNS`, default 16 on Postgres), not per account.
+- Moving a box from its SQLite file to Postgres: stop the gateway, then with the new `WAGW_DB` in the environment run
+  `gateway copy-store -from sqlite:///var/lib/wagw/wagw.db`. It copies every table in one transaction (all or
+  nothing), converts SQLite's integer booleans and byte strings to Postgres types, and refuses to overwrite a row that
+  already exists. Both stores must be on the same gateway build. Then start the gateway on the new `WAGW_DB`.
 
 ## Deploy to a box
 

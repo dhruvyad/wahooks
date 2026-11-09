@@ -25,7 +25,7 @@ import (
 	"github.com/dhruvyad/wahooks/gateway/internal/waha"
 )
 
-const Version = "2026.11.1-wagw" // 2026.11.1: import-history; unknown subcommands exit 2
+const Version = "2026.11.2-wagw" // 2026.11.2: copy-store, per-box lease heartbeat; 2026.11.1: import-history
 
 type Server struct {
 	M       *session.Manager

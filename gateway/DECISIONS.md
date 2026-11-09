@@ -123,3 +123,9 @@ how to change it.
     has its own context, cancelled before any disconnect (no redial is possible after that, and a hanging dial is
     abandoned at once); `Connect` and `Disconnect` are serialised per session; events and status changes of an older
     generation are ignored. Unlinked devices don't retry a failed first connect in the background.
+
+39. **Leases renew one heartbeat row per box, not every session row** (`gw_boxes`). A session is held while its own
+    `lease_until` (set when a box takes it, 3 minutes) or its owner box's heartbeat is in the future. Before this,
+    renewal rewrote every session row a box owned once a minute: ~333 row updates/s on a 20,000-account box, ~1,700/s
+    across 100k accounts, several times the message writes. Now it is one upsert per box per minute. Boxes sharing a
+    database must be upgraded together, since an older box only reads `lease_until`.

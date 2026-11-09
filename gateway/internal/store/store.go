@@ -153,6 +153,11 @@ func (s *DB) migrate(ctx context.Context) error {
 			PRIMARY KEY (session, chat)
 		)`,
 		`CREATE INDEX IF NOT EXISTS gw_chats_ts ON gw_chats (session, last_ts)`,
+		// One heartbeat row per box: a session's lease is live while its owner box's heartbeat is (see AcquireLease).
+		`CREATE TABLE IF NOT EXISTS gw_boxes (
+			box         TEXT PRIMARY KEY,
+			lease_until BIGINT NOT NULL DEFAULT 0
+		)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.SQL.ExecContext(ctx, q); err != nil {
@@ -279,10 +284,17 @@ func (s *DB) DeleteSession(ctx context.Context, name string) error {
 	return nil
 }
 
-// AcquireLease makes box the session's owner unless another box holds an unexpired lease.
+// AcquireLease makes box the session's owner unless another box holds a live lease on it.
+//
+// A lease is live while either the session row's own lease_until (set here, when a box takes the session) or the
+// owner box's heartbeat in gw_boxes (renewed by RenewLeases) is in the future. Renewal therefore writes one row per
+// box per interval instead of every session row the box owns (20,000 rows a minute on a full box, ~1,700 row
+// updates/s across 100k accounts; bench/density/RESULTS.md recommendation 13). Boxes sharing one database must run
+// this version together: an older box only reads the session row's lease_until, which stops moving after the take.
 func (s *DB) AcquireLease(ctx context.Context, name, box string, ttl time.Duration) (bool, string, error) {
 	now := time.Now()
-	res, err := s.SQL.ExecContext(ctx, `UPDATE gw_sessions SET owner=$1, lease_until=$2 WHERE name=$3 AND (owner='' OR owner=$1 OR lease_until < $4)`,
+	res, err := s.SQL.ExecContext(ctx, `UPDATE gw_sessions SET owner=$1, lease_until=$2 WHERE name=$3 AND (owner='' OR owner=$1 OR (lease_until < $4
+			AND NOT EXISTS (SELECT 1 FROM gw_boxes b WHERE b.box = gw_sessions.owner AND b.lease_until >= $4)))`,
 		box, now.Add(ttl).Unix(), name, now.Unix())
 	if err != nil {
 		return false, "", err
@@ -295,10 +307,28 @@ func (s *DB) AcquireLease(ctx context.Context, name, box string, ttl time.Durati
 	return false, owner, nil
 }
 
-// RenewLeases extends every lease this box holds in one statement.
+// RenewLeases extends every lease this box holds by renewing the box's heartbeat: one row, one statement.
 func (s *DB) RenewLeases(ctx context.Context, box string, ttl time.Duration) error {
-	_, err := s.SQL.ExecContext(ctx, `UPDATE gw_sessions SET lease_until=$1 WHERE owner=$2`, time.Now().Add(ttl).Unix(), box)
+	_, err := s.SQL.ExecContext(ctx, `INSERT INTO gw_boxes (box, lease_until) VALUES ($1, $2)
+		ON CONFLICT (box) DO UPDATE SET lease_until = excluded.lease_until`, box, time.Now().Add(ttl).Unix())
 	return err
+}
+
+// LeaseLive reports whether owner holds a live lease on the session row r (its own lease_until or the owner box's
+// heartbeat). An empty owner never does.
+func (s *DB) LeaseLive(ctx context.Context, r *SessionRow) bool {
+	if r == nil || r.Owner == "" {
+		return false
+	}
+	now := time.Now().Unix()
+	if r.LeaseUntil >= now {
+		return true
+	}
+	var until int64
+	if err := s.SQL.QueryRowContext(ctx, `SELECT lease_until FROM gw_boxes WHERE box=$1`, r.Owner).Scan(&until); err != nil {
+		return false
+	}
+	return until >= now
 }
 
 func (s *DB) ReleaseLease(ctx context.Context, name, box string) error {

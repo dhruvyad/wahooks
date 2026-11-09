@@ -34,7 +34,10 @@ func (f *fakeIdentities) DeleteAllIdentities(_ context.Context, phone string) er
 	}
 	return nil
 }
-func (f *fakeIdentities) DeleteIdentity(_ context.Context, a string) error { delete(f.rows, a); return nil }
+func (f *fakeIdentities) DeleteIdentity(_ context.Context, a string) error {
+	delete(f.rows, a)
+	return nil
+}
 func (f *fakeIdentities) IsTrustedIdentity(_ context.Context, a string, k [32]byte) (bool, error) {
 	f.trusted++
 	cur, ok := f.rows[a]

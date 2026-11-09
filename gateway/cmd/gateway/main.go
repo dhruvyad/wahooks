@@ -42,6 +42,9 @@ func main() {
 		case "import-history":
 			importHistory(os.Args[2:])
 			return
+		case "copy-store":
+			copyStore(os.Args[2:])
+			return
 		case "derive-ip":
 			deriveIP(os.Args[2:])
 			return
