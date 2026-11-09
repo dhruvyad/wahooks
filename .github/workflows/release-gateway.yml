@@ -1,0 +1,54 @@
+name: Release gateway
+
+# Tag gateway-v<version> (the version in gateway/internal/api/handlers.go, e.g. gateway-v2026.11.2) to publish
+# static Linux binaries plus SHA256SUMS. New gateway boxes download a pinned release and verify its checksum.
+on:
+  push:
+    tags: ['gateway-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+
+      - name: Version matches the tag
+        working-directory: gateway
+        run: |
+          want="${GITHUB_REF_NAME#gateway-v}-wagw"
+          grep -q "const Version = \"${want}\"" internal/api/handlers.go || { echo "tag ${GITHUB_REF_NAME} does not match api.Version"; exit 1; }
+
+      - name: Vet and test
+        working-directory: gateway
+        run: |
+          ./build.sh vet
+          ./build.sh test ./...
+
+      - name: Build
+        working-directory: gateway
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH=$arch ./build.sh build -trimpath -ldflags "-s -w" -o dist/gateway-linux-$arch
+          done
+          cd dist && sha256sum gateway-linux-* > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gateway/dist/*
+          # The CLI installer reads /releases/latest; a gateway release must never become "latest".
+          make_latest: 'false'
+          body: |
+            WAHooks WhatsApp gateway ${{ github.ref_name }}: static Linux binaries (amd64, arm64) and SHA256SUMS.
+            Source: gateway/ at this tag. The binary as a whole is GPL-3.0 (it links libsignal); see gateway/README.md.
