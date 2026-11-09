@@ -214,33 +214,46 @@ func Convert(ctx context.Context, st *wahaauth.AuthState, t *Target, opt Options
 		return nil, ErrDeviceExists
 	}
 
+	// The device and everything keyed by it go in one transaction. LID mappings don't: whatsmeow_lid_map is shared
+	// by every account in the store, and a live gateway upserts the same pairs while it handles messages. Held for
+	// the minutes a big account takes to write, those row locks stalled message handling for every account on the
+	// box (2026-11-09, ~90 s). They are written after the commit, in short batches of their own.
+	var dev *store.Device
+	var lidMappings []store.LIDMapping
 	err = t.DB.DoTxn(ctx, nil, func(ctx context.Context) error {
 		if existing != nil {
 			if err := t.Container.DeleteDevice(ctx, existing); err != nil {
 				return fmt.Errorf("delete existing device: %w", err)
 			}
 		}
-		dev := t.Container.NewDevice()
+		dev = t.Container.NewDevice()
 		f.Apply(dev)
 		if err := t.Container.PutDevice(ctx, dev); err != nil {
 			return fmt.Errorf("write device: %w", err)
 		}
-		return writeKeys(ctx, st, f, dev, t, opt, rep, mask)
+		return writeKeys(ctx, st, f, dev, t, opt, rep, mask, &lidMappings)
 	})
 	if err != nil {
 		return nil, err
 	}
+	const lidBatch = 100
+	for i := 0; i < len(lidMappings); i += lidBatch {
+		end := min(i+lidBatch, len(lidMappings))
+		if err := dev.LIDs.PutManyLIDMappings(ctx, lidMappings[i:end]); err != nil {
+			return nil, fmt.Errorf("lid mappings: %w", err)
+		}
+	}
 	return rep, nil
 }
 
-func writeKeys(ctx context.Context, st *wahaauth.AuthState, f *DeviceFields, dev *store.Device, t *Target, opt Options, rep *Report, mask func(string) string) error {
+// writeKeys writes everything keyed by the device. LID mappings (a shared table) are appended to lidOut instead, for
+// Convert to write after the device's transaction commits.
+func writeKeys(ctx context.Context, st *wahaauth.AuthState, f *DeviceFields, dev *store.Device, t *Target, opt Options, rep *Report, mask func(string) string, lidOut *[]store.LIDMapping) error {
 	jid := f.ID.String()
 
 	// ---- our own account: what whatsmeow's handlePair stores --------------------------
 	if !f.LID.IsEmpty() {
-		if err := dev.LIDs.PutLIDMapping(ctx, f.LID.ToNonAD(), f.ID.ToNonAD()); err != nil {
-			return fmt.Errorf("own LID mapping: %w", err)
-		}
+		*lidOut = append(*lidOut, store.LIDMapping{LID: f.LID.ToNonAD(), PN: f.ID.ToNonAD()})
 		mainLID := f.LID.ToNonAD()
 		if err := dev.Identities.PutIdentity(ctx, mainLID.SignalAddress().String(), *(*[32]byte)(f.Account.AccountSignatureKey)); err != nil {
 			return fmt.Errorf("primary device identity: %w", err)
@@ -542,11 +555,7 @@ func writeKeys(ctx context.Context, st *wahaauth.AuthState, f *DeviceFields, dev
 			PN:  types.JID{User: pn, Server: types.DefaultUserServer},
 		})
 	}
-	if len(mappings) > 0 {
-		if err := dev.LIDs.PutManyLIDMappings(ctx, mappings); err != nil {
-			return fmt.Errorf("lid mappings: %w", err)
-		}
-	}
+	*lidOut = append(*lidOut, mappings...)
 	lc.Converted = len(mappings)
 	if st.StoreLIDForPN != nil {
 		lc.Converted -= rep.cat("lid_map (store)").Converted
