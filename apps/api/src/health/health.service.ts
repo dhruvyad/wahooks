@@ -8,6 +8,7 @@ import { WahaService } from '../waha/waha.service';
 import { WahaSessionResponse } from '../waha/waha.types';
 import { WorkersService } from '../workers/workers.service';
 import { withEventsSecretHeader } from '../events/events-secret';
+import { unlinkedFailureReason } from '../connections/failure-reason';
 
 const isGateway = (worker: { kind?: string | null }) => worker.kind === 'gateway';
 
@@ -214,6 +215,11 @@ export class HealthService implements OnApplicationBootstrap {
     const wahaSessionMap = new Map(
       wahaSessions_.map((s) => [s.name, s.status]),
     );
+    // A gateway lists `me` for every session that holds a linked device, running or not. One without it has no
+    // credentials left, so restarting it can only show a QR code.
+    const unlinked = new Set(
+      gateway ? wahaSessions_.filter((s) => !s.me).map((s) => s.name) : [],
+    );
 
     // Reconcile this worker's DB sessions against what WAHA actually reports.
     // Orphan detection below uses the GLOBAL active-name set (all workers), so we
@@ -247,7 +253,7 @@ export class HealthService implements OnApplicationBootstrap {
         continue;
       }
 
-      await this.reconcileSessionStatus(worker, dbSession, wahaStatus);
+      await this.reconcileSessionStatus(worker, dbSession, wahaStatus, !unlinked.has(wahaName));
     }
 
     if (gateway) {
@@ -445,6 +451,7 @@ export class HealthService implements OnApplicationBootstrap {
     worker: any,
     dbSession: any,
     wahaStatus: string,
+    linked = true,
   ): Promise<void> {
     const sessionName = dbSession.sessionName;
     const wahaName = this.wahaService.resolveSessionName(
@@ -538,6 +545,13 @@ export class HealthService implements OnApplicationBootstrap {
       }
 
       case 'FAILED':
+        // A gateway session with no linked device was logged out on the phone, or its QR codes ran out. A restart
+        // would only show more QR codes nobody is looking at (and send them to the owner's webhooks), then bury
+        // the reason under "QR not scanned". Say why and stop it; the QR endpoint brings it back on demand.
+        if (isGateway(worker) && !linked) {
+          await this.retireUnlinked(worker, dbSession, wahaName);
+          break;
+        }
         // Recover from persisted auth WITHOUT logging out (preserves the WhatsApp
         // link). A restart from valid auth returns to WORKING; a genuinely
         // logged-out session stays FAILED/goes to SCAN_QR. Only after exhausting
@@ -643,6 +657,33 @@ export class HealthService implements OnApplicationBootstrap {
         `Recovery ${action} failed for "${dbSession.sessionName}": ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /** Mark a gateway session that lost (or never got) its linked device failed, with why, and stop it. */
+  private async retireUnlinked(worker: any, dbSession: any, wahaName: string): Promise<void> {
+    this.recoveryAttempts.delete(dbSession.id);
+    this.scanQrSince.delete(dbSession.id);
+    const reason = unlinkedFailureReason(dbSession.statusReason, dbSession.phoneNumber);
+    let recorded: unknown;
+    try {
+      recorded = JSON.parse(dbSession.statusReason ?? 'null')?.reason;
+    } catch {
+      recorded = undefined;
+    }
+    if (dbSession.status !== 'failed' || recorded !== reason) {
+      this.logger.warn(
+        `Session "${dbSession.sessionName}" has no linked device on gateway ${this.label(worker)} (${reason === 'logged_out' ? 'logged out on the phone' : 'QR code not scanned'}) — not restarting; a new QR scan re-links it`,
+      );
+      await this.db
+        .update(wahaSessions)
+        .set({
+          status: 'failed',
+          statusReason: JSON.stringify({ via: 'health_cron', reason, at: new Date().toISOString() }),
+          updatedAt: new Date(),
+        })
+        .where(eq(wahaSessions.id, dbSession.id));
+    }
+    await this.retireSession(worker, dbSession, wahaName);
   }
 
   private async retireSession(

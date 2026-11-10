@@ -574,7 +574,7 @@ describe('HealthService', () => {
 
     it('restarts a FAILED gateway session from its auth, never logging it out', async () => {
       await poll(
-        [{ name: 'u_f', status: 'FAILED' }],
+        [{ name: 'u_f', status: 'FAILED', me: { id: '1@c.us', pushName: 'x' } }],
         ['u_f'],
         [{ id: 'f', sessionName: 'u_f', status: 'working', phoneNumber: '1' }],
       );
@@ -582,6 +582,50 @@ describe('HealthService', () => {
       expect(waha.restartSession).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_f');
       expect(waha.logoutSession).not.toHaveBeenCalled();
       expect(waha.deleteSession).not.toHaveBeenCalled();
+    });
+
+    describe('a FAILED session with no linked device', () => {
+      const history = (...statuses: string[]) =>
+        JSON.stringify({ via: 'waha_event', waha_status: 'FAILED', history: statuses.map((status) => ({ status, timestamp: 1 })) });
+      const recorded = () => gwDb.set.mock.calls.map((c: any[]) => c[0]).filter((u: any) => u.status === 'failed');
+
+      it('was logged out on the phone: marked failed with that reason and stopped, never restarted', async () => {
+        await poll(
+          [{ name: 'u_lo', status: 'FAILED', me: null }],
+          ['u_lo'],
+          [{ id: 'lo', sessionName: 'u_lo', status: 'failed', phoneNumber: '1', statusReason: history('STARTING', 'WORKING', 'FAILED') }],
+        );
+
+        expect(waha.restartSession).not.toHaveBeenCalled();
+        expect(waha.logoutSession).not.toHaveBeenCalled();
+        expect(waha.stopSession).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_lo');
+        expect(recorded()).toHaveLength(1);
+        expect(JSON.parse(recorded()[0].statusReason)).toMatchObject({ via: 'health_cron', reason: 'logged_out' });
+      });
+
+      it('let its QR codes run out: recorded as an expired QR, even with a number from an earlier link', async () => {
+        await poll(
+          [{ name: 'u_qr', status: 'FAILED' }],
+          ['u_qr'],
+          [{ id: 'qr', sessionName: 'u_qr', status: 'failed', phoneNumber: '1', statusReason: history('SCAN_QR_CODE', 'SCAN_QR_CODE', 'FAILED') }],
+        );
+
+        expect(waha.restartSession).not.toHaveBeenCalled();
+        expect(waha.stopSession).toHaveBeenCalledWith('10.0.1.5', 'gateway-test-key', 'u_qr');
+        expect(JSON.parse(recorded()[0].statusReason)).toMatchObject({ reason: 'qr_expired' });
+      });
+
+      it('keeps a reason already recorded, and only retries the stop', async () => {
+        await poll(
+          [{ name: 'u_lo', status: 'FAILED', me: null }],
+          ['u_lo'],
+          [{ id: 'lo', sessionName: 'u_lo', status: 'failed', phoneNumber: '1', statusReason: JSON.stringify({ via: 'health_cron', reason: 'logged_out' }) }],
+        );
+
+        expect(recorded()).toHaveLength(0);
+        expect(waha.stopSession).toHaveBeenCalledTimes(1);
+        expect(waha.restartSession).not.toHaveBeenCalled();
+      });
     });
 
     it('gives live sessions the events secret, keeping the rest of their config', async () => {

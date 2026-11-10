@@ -28,6 +28,7 @@ import { wahaSessions, wahaWorkers, webhookConfigs } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
+import { failureReasonOf } from './failure-reason';
 import { WorkersService } from '../workers/workers.service';
 import { WahaService } from '../waha/waha.service';
 import { StripeService } from '../billing/stripe.service';
@@ -75,7 +76,11 @@ export class ConnectionsController {
   }
 
   private mapConnection(conn: any): any {
-    return { ...conn, status: this.mapStatus(conn.status) };
+    return {
+      ...conn,
+      status: this.mapStatus(conn.status),
+      failureReason: conn.status === 'failed' ? failureReasonOf(conn.statusReason) : null,
+    };
   }
 
   // --- Read-API shaping helpers (normalize WAHA payloads into our canonical types) ---

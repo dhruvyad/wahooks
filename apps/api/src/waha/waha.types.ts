@@ -9,10 +9,11 @@ export interface WahaSessionResponse {
     }>;
     [key: string]: unknown;
   };
+  /** The linked account; null (gateway) or absent when the session holds no linked device. */
   me?: {
     id: string;
     pushName: string;
-  };
+  } | null;
 }
 
 export interface WahaQrCodeResponse {

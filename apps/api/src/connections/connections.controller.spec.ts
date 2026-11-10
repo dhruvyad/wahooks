@@ -106,8 +106,8 @@ describe('ConnectionsController', () => {
 
       // API maps "working" → "connected" in responses
       expect(result).toEqual([
-        { id: 'sess-1', userId: 'user-123', sessionName: 'u_user-123_s_abc', status: 'connected' },
-        { id: 'sess-2', userId: 'user-123', sessionName: 'u_user-123_s_def', status: 'scan_qr' },
+        { id: 'sess-1', userId: 'user-123', sessionName: 'u_user-123_s_abc', status: 'connected', failureReason: null },
+        { id: 'sess-2', userId: 'user-123', sessionName: 'u_user-123_s_def', status: 'scan_qr', failureReason: null },
       ]);
       expect(db.select).toHaveBeenCalled();
       expect(db.from).toHaveBeenCalled();
@@ -279,7 +279,7 @@ describe('ConnectionsController', () => {
 
       const result = await controller.createConnection(user);
 
-      expect(result).toEqual(updated);
+      expect(result).toEqual({ ...updated, failureReason: null });
       expect(stripeService.getPaidSlots).toHaveBeenCalledWith('cus_123');
       expect(db.insert).toHaveBeenCalled();
       expect(workersService.findOrProvisionWorker).toHaveBeenCalled();
@@ -311,7 +311,7 @@ describe('ConnectionsController', () => {
 
       const result = await controller.createConnection(user);
 
-      expect(result).toEqual(created);
+      expect(result).toEqual({ ...created, failureReason: null });
       expect(stripeService.getPaidSlots).not.toHaveBeenCalled();
     });
 
@@ -347,7 +347,7 @@ describe('ConnectionsController', () => {
 
       const result = await controller.createConnection(user);
 
-      expect(result).toEqual(created);
+      expect(result).toEqual({ ...created, failureReason: null });
     });
   });
 
@@ -358,7 +358,19 @@ describe('ConnectionsController', () => {
 
       const result = await controller.getConnection('sess-1', user);
 
-      expect(result).toEqual({ ...connection, status: 'connected' });
+      expect(result).toEqual({ ...connection, status: 'connected', failureReason: null });
+    });
+
+    it('says why a failed connection failed', async () => {
+      const connection = {
+        id: 'sess-1', userId: 'user-123', sessionName: 'u_user-123_s_abc', status: 'failed',
+        statusReason: JSON.stringify({ via: 'health_cron', reason: 'logged_out' }),
+      };
+      db.where.mockResolvedValue([connection]);
+
+      const result = await controller.getConnection('sess-1', user);
+
+      expect(result).toMatchObject({ status: 'failed', failureReason: 'logged_out' });
     });
 
     it('should throw NotFoundException when connection not found', async () => {
