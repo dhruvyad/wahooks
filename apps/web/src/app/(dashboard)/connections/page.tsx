@@ -20,7 +20,13 @@ interface Connection {
   name: string | null;
   phoneNumber: string | null;
   status: string;
+  failureReason?: "logged_out" | "qr_expired" | null;
 }
+
+const FAILURE_HINT: Record<string, string> = {
+  logged_out: "Logged out on the phone",
+  qr_expired: "QR code expired",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Blurred QR empty state — shown when user has 0 connections AND    */
@@ -246,6 +252,12 @@ export default function ConnectionsPage() {
                       : conn.status === "connected"
                         ? "Loading..."
                         : "No phone linked"}
+                  {conn.status === "failed" && conn.failureReason && (
+                    <span className="text-status-error-text">
+                      {" · "}
+                      {FAILURE_HINT[conn.failureReason]}
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-3 ml-3">

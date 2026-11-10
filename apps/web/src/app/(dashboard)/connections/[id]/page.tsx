@@ -17,7 +17,26 @@ interface Connection {
   name: string | null;
   status: string;
   me: { id: string; pushName?: string } | null;
+  failureReason?: "logged_out" | "qr_expired" | null;
 }
+
+const FAILURE_COPY: Record<string, { title: string; body: string; action: string }> = {
+  logged_out: {
+    title: "Logged out on the phone",
+    body: "WhatsApp removed this connection from the phone's Linked devices. Scan a new QR code to reconnect.",
+    action: "Reconnect",
+  },
+  qr_expired: {
+    title: "QR code expired",
+    body: "The QR code wasn't scanned in time. Get a new one to link your phone.",
+    action: "New QR code",
+  },
+};
+const DEFAULT_FAILURE_COPY = {
+  title: "Connection Failed",
+  body: "Something went wrong. Try restarting the connection.",
+  action: "Restart",
+};
 
 interface QrData {
   value: string;
@@ -329,6 +348,9 @@ export default function ConnectionDetailPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [fullscreen]);
+
+  const failureCopy =
+    FAILURE_COPY[connection?.failureReason ?? ""] ?? DEFAULT_FAILURE_COPY;
 
   async function handleRestart() {
     setRestarting(true);
@@ -1073,13 +1095,13 @@ export default function ConnectionDetailPage() {
       {/* Failed section */}
       {connection?.status === "failed" && (
         <div className="mt-8 rounded-xl border border-status-error-border bg-status-error-bg p-6">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-base font-semibold text-status-error-text">
-                Connection Failed
+                {failureCopy.title}
               </h2>
               <p className="mt-1 text-sm text-status-error-text opacity-80">
-                Something went wrong. Try restarting the connection.
+                {failureCopy.body}
               </p>
             </div>
             <button
@@ -1087,7 +1109,7 @@ export default function ConnectionDetailPage() {
               disabled={restarting}
               className="shrink-0 rounded-lg border border-status-error-border bg-bg-primary px-3 py-1.5 text-xs font-medium text-status-error-text transition-colors duration-150 hover:bg-bg-hover disabled:opacity-50"
             >
-              {restarting ? "Restarting..." : "Restart"}
+              {restarting ? "Restarting..." : failureCopy.action}
             </button>
           </div>
         </div>
