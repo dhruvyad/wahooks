@@ -16,6 +16,18 @@ interface WebhookConfig {
   signingSecret: string;
   active: boolean;
   createdAt: string;
+  /** Start of the current run of deliveries that failed every retry. */
+  failingSince?: string | null;
+  /** "failing" when WAHooks paused it after days of nothing but failures. */
+  pausedReason?: "failing" | null;
+  pausedAt?: string | null;
+}
+
+/** Matches the API's PAUSE_FAILING_WEBHOOK_AFTER_MS. */
+const PAUSE_AFTER_DAYS = 3;
+
+function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 const EVENT_TYPES = [
@@ -116,7 +128,14 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
     const previousWebhooks = webhooks;
     setWebhooks((prev) =>
       prev.map((w) =>
-        w.id === webhook.id ? { ...w, active: !w.active } : w
+        w.id === webhook.id
+          ? {
+              ...w,
+              active: !w.active,
+              pausedReason: null,
+              ...(w.active ? {} : { failingSince: null, pausedAt: null }),
+            }
+          : w
       )
     );
     setTogglingIds((prev) => new Set(prev).add(webhook.id));
@@ -127,7 +146,11 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
         body: JSON.stringify({ active: !webhook.active }),
       });
       toast(
-        webhook.active ? "Webhook deactivated" : "Webhook activated",
+        webhook.active
+          ? "Webhook deactivated"
+          : webhook.pausedReason === "failing"
+            ? "Webhook resumed"
+            : "Webhook activated",
         "success"
       );
     } catch (err) {
@@ -399,7 +422,13 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-wa-green focus:ring-offset-2 focus:ring-offset-bg-primary disabled:opacity-50 ${
                       webhook.active ? "bg-wa-green" : "bg-bg-hover"
                     }`}
-                    title={webhook.active ? "Active" : "Inactive"}
+                    title={
+                      webhook.active
+                        ? "Active"
+                        : webhook.pausedReason === "failing"
+                          ? "Paused by WAHooks: resume"
+                          : "Inactive"
+                    }
                   >
                     <span
                       className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-150 ${
@@ -417,6 +446,36 @@ export function WebhookList({ connectionId }: { connectionId: string }) {
                   </button>
                 </div>
               </div>
+
+              {webhook.pausedReason === "failing" && !webhook.active && (
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-status-error-border bg-status-error-bg px-3 py-2.5">
+                  <p className="text-xs text-status-error-text">
+                    <span className="font-semibold">Paused.</span> Every delivery
+                    failed for {PAUSE_AFTER_DAYS} days
+                    {webhook.failingSince
+                      ? ` (since ${formatDay(webhook.failingSince)})`
+                      : ""}
+                    , so WAHooks stopped sending to it. Fix the endpoint, then
+                    resume.
+                  </p>
+                  <button
+                    onClick={() => handleToggleActive(webhook)}
+                    disabled={togglingIds.has(webhook.id)}
+                    className="shrink-0 rounded-lg border border-status-error-border bg-bg-primary px-3 py-1 text-xs font-medium text-status-error-text transition-colors duration-150 hover:bg-bg-hover disabled:opacity-50"
+                  >
+                    {togglingIds.has(webhook.id) ? "..." : "Resume"}
+                  </button>
+                </div>
+              )}
+
+              {webhook.active && webhook.failingSince && (
+                <p className="mt-3 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-xs text-status-warning-text">
+                  Every delivery has failed since{" "}
+                  {formatDay(webhook.failingSince)}. WAHooks pauses this webhook
+                  after {PAUSE_AFTER_DAYS} days of failures unless one gets
+                  through.
+                </p>
+              )}
 
               <EventLog
                 webhookId={webhook.id}
