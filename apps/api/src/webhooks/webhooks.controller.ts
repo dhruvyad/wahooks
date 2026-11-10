@@ -13,13 +13,16 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, or, desc } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { webhookConfigs, webhookEventLogs, wahaSessions } from '@wahooks/db';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { CreateWebhookDto, UpdateWebhookDto } from './webhooks.dto';
+
+/** What resuming a webhook resets: switched on, and no pause or failing run carried over. */
+const RESUMED = { active: true, pausedAt: null, pausedReason: null, failingSince: null };
 
 @Controller()
 @UseGuards(AuthGuard)
@@ -53,6 +56,7 @@ export class WebhooksController {
    * Idempotent on (sessionId, url): if an active config with the same URL
    * already exists for this session, return it instead of creating a duplicate.
    * Prevents runaway fan-out when client integrations re-register on every boot.
+   * One WAHooks paused for failing is resumed: whatever registers it is up again.
    */
   @Post('connections/:connectionId/webhooks')
   async createWebhook(
@@ -69,10 +73,20 @@ export class WebhooksController {
         and(
           eq(webhookConfigs.sessionId, connectionId),
           eq(webhookConfigs.url, dto.url),
-          eq(webhookConfigs.active, true),
+          or(eq(webhookConfigs.active, true), eq(webhookConfigs.pausedReason, 'failing')),
         ),
       )
+      .orderBy(desc(webhookConfigs.active))
       .limit(1);
+
+    if (existing && !existing.active) {
+      const [resumed] = await this.db
+        .update(webhookConfigs)
+        .set({ ...RESUMED, events: dto.events, updatedAt: new Date() })
+        .where(eq(webhookConfigs.id, existing.id))
+        .returning();
+      return resumed;
+    }
 
     if (existing) {
       // Update events list if it changed, but keep the same row + signing secret.
@@ -130,8 +144,11 @@ export class WebhooksController {
     if (dto.events !== undefined) {
       updateData.events = dto.events;
     }
-    if (dto.active !== undefined) {
-      updateData.active = dto.active;
+    if (dto.active === true) {
+      Object.assign(updateData, RESUMED);
+    } else if (dto.active === false) {
+      // Switched off by its owner, which isn't a pause WAHooks made.
+      Object.assign(updateData, { active: false, pausedAt: null, pausedReason: null });
     }
 
     const [updated] = await this.db

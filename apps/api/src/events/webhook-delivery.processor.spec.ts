@@ -15,7 +15,12 @@ describe('WebhookDeliveryProcessor', () => {
       insert: jest.fn().mockReturnThis(),
       values: jest.fn().mockReturnThis(),
       onConflictDoUpdate: jest.fn().mockResolvedValue(resolvedValue),
+      // webhook_configs updates (failing_since / pausing): `where` is awaited directly or ends in `returning`.
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      returning: jest.fn().mockResolvedValue([]),
     };
+    chain.where = jest.fn(() => Object.assign(Promise.resolve(undefined), { returning: chain.returning }));
     return chain;
   }
 
@@ -235,6 +240,73 @@ describe('WebhookDeliveryProcessor', () => {
 
       const [, options] = fetchSpy.mock.calls[0];
       expect(JSON.parse(options.body)).toEqual(payload);
+    });
+  });
+  describe('webhooks that only ever fail', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const finalAttempt = () => Object.assign(createJob(), { attemptsMade: 4 });
+    const configWrites = () => db.set.mock.calls.map((c: any[]) => c[0]);
+
+    it('a success clears the failing run, then trusts that for a while instead of writing again', async () => {
+      await processor.process(createJob() as any);
+      await processor.process(createJob() as any);
+
+      expect(configWrites()).toEqual([{ failingSince: null }]);
+    });
+
+    it('a delivery that failed every retry starts the run, and a retry that may still succeed does not', async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse(500, false, 'down'));
+      db.returning.mockResolvedValueOnce([{ failingSince: new Date(), active: true }]);
+
+      await expect(processor.process(createJob() as any)).rejects.toThrow();
+      expect(configWrites()).toHaveLength(0);
+
+      await expect(processor.process(finalAttempt() as any)).rejects.toThrow();
+      expect(configWrites()).toHaveLength(1);
+      expect(configWrites()[0]).toHaveProperty('failingSince'); // coalesce(failing_since, now())
+      expect(configWrites()[0]).not.toHaveProperty('active');
+    });
+
+    it('pauses the webhook once every delivery has failed for 3 days', async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse(500, false, 'down'));
+      db.returning
+        .mockResolvedValueOnce([{ failingSince: new Date(Date.now() - 3 * DAY - 1000), active: true }])
+        .mockResolvedValueOnce([{ id: 'wh-config-1' }]);
+
+      await expect(processor.process(finalAttempt() as any)).rejects.toThrow();
+
+      expect(configWrites()[1]).toMatchObject({ active: false, pausedReason: 'failing', pausedAt: expect.any(Date) });
+    });
+
+    it('leaves it running before then, and never re-pauses one already off', async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse(500, false, 'down'));
+      db.returning
+        .mockResolvedValueOnce([{ failingSince: new Date(Date.now() - 2 * DAY), active: true }])
+        .mockResolvedValueOnce([{ failingSince: new Date(Date.now() - 9 * DAY), active: false }]);
+
+      await expect(processor.process(finalAttempt() as any)).rejects.toThrow();
+      await expect(processor.process(finalAttempt() as any)).rejects.toThrow();
+
+      expect(configWrites().some((w: any) => w.active === false)).toBe(false);
+    });
+
+    it('a failure forgets the cached success, so the next success clears the run again', async () => {
+      await processor.process(createJob() as any);
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse(500, false, 'down'));
+      db.returning.mockResolvedValueOnce([{ failingSince: new Date(), active: true }]);
+      await expect(processor.process(finalAttempt() as any)).rejects.toThrow();
+      await processor.process(createJob() as any);
+
+      expect(configWrites().filter((w: any) => w.failingSince === null)).toHaveLength(2);
+    });
+
+    it('never fails a delivery over its bookkeeping', async () => {
+      db.update.mockImplementation(() => {
+        throw new Error('db down');
+      });
+      jest.spyOn((processor as any).logger, 'warn').mockImplementation(() => undefined);
+
+      await expect(processor.process(createJob() as any)).resolves.toBeUndefined();
     });
   });
 });

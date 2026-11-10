@@ -59,10 +59,18 @@ export interface SessionInfo {
   sessionName: string;
   phoneNumber: string | null;
   status: SessionStatus;
+  /** Why a `failed` connection failed, when its owner can act on it; null otherwise. */
+  failureReason?: ConnectionFailureReason | null;
   engine: WahaEngine;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * logged_out: WhatsApp removed the linked device (Linked devices → Log out on the phone); scan a new QR.
+ * qr_expired: a QR code was shown and not scanned in time; fetch a new one.
+ */
+export type ConnectionFailureReason = 'logged_out' | 'qr_expired';
 
 // Webhook config (client-facing)
 export interface WebhookConfig {
@@ -71,6 +79,11 @@ export interface WebhookConfig {
   url: string;
   events: WahaEventType[];
   active: boolean;
+  /** Start of the current run of deliveries that failed every retry; null once one succeeds. */
+  failingSince?: string | null;
+  /** 'failing' when WAHooks paused the webhook after 3 days of nothing but failures. */
+  pausedReason?: 'failing' | null;
+  pausedAt?: string | null;
   createdAt: string;
 }
 

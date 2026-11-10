@@ -20,6 +20,12 @@ export const webhookConfigs = pgTable("webhook_configs", {
   events: text("events").array().notNull(), // e.g. ["message", "session.status"]
   signingSecret: text("signing_secret").notNull(), // HMAC-SHA256 key
   active: boolean("active").notNull().default(true),
+  // Start of the current run of deliveries that failed every retry; cleared by any success.
+  failingSince: timestamp("failing_since", { withTimezone: true }),
+  // Set with active=false when WAHooks paused the webhook itself ('failing': nothing but failures for
+  // days); null when its owner switched it off. Resuming clears both.
+  pausedAt: timestamp("paused_at", { withTimezone: true }),
+  pausedReason: text("paused_reason", { enum: ["failing"] }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

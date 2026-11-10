@@ -110,6 +110,22 @@ describe('WebhooksController', () => {
       );
     });
 
+    it('resumes a webhook WAHooks paused for failing when the same URL is registered again', async () => {
+      const dto = { url: 'https://example.com/hook', events: ['message'] };
+      const paused = { id: 'wh-paused', userId: 'user-123', sessionId: connectionId, url: dto.url, active: false, pausedReason: 'failing' };
+      db.where.mockResolvedValueOnce([{ id: connectionId, userId: 'user-123' }]);
+      db.limit.mockResolvedValueOnce([paused]);
+      db.returning.mockResolvedValueOnce([{ ...paused, active: true, pausedReason: null }]);
+
+      const result = await controller.createWebhook(connectionId, dto, user);
+
+      expect(result).toMatchObject({ id: 'wh-paused', active: true });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({ active: true, pausedAt: null, pausedReason: null, failingSince: null, events: ['message'] }),
+      );
+    });
+
     it('should throw NotFoundException when connection does not exist', async () => {
       db.where.mockResolvedValueOnce([]);
 
@@ -179,6 +195,20 @@ describe('WebhooksController', () => {
       const setArg = db.set.mock.calls[0][0];
       expect(setArg).not.toHaveProperty('url');
       expect(setArg).not.toHaveProperty('events');
+      // Switched off by its owner: not a pause WAHooks made.
+      expect(setArg).toMatchObject({ pausedAt: null, pausedReason: null });
+    });
+
+    it('resuming clears the pause and the failing run', async () => {
+      const config = { id: 'wh-1', userId: 'user-123', active: false, pausedReason: 'failing', pausedAt: new Date(), failingSince: new Date() };
+      db.where.mockResolvedValueOnce([config]);
+      db.returning.mockResolvedValueOnce([{ ...config, active: true }]);
+
+      await controller.updateWebhook('wh-1', { active: true }, user);
+
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({ active: true, pausedAt: null, pausedReason: null, failingSince: null }),
+      );
     });
   });
 

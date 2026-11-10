@@ -37,6 +37,12 @@ Each webhook config has an `events` array that controls which events are deliver
 
 Your endpoint must return a 2xx status code within 15 seconds, otherwise the delivery is retried.
 
+## Automatic pausing
+
+If every delivery to a webhook fails all its retries for 3 days, WAHooks pauses it (`active: false`, `pausedReason: "failing"`) and stops sending to it. One successful delivery resets the clock. While deliveries are failing, the webhook shows `failingSince`, the time the run of failures began.
+
+To resume a paused webhook, fix the endpoint, then turn it back on in the dashboard or with `PUT /api/webhooks/:id` and `{ "active": true }`. Registering the same URL again on the same connection also resumes it.
+
 ## Multiple webhooks
 
 You can create multiple webhook configs per connection. Each receives events independently — useful for sending different event types to different services.

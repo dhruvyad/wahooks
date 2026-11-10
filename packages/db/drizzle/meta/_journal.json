@@ -57,6 +57,13 @@
       "when": 1794225600000,
       "tag": "0007_worker_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794326400000,
+      "tag": "0008_webhook_auto_pause",
+      "breakpoints": true
     }
   ]
 }
