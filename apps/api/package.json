@@ -21,7 +21,7 @@
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/platform-ws": "^11.1.17",
     "@nestjs/schedule": "^6.1.1",
-    "@nestjs/throttler": "^6.5.0",
+    "@nestjs/throttler": "^6.7.1",
     "@nestjs/websockets": "^11.1.17",
     "@wahooks/db": "workspace:*",
     "@wahooks/shared-types": "workspace:*",
