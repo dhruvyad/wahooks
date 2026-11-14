@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, ServiceUnavailableException, BadGatewayException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConnectionsController, idleVerdict } from './connections.controller';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -491,7 +491,7 @@ describe('ConnectionsController', () => {
         const all = await controller.getChats('sess-1', user);
         expect(all).toHaveLength(2);
         expect(all[0]).toEqual({
-          id: '111@g.us', name: 'Group A', isGroup: true,
+          id: '111@g.us', name: 'Group A', picture: null, isGroup: true,
           lastMessage: { body: 'hi', timestamp: 100, fromMe: true }, unread: true,
         });
         expect(all[1].isGroup).toBe(false);
@@ -505,6 +505,30 @@ describe('ConnectionsController', () => {
         const unread = await controller.getChats('sess-1', user, undefined, undefined, 'true');
         expect(unread).toHaveLength(1);
         expect(unread[0].id).toBe('111@g.us');
+      });
+
+      it('passes each chat\'s picture through', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getChatsOverview.mockResolvedValueOnce([
+          { id: '111@g.us', name: 'Group A', picture: 'https://pps.whatsapp.net/g.jpg', lastMessage: null, _chat: {} },
+        ]);
+        const [chat] = await controller.getChats('sess-1', user);
+        expect(chat.picture).toBe('https://pps.whatsapp.net/g.jpg');
+      });
+
+      it('502 when a connected session\'s chats fail to load, not an empty list', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getChatsOverview.mockRejectedValueOnce(new Error('timeout'));
+        await expect(controller.getChats('sess-1', user)).rejects.toThrow(BadGatewayException);
+      });
+
+      it('[] when the connection isn\'t connected', async () => {
+        db.where.mockResolvedValueOnce([{ ...connection, status: 'scan_qr' }]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getChatsOverview.mockRejectedValueOnce(new Error('session is not WORKING'));
+        expect(await controller.getChats('sess-1', user)).toEqual([]);
       });
 
       it('returns [] when no worker assigned', async () => {
@@ -601,6 +625,22 @@ describe('ConnectionsController', () => {
         const page = await controller.getMessages('sess-1', '111@g.us', user, undefined, undefined, 'false');
         expect(page.messages[0].type).toBe('image');
         expect(page.messages[0].text).toBe('the chart');
+      });
+    });
+
+    describe('profile picture', () => {
+      it('null when the contact has no picture', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getProfilePicture = jest.fn().mockResolvedValueOnce({ profilePictureUrl: null });
+        expect(await controller.getContactPicture('sess-1', '222@c.us', user)).toEqual({ profilePictureUrl: null });
+      });
+
+      it('502 when the lookup fails, so it isn\'t mistaken for "no picture"', async () => {
+        db.where.mockResolvedValueOnce([connection]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+        (wahaService as any).getProfilePicture = jest.fn().mockRejectedValueOnce(new Error('timeout'));
+        await expect(controller.getContactPicture('sess-1', '222@c.us', user)).rejects.toThrow(BadGatewayException);
       });
     });
 

@@ -54,7 +54,7 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 | `DELETE` | [`/connections/:id`](/docs/api-reference/connections/delete) | Delete a connection |
 | `POST` | [`/connections/:id/restart`](/docs/api-reference/connections/restart) | Restart a connection |
 | `GET` | [`/connections/:id/qr`](/docs/api-reference/connections/qr) | Get QR code for linking |
-| `GET` | [`/connections/:id/chats`](/docs/api-reference/connections/chats) | List chats (enriched: name, isGroup, lastMessage, unread) |
+| `GET` | [`/connections/:id/chats`](/docs/api-reference/connections/chats) | List chats (enriched: name, picture, isGroup, lastMessage, unread) |
 | `GET` | [`/connections/:id/me`](/docs/api-reference/connections/profile) | Get WhatsApp profile info |
 | `GET` | `/connections/:id/media/:filename` | Proxy a media file from the WAHA worker (streams the file) |
 
@@ -62,7 +62,7 @@ The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'l
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/connections/:id/chats` | List chats — `?limit=&offset=&unread_only=true`. Each item: `id`, `name`, `isGroup`, `lastMessage {body,timestamp,fromMe}`, `unread` |
+| `GET` | `/connections/:id/chats` | List chats — `?limit=&offset=&unread_only=true`. Each item: `id`, `name`, `picture`, `isGroup`, `lastMessage {body,timestamp,fromMe}`, `unread`. `502` if a connected connection's chats can't be loaded |
 | `GET` | `/connections/:id/chats/:chatId/messages` | Page of messages, newest-first — `?limit=&before=<cursor>` |
 | `GET` | `/connections/:id/messages/:messageId?chatId=` | A single message by id (`chatId` required) |
 | `GET` | `/connections/:id/messages/:messageId/media?chatId=` | Stream that message's media (`chatId` required) |

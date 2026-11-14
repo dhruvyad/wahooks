@@ -150,6 +150,8 @@ export interface Contact {
 export interface ChatSummary {
   id: string;
   name: string | null;
+  /** Profile or group picture URL, when known; null otherwise. */
+  picture: string | null;
   isGroup: boolean;
   lastMessage: {
     body: string | null;

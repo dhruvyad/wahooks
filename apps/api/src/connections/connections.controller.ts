@@ -15,6 +15,7 @@ import {
   ForbiddenException,
   GoneException,
   ServiceUnavailableException,
+  BadGatewayException,
   BadRequestException,
   Header,
   StreamableFile,
@@ -172,6 +173,7 @@ export class ConnectionsController {
     return {
       id,
       name: raw?.name ?? null,
+      picture: raw?.picture ?? null,
       isGroup: typeof id === 'string' && id.endsWith('@g.us'),
       lastMessage: lm
         ? { body: lm.body ?? null, timestamp: lm.timestamp, fromMe: !!lm.fromMe }
@@ -640,8 +642,12 @@ export class ConnectionsController {
         chats = chats.filter((c) => c.unread);
       }
       return chats;
-    } catch {
-      return [];
+    } catch (error) {
+      // A connection that isn't connected has no chats to list; for a connected one this is a real failure, and an
+      // empty list would read as "no chats".
+      if (connection.status !== 'working') return [];
+      this.logger.warn(`Chats for connection ${id} failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new BadGatewayException("Couldn't load chats from WhatsApp. Try again.");
     }
   }
 
@@ -894,9 +900,14 @@ export class ConnectionsController {
     if (!worker) return { profilePictureUrl: null };
 
     const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
-    return this.wahaService.getProfilePicture(
-      worker.internalIp, worker.apiKeyEnc, wahaName, contactId,
-    );
+    // null means the contact has no picture (or hides it); a failed lookup is an error, so callers don't cache it
+    // as "no picture".
+    try {
+      return await this.wahaService.getProfilePicture(worker.internalIp, worker.apiKeyEnc, wahaName, contactId);
+    } catch (error) {
+      this.logger.warn(`Profile picture for connection ${id} failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new BadGatewayException("Couldn't fetch the profile picture from WhatsApp. Try again.");
+    }
   }
 
   @Post(':id/send')

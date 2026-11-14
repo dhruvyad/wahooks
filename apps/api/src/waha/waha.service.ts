@@ -504,12 +504,9 @@ export class WahaService {
     );
     const headers = this.buildHeaders(apiKey);
 
-    try {
-      const result = await this.request<{ profilePictureURL: string | null }>('GET', url, headers);
-      return { profilePictureUrl: result.profilePictureURL };
-    } catch {
-      return { profilePictureUrl: null };
-    }
+    // Throws when the lookup fails; null only when the contact has no picture.
+    const result = await this.request<{ profilePictureURL: string | null }>('GET', url, headers);
+    return { profilePictureUrl: result?.profilePictureURL ?? null };
   }
 
   private buildFilePayload(opts: { mediaUrl?: string; mediaData?: string; mimetype?: string; filename?: string }): any {

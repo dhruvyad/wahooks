@@ -5,7 +5,7 @@ description: "Retrieve recent WhatsApp chats for a connection."
 
 `GET /api/connections/{id}/chats`
 
-Returns the most recent WhatsApp chats (up to 20) for the specified connection. The connection must be in `online` status for this endpoint to return results.
+Returns the connection's WhatsApp chats, most recent first. A connection that isn't `connected` returns an empty list.
 
 ## Authentication
 
@@ -19,27 +19,38 @@ Returns the most recent WhatsApp chats (up to 20) for the specified connection. 
 |-----------|------|----------|-------------|
 | `id` | string | Yes | The unique identifier of the connection. |
 
+## Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | number | `50` | Chats per page, at most 100. |
+| `offset` | number | `0` | Chats to skip, for paging. |
+| `unread_only` | boolean | `false` | Only chats marked unread or with unread mentions. |
+
 ## Response
 
 ```json title="200 OK"
 [
   {
+    "id": "1122334455-1600000000@g.us",
+    "name": "Team Chat",
+    "picture": "https://pps.whatsapp.net/v/t61/...",
+    "isGroup": true,
+    "lastMessage": { "body": "See you at 3", "timestamp": 1710410700, "fromMe": false },
+    "unread": true
+  },
+  {
     "id": "1234567890@c.us",
     "name": "John Doe",
-    "conversationTimestamp": 1710410700
-  },
-  {
-    "id": "0987654321@c.us",
-    "name": "Jane Smith",
-    "conversationTimestamp": 1710407100
-  },
-  {
-    "id": "1122334455-group@g.us",
-    "name": "Team Chat",
-    "conversationTimestamp": 1710403500
+    "picture": null,
+    "isGroup": false,
+    "lastMessage": { "body": "Thanks!", "timestamp": 1710407100, "fromMe": true },
+    "unread": false
   }
 ]
 ```
+
+`picture` is the chat's profile or group picture when WhatsApp has one cached for the connection, otherwise `null`.
 
 ```json title="401 Unauthorized"
 {
@@ -54,3 +65,12 @@ Returns the most recent WhatsApp chats (up to 20) for the specified connection. 
   "message": "Connection not found"
 }
 ```
+
+```json title="502 Bad Gateway"
+{
+  "statusCode": 502,
+  "message": "Couldn't load chats from WhatsApp. Try again."
+}
+```
+
+A connected connection whose chats can't be loaded returns `502`, never an empty list, so an empty list always means there are no chats.
