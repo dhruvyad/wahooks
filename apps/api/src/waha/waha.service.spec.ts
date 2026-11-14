@@ -355,6 +355,75 @@ describe('WahaService', () => {
     });
   });
 
+  describe('presence before a send', () => {
+    let typingState: { credit: jest.Mock; cleared: jest.Mock; started: jest.Mock; inbound: jest.Mock };
+    let withTyping: WahaService;
+    const paths = () => fetchSpy.mock.calls.map(([url]) => new URL(String(url)).pathname);
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(Math, 'random').mockReturnValue(0.5); // 1 s + 1 s + 50 ms/char
+      typingState = {
+        credit: jest.fn().mockResolvedValue(null),
+        cleared: jest.fn().mockResolvedValue(undefined),
+        started: jest.fn().mockResolvedValue(undefined),
+        inbound: jest.fn().mockResolvedValue(undefined),
+      };
+      withTyping = new WahaService({ get: jest.fn().mockReturnValue('50') } as any, typingState as any);
+      fetchSpy.mockResolvedValue(mockFetchResponse({ id: 'm1' }));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      (Math.random as jest.Mock).mockRestore();
+    });
+
+    it('waits only for what the caller\'s typing hasn\'t covered, and reads the chat first', async () => {
+      typingState.credit.mockResolvedValue(2_500); // required: 2 s + 20 chars × 50 ms = 3 s
+      const sent = withTyping.sendText(workerUrl, apiKey, 's', '123@lid', 'x'.repeat(20));
+      await jest.advanceTimersByTimeAsync(499);
+      expect(paths()).not.toContain('/api/sendText');
+      await jest.advanceTimersByTimeAsync(1);
+      await sent;
+      expect(paths()).toEqual(['/api/sendSeen', '/api/stopTyping', '/api/sendText']);
+      expect(typingState.cleared).toHaveBeenCalledWith('s', '123@lid');
+    });
+
+    it('sends at once when the caller has typed longer than the delay', async () => {
+      typingState.credit.mockResolvedValue(30_000);
+      await withTyping.sendText(workerUrl, apiKey, 's', '123@lid', 'x'.repeat(200));
+      expect(paths()).toEqual(['/api/sendSeen', '/api/stopTyping', '/api/sendText']);
+    });
+
+    it('runs the full delay with no credit (cold chat, or no typing)', async () => {
+      const sent = withTyping.sendText(workerUrl, apiKey, 's', '123@lid', 'x'.repeat(20));
+      await jest.advanceTimersByTimeAsync(2_999);
+      expect(paths()).toEqual(['/api/sendSeen', '/api/startTyping']);
+      await jest.advanceTimersByTimeAsync(1);
+      await sent;
+      expect(paths()).toEqual(['/api/sendSeen', '/api/startTyping', '/api/stopTyping', '/api/sendText']);
+    });
+
+    it('ends the caller\'s typing on a send that skips presence, so the keep-alive can\'t show it after', async () => {
+      await withTyping.sendText(workerUrl, apiKey, 's', '123@lid', 'hi', { skipPresence: true });
+      expect(typingState.credit).not.toHaveBeenCalled();
+      expect(typingState.cleared).toHaveBeenCalledWith('s', '123@lid');
+      expect(paths()).toEqual(['/api/sendText']);
+    });
+
+    it('a caller\'s typing is shown, recorded with a keep-alive, and cleared before stop', async () => {
+      await withTyping.callerStartedTyping(workerUrl, apiKey, 's', '123@lid');
+      expect(paths()).toEqual(['/api/startTyping']);
+      const refresh = typingState.started.mock.calls[0][2];
+      await refresh();
+      expect(paths()).toEqual(['/api/startTyping', '/api/startTyping']);
+
+      await withTyping.callerStoppedTyping(workerUrl, apiKey, 's', '123@lid');
+      expect(typingState.cleared.mock.invocationCallOrder[0]).toBeLessThan(fetchSpy.mock.invocationCallOrder[2]);
+      expect(paths()[2]).toBe('/api/stopTyping');
+    });
+  });
+
   describe('a WAHA database out of connection slots', () => {
     const full = 'remaining connection slots are reserved for roles with the SUPERUSER attribute';
 

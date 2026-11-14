@@ -138,6 +138,12 @@ export class EventsController {
     // the counter never rejects, and Redis is never waited on here.
     void this.eventMetrics.countReceived(event.event);
 
+    // A chat that messages the session is a conversation: sends to it may count the caller's typing (WahaService).
+    const inbound = event.payload as { from?: unknown; fromMe?: unknown } | undefined;
+    if (event.event === 'message' && inbound && !inbound.fromMe && typeof inbound.from === 'string') {
+      this.wahaService.noteInbound(this.wahaService.resolveSessionName(session.sessionName), inbound.from);
+    }
+
     // 1b. session.status events carry the live connection state. Reflect it in
     // the DB immediately so SDK/web pollers (GET /connections, GET /:id) see the
     // scan → working transition in ~100ms instead of waiting up to 3 minutes for

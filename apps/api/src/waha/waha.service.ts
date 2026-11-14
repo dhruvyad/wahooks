@@ -1,4 +1,4 @@
-import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   WahaSessionResponse,
@@ -9,6 +9,7 @@ import {
 } from './waha.types';
 import type { WorkerKind } from '../orchestration/orchestrator.interface';
 import { EVENTS_SECRET_HEADER } from '../events/events-secret';
+import { TypingStateService } from './typing-state.service';
 
 @Injectable()
 export class WahaService {
@@ -31,7 +32,10 @@ export class WahaService {
   private static readonly DB_FULL =
     /remaining connection slots are reserved|too many clients already/i;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @Optional() private readonly typingState?: TypingStateService,
+  ) {
     this.maxSessions = Number(
       this.configService.get('WAHA_MAX_SESSIONS', '1'),
     );
@@ -680,9 +684,7 @@ export class WahaService {
     options?: { skipPresence?: boolean },
   ): Promise<any> {
     chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence);
     const url = this.buildUrl(workerUrl, '/api/sendImage');
     const headers = this.buildHeaders(apiKey);
     const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }) };
@@ -704,9 +706,7 @@ export class WahaService {
     options?: { skipPresence?: boolean },
   ): Promise<any> {
     chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence);
     const url = this.buildUrl(workerUrl, '/api/sendFile');
     const headers = this.buildHeaders(apiKey);
     const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype, filename }) };
@@ -726,9 +726,7 @@ export class WahaService {
     options?: { skipPresence?: boolean },
   ): Promise<any> {
     chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence);
     const url = this.buildUrl(workerUrl, '/api/sendVoice');
     const headers = this.buildHeaders(apiKey);
 
@@ -751,9 +749,7 @@ export class WahaService {
     options?: { skipPresence?: boolean },
   ): Promise<any> {
     chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence);
     const url = this.buildUrl(workerUrl, '/api/sendVideo');
     const headers = this.buildHeaders(apiKey);
     const body: any = { chatId, session: sessionName, file: this.buildFilePayload({ mediaUrl, mediaData, mimetype }) };
@@ -774,9 +770,7 @@ export class WahaService {
     options?: { skipPresence?: boolean },
   ): Promise<any> {
     chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence);
     const url = this.buildUrl(workerUrl, '/api/sendLocation');
     const headers = this.buildHeaders(apiKey);
 
@@ -800,9 +794,7 @@ export class WahaService {
     options?: { skipPresence?: boolean },
   ): Promise<any> {
     chatId = await this.resolveChatId(workerUrl, apiKey, sessionName, chatId);
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence);
     const url = this.buildUrl(workerUrl, '/api/sendContactVcard');
     const headers = this.buildHeaders(apiKey);
     const vcard = [
@@ -901,17 +893,45 @@ export class WahaService {
     });
   }
 
+  /** A caller started typing in a chat (POST /connections/:id/typing): shown now, kept alive, and credited to the next send. */
+  async callerStartedTyping(workerUrl: string, apiKey: string, sessionName: string, chatId: string): Promise<void> {
+    await this.startTyping(workerUrl, apiKey, sessionName, chatId);
+    await this.typingState?.started(sessionName, chatId, () =>
+      this.startTyping(workerUrl, apiKey, sessionName, chatId),
+    );
+  }
+
+  /** A caller stopped typing without sending (POST /connections/:id/typing/stop). */
+  async callerStoppedTyping(workerUrl: string, apiKey: string, sessionName: string, chatId: string): Promise<void> {
+    await this.typingState?.cleared(sessionName, chatId);
+    await this.stopTyping(workerUrl, apiKey, sessionName, chatId);
+  }
+
+  /** A chat sent the session a message, so sends to it are replies in a conversation. Never rejects. */
+  noteInbound(sessionName: string, chatId: string): void {
+    void this.typingState?.inbound(sessionName, chatId);
+  }
+
+  /** Before any send: the human-like presence (unless the caller skips it), and the end of the caller's typing. */
+  private async presenceBeforeSend(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    chatId: string,
+    skipPresence: boolean | undefined,
+    contentLength?: number,
+  ): Promise<void> {
+    if (!skipPresence) await this.simulatePresence(workerUrl, apiKey, sessionName, chatId, contentLength);
+    await this.typingState?.cleared(sessionName, chatId);
+  }
+
   /**
-   * Send text with anti-spam behavior:
-   * 1. Mark chat as seen
-   * 2. Start typing indicator
-   * 3. Wait a random delay based on message length (simulates human typing)
-   * 4. Stop typing
-   * 5. Send the message
-   */
-  /**
-   * Human-like presence: seen → typing → random delay → stop typing.
-   * Used before any send to comply with WhatsApp anti-ban guidelines.
+   * Human-like presence before a send, per WhatsApp's anti-ban guidance: seen → typing for 1–3 s plus 50 ms per
+   * character (at most 5 s) → stop typing.
+   *
+   * Typing the caller already showed counts: in a chat that messaged the session in the last 24 h, with the
+   * caller's typing still live, this marks the chat read (anything that came in meanwhile) and waits only for the
+   * rest of that delay, often nothing. Anywhere else (a cold contact, no typing) it runs in full.
    */
   async simulatePresence(
     workerUrl: string,
@@ -920,13 +940,20 @@ export class WahaService {
     chatId: string,
     contentLength = 20,
   ): Promise<void> {
+    const required = 1000 + Math.random() * 2000 + Math.min(contentLength * 50, 5000);
+
+    const shown = (await this.typingState?.credit(sessionName, chatId)) ?? null;
+    if (shown !== null) {
+      try { await this.sendSeen(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
+      const rest = required - shown;
+      if (rest > 0) await new Promise((resolve) => setTimeout(resolve, rest));
+      try { await this.stopTyping(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
+      return;
+    }
+
     try { await this.sendSeen(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
     try { await this.startTyping(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
-
-    const baseDelay = 1000 + Math.random() * 2000;
-    const typingDelay = Math.min(contentLength * 50, 5000);
-    await new Promise((resolve) => setTimeout(resolve, baseDelay + typingDelay));
-
+    await new Promise((resolve) => setTimeout(resolve, required));
     try { await this.stopTyping(workerUrl, apiKey, sessionName, chatId); } catch { /* non-critical */ }
   }
 
@@ -943,9 +970,7 @@ export class WahaService {
       `Sending text to ${chatId} via session "${sessionName}" on worker ${workerUrl}`,
     );
 
-    if (!options?.skipPresence) {
-      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId, text.length);
-    }
+    await this.presenceBeforeSend(workerUrl, apiKey, sessionName, chatId, options?.skipPresence, text.length);
 
     const url = this.buildUrl(workerUrl, '/api/sendText');
     const headers = this.buildHeaders(apiKey);

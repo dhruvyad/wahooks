@@ -647,7 +647,7 @@ describe('ConnectionsController', () => {
     describe('mark-read and typing', () => {
       it('targets the chat the send would go to, not the chatId as given', async () => {
         (wahaService as any).resolveChatId = jest.fn().mockResolvedValue('5511912345678@c.us');
-        for (const name of ['sendSeen', 'startTyping', 'stopTyping']) (wahaService as any)[name] = jest.fn();
+        for (const name of ['sendSeen', 'callerStartedTyping', 'callerStoppedTyping']) (wahaService as any)[name] = jest.fn();
         for (let i = 0; i < 3; i++) {
           db.where.mockResolvedValueOnce([connection]);
           workersService.getWorkerForSession.mockResolvedValueOnce(worker);
@@ -658,7 +658,7 @@ describe('ConnectionsController', () => {
         await controller.stopTyping('sess-1', { chatId: '551112345678@s.whatsapp.net' }, user);
 
         expect((wahaService as any).resolveChatId).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '551112345678@s.whatsapp.net');
-        for (const name of ['sendSeen', 'startTyping', 'stopTyping']) {
+        for (const name of ['sendSeen', 'callerStartedTyping', 'callerStoppedTyping']) {
           expect((wahaService as any)[name]).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '5511912345678@c.us');
         }
       });

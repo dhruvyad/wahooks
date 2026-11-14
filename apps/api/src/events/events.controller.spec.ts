@@ -32,7 +32,7 @@ describe('EventsController', () => {
   let controller: EventsController;
   let db: ReturnType<typeof createMockDb>;
   let webhookQueue: { add: jest.Mock };
-  let wahaService: { getMaxSessions: jest.Mock; resolveSessionName: jest.Mock; getLidPhoneChat: jest.Mock };
+  let wahaService: { getMaxSessions: jest.Mock; resolveSessionName: jest.Mock; getLidPhoneChat: jest.Mock; noteInbound: jest.Mock };
   let workersService: { getWorkerForSession: jest.Mock };
   let logRetention: { touch: jest.Mock };
   let eventMetrics: { countReceived: jest.Mock };
@@ -46,6 +46,7 @@ describe('EventsController', () => {
       getMaxSessions: jest.fn().mockReturnValue(2),
       resolveSessionName: jest.fn((name: string) => name),
       getLidPhoneChat: jest.fn().mockResolvedValue(null),
+      noteInbound: jest.fn(),
     };
     workersService = {
       getWorkerForSession: jest.fn().mockResolvedValue({ id: 'w-1', internalIp: '10.0.0.1', apiKeyEnc: 'k' }),
@@ -269,6 +270,19 @@ describe('EventsController', () => {
         controller.ingestWahaEvent({ event: 'presence.update', session: 'u_user-123_s_abc' }),
       ).resolves.toEqual({ received: true });
       expect(eventMetrics.countReceived).toHaveBeenCalledWith('presence.update');
+    });
+
+    it('notes an incoming message\'s chat, so replies to it count the caller\'s typing', async () => {
+      const session = { id: 'sess-1', sessionName: 'u_user-123_s_abc', userId: 'user-123' };
+      db.where.mockResolvedValueOnce([session]).mockResolvedValueOnce([]);
+      await controller.ingestWahaEvent({ event: 'message', session: 'u_user-123_s_abc', payload: { from: '123@lid', fromMe: false } });
+      expect(wahaService.noteInbound).toHaveBeenCalledWith('u_user-123_s_abc', '123@lid');
+
+      db.where.mockResolvedValueOnce([session]).mockResolvedValueOnce([]);
+      await controller.ingestWahaEvent({ event: 'message', session: 'u_user-123_s_abc', payload: { from: '123@lid', fromMe: true } });
+      db.where.mockResolvedValueOnce([session]).mockResolvedValueOnce([]);
+      await controller.ingestWahaEvent({ event: 'message.any', session: 'u_user-123_s_abc', payload: { from: '456@lid' } });
+      expect(wahaService.noteInbound).toHaveBeenCalledTimes(1);
     });
 
     it('should handle wildcard * event matching', async () => {

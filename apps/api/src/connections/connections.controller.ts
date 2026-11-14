@@ -1030,7 +1030,7 @@ export class ConnectionsController {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     // Same target as the send: a phone-number chatId is resolved to the number WhatsApp routes to.
     const chatId = await this.wahaService.resolveChatId(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
-    await this.wahaService.startTyping(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
+    await this.wahaService.callerStartedTyping(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
     return { success: true };
   }
 
@@ -1043,7 +1043,7 @@ export class ConnectionsController {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
     // Same target as the send: a phone-number chatId is resolved to the number WhatsApp routes to.
     const chatId = await this.wahaService.resolveChatId(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
-    await this.wahaService.stopTyping(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
+    await this.wahaService.callerStoppedTyping(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
     return { success: true };
   }
 

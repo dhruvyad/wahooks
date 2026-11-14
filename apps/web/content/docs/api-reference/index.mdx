@@ -124,7 +124,7 @@ The `send` endpoint accepts an optional `replyTo` field (message ID) to quote a 
 
 Editing is subject to WhatsApp's rules: you can only edit **your own** messages, within **~15 minutes** of sending. Later edits return 400. The `send` endpoints return the new message's `id`, which you pass to the edit endpoint.
 
-All send endpoints include human-like presence by default (read receipt, typing indicator, random delay). Pass `skipPresence: true` in the request body to disable this when handling presence yourself.
+All send endpoints include human-like presence by default: a read receipt, then the typing indicator for 1–3 s plus 50 ms per character (at most 5 s), then the message. Pass `skipPresence: true` in the request body to disable this when handling presence yourself.
 
 ## Presence
 
@@ -134,7 +134,14 @@ All send endpoints include human-like presence by default (read receipt, typing 
 | `POST` | `/connections/:id/typing` | Start typing indicator |
 | `POST` | `/connections/:id/typing/stop` | Stop typing indicator |
 
-All three accept `{ "chatId": "..." }` in the request body.
+All three accept `{ "chatId": "..." }` in the request body, and target the same chat a send to that `chatId` would.
+
+**Typing while you work.** Typing you start with `/typing` counts toward the next send's presence delay. Start it as soon as a message arrives (for example while an AI agent writes its reply) and the reply goes out almost at once, with the contact having seen "typing…" the whole time:
+
+- The indicator is kept alive (re-sent every 10 s) for up to 2 minutes, or until you send or call `/typing/stop`. Call `/typing` again to extend it.
+- The send marks the chat read, waits for whatever part of the delay your typing hasn't covered, then sends.
+- It only applies in a conversation: a chat that hasn't messaged the connection in the last 24 hours gets the full delay. Use the chat ID from the incoming message for both typing and the reply.
+- Any send ends the typing, including one with `skipPresence: true`. Call `/typing/stop` if you decide not to reply.
 
 ## Webhooks
 
