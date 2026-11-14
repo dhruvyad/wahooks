@@ -219,9 +219,12 @@ export class WebhooksController {
       throw new ForbiddenException('You do not own this webhook config');
     }
 
+    // Shaped like a real event, connectionId included, so a receiver that picks the signing secret by connection
+    // can verify it.
     const testPayload = {
       event: 'test',
       session: 'test',
+      connectionId: config.sessionId,
       payload: {
         message: 'This is a test webhook event from WAHooks',
         timestamp: new Date().toISOString(),

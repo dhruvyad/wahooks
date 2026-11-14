@@ -135,6 +135,20 @@ describe('WebhooksController', () => {
     });
   });
 
+  describe('testWebhook', () => {
+    it('sends a test event that names its connection, like a real one', async () => {
+      const queue = (controller as any).webhookQueue as { add: jest.Mock };
+      db.where.mockResolvedValueOnce([{ id: 'wh-1', userId: 'user-123', sessionId: connectionId, url: 'https://x.test', signingSecret: 's' }]);
+      db.returning.mockResolvedValueOnce([{ id: 'log-1' }]);
+
+      await controller.testWebhook('wh-1', user);
+
+      expect(queue.add).toHaveBeenCalledWith('deliver', expect.objectContaining({
+        payload: expect.objectContaining({ event: 'test', connectionId }),
+      }));
+    });
+  });
+
   describe('updateWebhook', () => {
     it('should update webhook config fields', async () => {
       const config = { id: 'wh-1', userId: 'user-123', url: 'https://old.com', events: ['message'] };
