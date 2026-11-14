@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_PIPE } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerModule } from "@nestjs/throttler";
 import { CallerThrottlerGuard, RATE_LIMITS } from "./auth/caller-throttler.guard";
 import { AppController } from "./app.controller";
+import { UuidParamPipe } from "./common/uuid-param.pipe";
 import { DatabaseModule } from "./database/database.module";
 import { OrchestrationModule } from "./orchestration/orchestration.module";
 import { WahaModule } from "./waha/waha.module";
@@ -38,6 +39,7 @@ import { BillingModule } from "./billing/billing.module";
       provide: APP_GUARD,
       useClass: CallerThrottlerGuard,
     },
+    { provide: APP_PIPE, useClass: UuidParamPipe },
   ],
 })
 export class AppModule {}
