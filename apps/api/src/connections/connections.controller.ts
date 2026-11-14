@@ -1004,7 +1004,9 @@ export class ConnectionsController {
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
-    await this.wahaService.sendSeen(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    // Same target as the send: a phone-number chatId is resolved to the number WhatsApp routes to.
+    const chatId = await this.wahaService.resolveChatId(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    await this.wahaService.sendSeen(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
     return { success: true };
   }
 
@@ -1015,7 +1017,9 @@ export class ConnectionsController {
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
-    await this.wahaService.startTyping(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    // Same target as the send: a phone-number chatId is resolved to the number WhatsApp routes to.
+    const chatId = await this.wahaService.resolveChatId(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    await this.wahaService.startTyping(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
     return { success: true };
   }
 
@@ -1026,7 +1030,9 @@ export class ConnectionsController {
     @CurrentUser() user: { sub: string },
   ) {
     const { worker, wahaName } = await this.resolveWorker(id, user.sub);
-    await this.wahaService.stopTyping(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    // Same target as the send: a phone-number chatId is resolved to the number WhatsApp routes to.
+    const chatId = await this.wahaService.resolveChatId(worker.internalIp, worker.apiKeyEnc, wahaName, body.chatId);
+    await this.wahaService.stopTyping(worker.internalIp, worker.apiKeyEnc, wahaName, chatId);
     return { success: true };
   }
 
