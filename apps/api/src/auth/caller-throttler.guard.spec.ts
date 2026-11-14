@@ -1,14 +1,28 @@
-import { Controller, Get, INestApplication } from '@nestjs/common';
+import { Controller, Get, INestApplication, Param } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { ThrottlerModule, ThrottlerStorageService } from '@nestjs/throttler';
+import { SkipThrottle, ThrottlerModule, ThrottlerStorageService } from '@nestjs/throttler';
 import request from 'supertest';
-import { CallerThrottlerGuard } from './caller-throttler.guard';
+import { CallerThrottlerGuard, NO_RATE_LIMIT, callerOf } from './caller-throttler.guard';
 
 @Controller()
 class PingController {
   @Get('ping')
   ping() {
+    return 'ok';
+  }
+
+  @Get('connections/:id/send')
+  send(@Param('id') id: string) {
+    return id;
+  }
+}
+
+@SkipThrottle(NO_RATE_LIMIT)
+@Controller()
+class ProbeController {
+  @Get('probe')
+  probe() {
     return 'ok';
   }
 }
@@ -52,6 +66,51 @@ describe('CallerThrottlerGuard', () => {
     await ping().expect(200);
     await ping().expect(200);
     await ping().expect(429);
+  });
+});
+
+describe('CallerThrottlerGuard: per connection, under a per-caller ceiling', () => {
+  let app: INestApplication;
+
+  beforeEach(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot({
+          throttlers: [
+            { name: 'default', ttl: 60000, limit: 2 },
+            { name: 'caller', ttl: 60000, limit: 5, getTracker: callerOf },
+          ],
+        }),
+      ],
+      controllers: [PingController, ProbeController],
+      providers: [{ provide: APP_GUARD, useClass: CallerThrottlerGuard }],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  const send = (connection: string) =>
+    request(app.getHttpServer()).get(`/connections/${connection}/send`).set('Authorization', 'Bearer wh_platform');
+
+  it("one busy connection doesn't use up the token's allowance for its other connections", async () => {
+    await send('conn-1').expect(200);
+    await send('conn-1').expect(200);
+    await send('conn-1').expect(429);
+    await send('conn-2').expect(200);
+    await send('conn-2').expect(200);
+  });
+
+  it('caps a caller across all its connections', async () => {
+    for (const c of ['a', 'b', 'c', 'd', 'e']) await send(c).expect(200);
+    await send('f').expect(429);
+  });
+
+  it('never limits routes marked NO_RATE_LIMIT', async () => {
+    for (let i = 0; i < 8; i++) await request(app.getHttpServer()).get('/probe').expect(200);
   });
 });
 

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
+import { NO_RATE_LIMIT } from '../auth/caller-throttler.guard';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, and, not } from 'drizzle-orm';
@@ -29,7 +30,7 @@ interface WahaEvent {
   [key: string]: unknown;
 }
 
-@SkipThrottle()
+@SkipThrottle(NO_RATE_LIMIT)
 @Controller('events')
 export class EventsController {
   private readonly logger = new Logger(EventsController.name);

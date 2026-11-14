@@ -1,6 +1,7 @@
 import { Controller, Get, Inject } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { SkipThrottle } from "@nestjs/throttler";
+import { NO_RATE_LIMIT } from "./auth/caller-throttler.guard";
 import { eq } from "drizzle-orm";
 import { wahaWorkers } from "@wahooks/db";
 import { DRIZZLE_TOKEN } from "./database/database.module";
@@ -10,7 +11,7 @@ import { WorkersService } from "./workers/workers.service";
  * Never rate-limited: Kubernetes probes GET /api every 5 s and uptime monitors poll both routes. A 429 here fails
  * the readiness probe, which takes the only API pod out of service (503 for everyone) for as long as it lasts.
  */
-@SkipThrottle()
+@SkipThrottle(NO_RATE_LIMIT)
 @Controller()
 export class AppController {
   constructor(

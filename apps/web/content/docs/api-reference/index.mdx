@@ -40,7 +40,12 @@ All responses are JSON. Successful responses return the resource directly. Error
 
 ## Rate limiting
 
-The API uses rate limiting to prevent abuse. If you exceed the rate limit, you'll receive a 429 response.
+Limits are per API token and per endpoint, counted over a rolling minute:
+
+- **60 requests a minute per connection.** Each connection has its own allowance, so a busy connection never uses up another's.
+- **1,000 requests a minute per token** across all its connections.
+
+A request over either limit gets a `429` response. Wait a minute before retrying that endpoint for that connection.
 
 ## Connections
 

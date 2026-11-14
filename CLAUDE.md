@@ -42,7 +42,7 @@ wahooks/
 
 | Module | Purpose |
 |--------|---------|
-| `auth/` | Supabase JWT verification guard (`AuthGuard`) + `@CurrentUser()` decorator |
+| `auth/` | Supabase JWT verification guard (`AuthGuard`) + `@CurrentUser()` decorator. Rate limits (`caller-throttler.guard.ts`, per route per minute): `default` 60 per caller (bearer-token hash, else IP) and connection (`:connectionId`/`:id`), `caller` 1,000 per caller; `@SkipThrottle(NO_RATE_LIMIT)` skips both (health, events, Stripe) |
 | `database/` | Global Drizzle ORM provider (`DRIZZLE_TOKEN`) connected to Supabase Postgres |
 | `connections/` | CRUD for WhatsApp connections; provisions WAHA sessions on workers, QR code flow |
 | `workers/` | Worker pool management per worker kind (see Worker kinds): find/provision workers (a ready pod or box nobody registered is adopted first, matched by name or internal IP), assign/unassign sessions, auto-scaling (WAHA: 80% up, 30% down, scale-down only drains the highest-ordinal pod, to zero once new connections go to gateways; gateway: a box added at `GATEWAY_SCALE_UP_AT`, never removed automatically). A failing scale-up is logged as an ERROR and exposed as `scaleUpFailure` on `GET /api/infrastructure` and `checks.scaleUp` on `GET /api/health`. `GatewayResourcesService` adds `resources` (CPU from Hetzner metrics, memory from the box's `/metrics` RSS, connections from the row) to each active gateway there, cached ~60 s; servers are matched by private IP |

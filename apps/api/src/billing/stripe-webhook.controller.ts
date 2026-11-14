@@ -1,5 +1,6 @@
 import { Controller, Post, Req, Res, Logger, Inject } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import { NO_RATE_LIMIT } from '../auth/caller-throttler.guard';
 import { eq, ne, and, desc } from 'drizzle-orm';
 import { users, wahaSessions } from '@wahooks/db';
 import { DRIZZLE_TOKEN } from '../database/database.module';
@@ -16,7 +17,7 @@ interface ExpressResponse {
   json(body: unknown): ExpressResponse;
 }
 
-@SkipThrottle()
+@SkipThrottle(NO_RATE_LIMIT)
 @Controller('stripe')
 export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);
