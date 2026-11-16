@@ -6,10 +6,27 @@ import {
   WahaChatResponse,
   WahaMeResponse,
   WahaSendTextResponse,
+  WahaGroupMetadata,
+  WahaGroupParticipantResult,
 } from './waha.types';
 import type { WorkerKind } from '../orchestration/orchestrator.interface';
 import { EVENTS_SECRET_HEADER } from '../events/events-secret';
 import { TypingStateService } from './typing-state.service';
+
+/**
+ * A worker answered with an error status. It is still the 400/502 HttpException callers have always caught; it also
+ * carries the worker's own status and message (without the internal URL) for routes that report them, like groups.
+ */
+export class WorkerHttpError extends HttpException {
+  constructor(
+    message: string,
+    status: number,
+    readonly workerStatus: number,
+    readonly detail: string,
+  ) {
+    super(message, status);
+  }
+}
 
 @Injectable()
 export class WahaService {
@@ -175,7 +192,7 @@ export class WahaService {
         // Message keeps the 'WAHA API error' prefix — internal callers match on it.
         const detail = this.extractWahaErrorDetail(responseBody);
         const message = `WAHA API error: ${method} ${url} returned ${response.status} - ${detail}`;
-        throw new HttpException(message, response.status >= 500 ? 502 : 400);
+        throw new WorkerHttpError(message, response.status >= 500 ? 502 : 400, response.status, detail);
       }
 
       const text = await response.text();
@@ -996,6 +1013,81 @@ export class WahaService {
       reaction,
       session: sessionName,
     });
+  }
+
+  // ---- groups (WAHA's /api/{session}/groups routes; the gateway answers them like NOWEB) ----
+
+  private groupPath(sessionName: string, groupId: string, rest = ''): string {
+    return `/api/${encodeURIComponent(sessionName)}/groups/${encodeURIComponent(groupId)}${rest}`;
+  }
+
+  async createGroup(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    name: string,
+    participants: string[],
+  ): Promise<WahaGroupMetadata> {
+    const url = this.buildUrl(workerUrl, `/api/${encodeURIComponent(sessionName)}/groups`);
+    return this.request<WahaGroupMetadata>('POST', url, this.buildHeaders(apiKey), {
+      name,
+      participants: participants.map((id) => ({ id })),
+    });
+  }
+
+  async getGroup(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    groupId: string,
+    refresh = false,
+  ): Promise<WahaGroupMetadata> {
+    const url = this.buildUrl(workerUrl, this.groupPath(sessionName, groupId, refresh ? '?refresh=true' : ''));
+    return this.request<WahaGroupMetadata>('GET', url, this.buildHeaders(apiKey));
+  }
+
+  async updateGroupParticipants(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    groupId: string,
+    action: 'add' | 'remove',
+    participants: string[],
+  ): Promise<WahaGroupParticipantResult[]> {
+    const url = this.buildUrl(workerUrl, this.groupPath(sessionName, groupId, `/participants/${action}`));
+    const res = await this.request<WahaGroupParticipantResult[]>('POST', url, this.buildHeaders(apiKey), {
+      participants: participants.map((id) => ({ id })),
+    });
+    return res ?? [];
+  }
+
+  async leaveGroup(workerUrl: string, apiKey: string, sessionName: string, groupId: string): Promise<void> {
+    const url = this.buildUrl(workerUrl, this.groupPath(sessionName, groupId, '/leave'));
+    await this.request<void>('POST', url, this.buildHeaders(apiKey));
+  }
+
+  async setGroupSubject(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    groupId: string,
+    subject: string,
+  ): Promise<void> {
+    const url = this.buildUrl(workerUrl, this.groupPath(sessionName, groupId, '/subject'));
+    await this.request<void>('PUT', url, this.buildHeaders(apiKey), { subject });
+  }
+
+  /** The group's invite link (`https://chat.whatsapp.com/<code>`); revoke replaces it with a new one. */
+  async getGroupInviteLink(
+    workerUrl: string,
+    apiKey: string,
+    sessionName: string,
+    groupId: string,
+    revoke = false,
+  ): Promise<string> {
+    const url = this.buildUrl(workerUrl, this.groupPath(sessionName, groupId, revoke ? '/invite-code/revoke' : '/invite-code'));
+    const res = await this.request<string>(revoke ? 'POST' : 'GET', url, this.buildHeaders(apiKey));
+    return typeof res === 'string' && res && !res.startsWith('http') ? `https://chat.whatsapp.com/${res}` : res;
   }
 
   async logoutSession(

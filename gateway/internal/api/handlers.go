@@ -18,6 +18,7 @@ import (
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/dhruvyad/wahooks/gateway/internal/session"
@@ -25,7 +26,7 @@ import (
 	"github.com/dhruvyad/wahooks/gateway/internal/waha"
 )
 
-const Version = "2026.11.3-wagw" // 2026.11.3: POST /api/sessions/{session}/load; .2: copy-store, lease heartbeat; .1: import-history
+const Version = "2026.11.4-wagw" // 2026.11.4: group routes, profile-picture errors; .3: POST /api/sessions/{session}/load; .2: copy-store, lease heartbeat; .1: import-history
 
 type Server struct {
 	M       *session.Manager
@@ -82,6 +83,15 @@ func (s *Server) Handler(apiKey string) http.Handler {
 	rt.handle("GET", "/api/{session}/lids/count", s.lidCount)
 	rt.handle("GET", "/api/{session}/lids/pn/{pn}", s.lidByPN)
 	rt.handle("GET", "/api/{session}/lids/{lid}", s.lid)
+	// groups
+	rt.handle("POST", "/api/{session}/groups", s.createGroup)
+	rt.handle("GET", "/api/{session}/groups/{id}", s.getGroup)
+	rt.handle("POST", "/api/{session}/groups/{id}/participants/add", s.groupParticipants(whatsmeow.ParticipantChangeAdd))
+	rt.handle("POST", "/api/{session}/groups/{id}/participants/remove", s.groupParticipants(whatsmeow.ParticipantChangeRemove))
+	rt.handle("POST", "/api/{session}/groups/{id}/leave", s.leaveGroup)
+	rt.handle("PUT", "/api/{session}/groups/{id}/subject", s.groupSubject)
+	rt.handle("GET", "/api/{session}/groups/{id}/invite-code", s.groupInviteCode(false))
+	rt.handle("POST", "/api/{session}/groups/{id}/invite-code/revoke", s.groupInviteCode(true))
 	// sending
 	rt.handle("POST", "/api/sendText", s.sendText)
 	rt.handle("POST", "/api/sendImage", s.sendMedia("image"))
@@ -157,6 +167,7 @@ func internalErr(w http.ResponseWriter, r *http.Request, code int, msg string) {
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, ss *session.Session, err error) {
 	var leased session.ErrLeased
 	var bad session.BadRequest
+	var status session.StatusError
 	switch {
 	case errors.Is(err, session.ErrNotFound):
 		sessionNotFound(w)
@@ -170,6 +181,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, ss *session.Sessio
 		writeErr(w, 409, err.Error())
 	case errors.As(err, &bad):
 		writeErr(w, 400, err.Error())
+	case errors.As(err, &status):
+		writeErr(w, status.Code, status.Msg)
 	case errors.Is(err, context.DeadlineExceeded):
 		internalErr(w, r, 500, "timed out")
 	default:
@@ -817,13 +830,14 @@ func (s *Server) profilePicture(w http.ResponseWriter, r *http.Request, _ params
 	}
 	c, cancel := ctx(r, 25*time.Second)
 	defer cancel()
+	// null means no picture or a hidden one; a failed lookup is an error, so callers don't cache it as "none".
 	url, err := ss.ProfilePicture(c, r.URL.Query().Get("contactId"), qbool(r, "refresh", false))
-	if err != nil && errors.Is(err, session.ErrNotWorking) {
+	if err != nil {
 		s.fail(w, r, ss, err)
 		return
 	}
 	var v any
-	if url != "" && err == nil {
+	if url != "" {
 		v = url
 	}
 	writeJSON(w, 200, map[string]any{"profilePictureURL": v})

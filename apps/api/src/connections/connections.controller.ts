@@ -30,6 +30,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { failureReasonOf } from './failure-reason';
+import { groupError, mapGroup, mapParticipantChange, normalizeGroupId, parseParticipants } from './groups';
 import { WorkersService } from '../workers/workers.service';
 import { WahaService } from '../waha/waha.service';
 import { StripeService } from '../billing/stripe.service';
@@ -1047,6 +1048,148 @@ export class ConnectionsController {
     return { success: true };
   }
 
+  // ---- groups ----
+
+  @Post(':id/groups')
+  async createGroup(
+    @Param('id') id: string,
+    @Body() body: { name?: unknown; participants?: unknown },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) throw new BadRequestException('name is required');
+    const participants = parseParticipants(body?.participants, false);
+    const { worker, wahaName, connection } = await this.resolveWorker(id, user.sub);
+    const raw = await this.groupCall(id, () =>
+      this.wahaService.createGroup(worker.internalIp, worker.apiKeyEnc, wahaName, name, participants),
+    );
+    const { group, notAdded } = mapGroup(raw, connection.phoneNumber);
+    return { ...group, notAdded };
+  }
+
+  @Get(':id/groups/:groupId')
+  async getGroup(
+    @Param('id') id: string,
+    @Param('groupId') groupIdRaw: string,
+    @CurrentUser() user: { sub: string },
+    @Query('refresh') refresh?: string,
+  ) {
+    const groupId = normalizeGroupId(groupIdRaw);
+    const { worker, wahaName, connection } = await this.resolveWorker(id, user.sub);
+    const raw = await this.groupCall(id, () =>
+      this.wahaService.getGroup(worker.internalIp, worker.apiKeyEnc, wahaName, groupId, refresh === 'true' || refresh === '1'),
+    );
+    return mapGroup(raw, connection.phoneNumber).group;
+  }
+
+  @Patch(':id/groups/:groupId')
+  async renameGroup(
+    @Param('id') id: string,
+    @Param('groupId') groupIdRaw: string,
+    @Body() body: { name?: unknown },
+    @CurrentUser() user: { sub: string },
+  ) {
+    const groupId = normalizeGroupId(groupIdRaw);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) throw new BadRequestException('name is required');
+    const { worker, wahaName, connection } = await this.resolveWorker(id, user.sub);
+    await this.groupCall(id, () =>
+      this.wahaService.setGroupSubject(worker.internalIp, worker.apiKeyEnc, wahaName, groupId, name),
+    );
+    const raw = await this.groupCall(id, () =>
+      this.wahaService.getGroup(worker.internalIp, worker.apiKeyEnc, wahaName, groupId, true),
+    );
+    return mapGroup(raw, connection.phoneNumber).group;
+  }
+
+  @Post(':id/groups/:groupId/participants/add')
+  addGroupParticipants(
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+    @Body() body: { participants?: unknown },
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.changeGroupParticipants(id, groupId, body, user.sub, 'add');
+  }
+
+  @Post(':id/groups/:groupId/participants/remove')
+  removeGroupParticipants(
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+    @Body() body: { participants?: unknown },
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.changeGroupParticipants(id, groupId, body, user.sub, 'remove');
+  }
+
+  @Post(':id/groups/:groupId/leave')
+  async leaveGroup(
+    @Param('id') id: string,
+    @Param('groupId') groupIdRaw: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    const groupId = normalizeGroupId(groupIdRaw);
+    const { worker, wahaName } = await this.resolveWorker(id, user.sub);
+    await this.groupCall(id, () => this.wahaService.leaveGroup(worker.internalIp, worker.apiKeyEnc, wahaName, groupId));
+    return { success: true };
+  }
+
+  @Get(':id/groups/:groupId/invite-link')
+  getGroupInviteLink(
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.groupInviteLink(id, groupId, user.sub, false);
+  }
+
+  @Post(':id/groups/:groupId/invite-link/revoke')
+  revokeGroupInviteLink(
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.groupInviteLink(id, groupId, user.sub, true);
+  }
+
+  private async changeGroupParticipants(
+    id: string,
+    groupIdRaw: string,
+    body: { participants?: unknown } | undefined,
+    userId: string,
+    action: 'add' | 'remove',
+  ) {
+    const groupId = normalizeGroupId(groupIdRaw);
+    const participants = parseParticipants(body?.participants, true);
+    const { worker, wahaName } = await this.resolveWorker(id, userId);
+    const res = await this.groupCall(id, () =>
+      this.wahaService.updateGroupParticipants(worker.internalIp, worker.apiKeyEnc, wahaName, groupId, action, participants),
+    );
+    return { participants: res.map((r) => mapParticipantChange(r, action)) };
+  }
+
+  private async groupInviteLink(id: string, groupIdRaw: string, userId: string, revoke: boolean) {
+    const groupId = normalizeGroupId(groupIdRaw);
+    const { worker, wahaName } = await this.resolveWorker(id, userId);
+    const link = await this.groupCall(id, () =>
+      this.wahaService.getGroupInviteLink(worker.internalIp, worker.apiKeyEnc, wahaName, groupId, revoke),
+    );
+    return { link };
+  }
+
+  /** Runs a group call on the worker and reports its failure as the matching API error. */
+  private async groupCall<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      const mapped = groupError(error);
+      if (mapped.getStatus() >= 500) {
+        this.logger.warn(`Group call for connection ${id} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      throw mapped;
+    }
+  }
+
   @Patch(':id')
   async updateConnection(
     @Param('id') id: string,
@@ -1092,7 +1235,7 @@ export class ConnectionsController {
     const worker = await this.workersService.getWorkerForSession(id);
     if (!worker) throw new ServiceUnavailableException('No worker assigned');
     const wahaName = this.wahaService.resolveSessionName(connection.sessionName);
-    return { worker, wahaName };
+    return { worker, wahaName, connection };
   }
 
   @Post(':id/send-image')

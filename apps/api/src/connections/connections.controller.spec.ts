@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException, ServiceUnavailableException, BadGatewayException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, ServiceUnavailableException, BadGatewayException, BadRequestException, NotImplementedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConnectionsController, idleVerdict } from './connections.controller';
 import { DRIZZLE_TOKEN } from '../database/database.module';
 import { WorkersService } from '../workers/workers.service';
-import { WahaService } from '../waha/waha.service';
+import { WahaService, WorkerHttpError } from '../waha/waha.service';
 import { StripeService } from '../billing/stripe.service';
 import { AuthGuard } from '../auth/auth.guard';
 
@@ -715,6 +715,107 @@ describe('ConnectionsController', () => {
         const contacts = await controller.getContacts('sess-1', user);
         expect(contacts[0]).toEqual({ jid: '0@c.us', name: 'WhatsApp', phoneNumber: '0', isGroup: false });
         expect(contacts[1]).toEqual({ jid: '127814753849550@lid', name: null, phoneNumber: '918383880642', isGroup: false });
+      });
+    });
+
+    describe('groups', () => {
+      const own = () => {
+        db.where.mockResolvedValueOnce([{ ...connection, phoneNumber: '15550100000' }]);
+        workersService.getWorkerForSession.mockResolvedValueOnce(worker);
+      };
+      const metadata = {
+        id: '120363000000000001@g.us',
+        subject: 'Team',
+        owner: '15550100000@s.whatsapp.net',
+        creation: 1700000000,
+        size: 2,
+        announce: false,
+        restrict: true,
+        participants: [
+          { id: '15550100000@s.whatsapp.net', admin: 'superadmin' },
+          { id: '123456789@lid', phoneNumber: '15550100001@s.whatsapp.net', admin: null, name: 'Alice' },
+          { id: '15550100009@s.whatsapp.net', admin: null, error: 403, addRequest: { code: 'abc', expiration: 1 } },
+        ],
+      };
+
+      it('creates a group and lists who WhatsApp didn\'t add', async () => {
+        own();
+        (wahaService as any).createGroup = jest.fn().mockResolvedValue(metadata);
+        const res: any = await controller.createGroup('sess-1', { name: ' Team ', participants: ['+1 555 010 0001', '15550100009'] }, user);
+        expect((wahaService as any).createGroup).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', 'Team', ['+1 555 010 0001', '15550100009']);
+        expect(res.id).toBe('120363000000000001@g.us');
+        expect(res.name).toBe('Team');
+        expect(res.createdAt).toBe('2023-11-14T22:13:20.000Z');
+        expect(res.locked).toBe(true);
+        expect(res.participantCount).toBe(2);
+        expect(res.participants).toEqual([
+          { id: '15550100000@c.us', phone: '15550100000', lid: null, name: null, role: 'superadmin', isMe: true },
+          { id: '15550100001@c.us', phone: '15550100001', lid: '123456789@lid', name: 'Alice', role: 'member', isMe: false },
+        ]);
+        expect(res.notAdded).toEqual([
+          { id: '15550100009@c.us', phone: '15550100009', lid: null, status: 'failed', code: 403, reason: expect.stringContaining('invite link') },
+        ]);
+      });
+
+      it('requires a name and valid participants before calling WhatsApp', async () => {
+        (wahaService as any).createGroup = jest.fn();
+        await expect(controller.createGroup('sess-1', { name: '  ' }, user)).rejects.toThrow(BadRequestException);
+        await expect(controller.createGroup('sess-1', { name: 'x', participants: '1555' }, user)).rejects.toThrow(BadRequestException);
+        await expect(controller.getGroup('sess-1', 'not-a-group', user)).rejects.toThrow(BadRequestException);
+        expect((wahaService as any).createGroup).not.toHaveBeenCalled();
+      });
+
+      it('reads a group by id with or without @g.us', async () => {
+        own();
+        (wahaService as any).getGroup = jest.fn().mockResolvedValue(metadata);
+        const g: any = await controller.getGroup('sess-1', '120363000000000001', user, 'true');
+        expect((wahaService as any).getGroup).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '120363000000000001@g.us', true);
+        expect(g.participants).toHaveLength(2);
+        expect(g.notAdded).toBeUndefined();
+      });
+
+      it('reports each participant change', async () => {
+        own();
+        (wahaService as any).updateGroupParticipants = jest.fn().mockResolvedValue([
+          { status: '200', jid: '15550100001@s.whatsapp.net' },
+          { status: '409', jid: '15550100002@s.whatsapp.net' },
+          { status: '404', jid: '15550100003@s.whatsapp.net' },
+        ]);
+        const res = await controller.addGroupParticipants('sess-1', '120363000000000001@g.us', { participants: ['15550100001', '15550100002', '15550100003'] }, user);
+        expect(res.participants.map((p) => [p.id, p.status, p.code])).toEqual([
+          ['15550100001@c.us', 'added', null],
+          ['15550100002@c.us', 'already_member', 409],
+          ['15550100003@c.us', 'failed', 404],
+        ]);
+      });
+
+      it('maps worker errors: missing group 404, not admin 403, old gateway 501', async () => {
+        const fail = (status: number, detail: string) => new WorkerHttpError(`WAHA API error: GET http://10.0.0.1:3000/x returned ${status} - ${detail}`, status >= 500 ? 502 : 400, status, detail);
+        (wahaService as any).getGroup = jest.fn()
+          .mockRejectedValueOnce(fail(404, 'Group not found'))
+          .mockRejectedValueOnce(fail(403, 'This account is not in the group'))
+          .mockRejectedValueOnce(fail(404, 'Cannot GET /api/u_user-123_s_abc/groups/1@g.us'))
+          .mockRejectedValueOnce(new Error('WAHA API timeout'));
+        for (const want of [NotFoundException, ForbiddenException, NotImplementedException, BadGatewayException]) {
+          own();
+          const err = await controller.getGroup('sess-1', '1@g.us', user).catch((e) => e);
+          expect(err).toBeInstanceOf(want);
+          expect(String(err.message)).not.toContain('10.0.0.1');
+        }
+      });
+
+      it('leaves, renames and shares the invite link', async () => {
+        (wahaService as any).leaveGroup = jest.fn();
+        (wahaService as any).setGroupSubject = jest.fn();
+        (wahaService as any).getGroup = jest.fn().mockResolvedValue({ ...metadata, subject: 'New' });
+        (wahaService as any).getGroupInviteLink = jest.fn().mockResolvedValue('https://chat.whatsapp.com/ABC');
+        own();
+        expect(await controller.leaveGroup('sess-1', '1@g.us', user)).toEqual({ success: true });
+        own();
+        expect((await controller.renameGroup('sess-1', '1@g.us', { name: 'New' }, user)).name).toBe('New');
+        expect((wahaService as any).setGroupSubject).toHaveBeenCalledWith('10.0.0.1', 'key', 'u_user-123_s_abc', '1@g.us', 'New');
+        own();
+        expect(await controller.getGroupInviteLink('sess-1', '1@g.us', user)).toEqual({ link: 'https://chat.whatsapp.com/ABC' });
       });
     });
   });

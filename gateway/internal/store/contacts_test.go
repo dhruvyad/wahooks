@@ -58,6 +58,18 @@ func TestContactsDirect(t *testing.T) {
 			if err != nil || c.Found {
 				t.Fatalf("GetContact missing: %v %+v", err, c)
 			}
+			many, err := db.GetContacts(ctx, id, []types.JID{
+				types.NewJID("99700000001", types.DefaultUserServer),
+				types.NewJID("123456789", types.HiddenUserServer),
+				types.NewJID("99700000009", types.DefaultUserServer),
+			})
+			if err != nil || len(many) != 2 || many[types.NewJID("99700000001", types.DefaultUserServer)].FullName != "Alice A" ||
+				many[types.NewJID("123456789", types.HiddenUserServer)].PushName != "lidpush" {
+				t.Fatalf("GetContacts: %v %+v", err, many)
+			}
+			if none, err := db.GetContacts(ctx, id, nil); err != nil || len(none) != 0 {
+				t.Fatalf("GetContacts empty: %v %+v", err, none)
+			}
 			other := types.JID{User: "99800000002", Device: 1, Server: types.DefaultUserServer}
 			if none, _ := db.ListContacts(ctx, other, 0, 0); len(none) != 0 {
 				t.Fatalf("other device sees %d contacts", len(none))

@@ -137,6 +137,7 @@ All routes prefixed with `/api`. Auth = Supabase JWT in `Authorization: Bearer` 
 | `GET` | `/api/connections/:id/qr` | Yes | Get QR code for WhatsApp linking |
 | `GET` | `/api/connections/:id/chats` | Yes | Get recent WhatsApp chats (max 20) |
 | `GET` | `/api/connections/:id/me` | Yes | Get WhatsApp profile info |
+| `POST`/`GET`/`PATCH` | `/api/connections/:id/groups[/:groupId]` | Yes | Create, read (members with `phone`/`lid`/`name`/`role`/`isMe`), rename a group; `…/participants/add\|remove`, `…/leave`, `…/invite-link[/revoke]` (WAHA's `/api/{session}/groups` routes; shaping in `connections/groups.ts`) |
 | `POST` | `/api/connections/:id/restart` | Yes | Restart WAHA session |
 | `DELETE` | `/api/connections/:id` | Yes | Stop and remove connection |
 | `GET` | `/api/connections/:cid/webhooks` | Yes | List webhook configs |

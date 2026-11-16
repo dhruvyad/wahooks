@@ -20,6 +20,7 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dhruvyad/wahooks/gateway/internal/config"
@@ -53,11 +54,12 @@ type Manager struct {
 	shared   *http.Transport // used by every account when no IPv6 prefix is set
 	wsTarget *url.URL
 
-	Media *MediaCache
-	pics  *ttlCache
-	sent  *ttlCache // ids sent through the API in the last 10 min (NOWEB's source "api")
-	acks  *ttlCache // message.ack dedup, as NOWEB: same session, id, ack and participant within 60 s
-	seen  *ttlCache // message dedup, as NOWEB: same session, fromMe and id within 60 s
+	Media  *MediaCache
+	pics   *ttlCache[string]
+	sent   *ttlCache[string]           // ids sent through the API in the last 10 min (NOWEB's source "api")
+	acks   *ttlCache[string]           // message.ack dedup, as NOWEB: same session, id, ack and participant within 60 s
+	seen   *ttlCache[string]           // message dedup, as NOWEB: same session, fromMe and id within 60 s
+	groups *ttlCache[*types.GroupInfo] // group metadata read through the API, by session|group (groups.go)
 
 	Counters Counters
 	startSem chan struct{}
@@ -113,10 +115,11 @@ func NewManager(cfg *config.Config, db *gwstore.DB, hooks *webhook.Dispatcher, l
 	m := &Manager{
 		Cfg: cfg, DB: db, Hooks: hooks, Log: log, wa: wa,
 		sessions: map[string]*Session{},
-		pics:     newTTLCache(50000),
-		sent:     newTTLCache(100000),
-		acks:     newTTLCache(200000),
-		seen:     newTTLCache(200000),
+		pics:     newTTLCache[string](50000),
+		sent:     newTTLCache[string](100000),
+		acks:     newTTLCache[string](200000),
+		seen:     newTTLCache[string](200000),
+		groups:   newTTLCache[*types.GroupInfo](2000),
 		startSem: make(chan struct{}, max(1, cfg.StartConcurrency)),
 		histSem:  make(chan struct{}, max(1, cfg.HistoryConcurrency)),
 	}
@@ -359,6 +362,7 @@ func (m *Manager) Run() {
 					m.sent.sweep(now)
 					m.acks.sweep(now)
 					m.seen.sweep(now)
+					m.groups.sweep(now)
 				}
 				if m.Cfg.StoreMessages && now.Sub(lastPrune) > time.Hour {
 					lastPrune = now
@@ -407,43 +411,50 @@ func recoverLog(log *slog.Logger, session, where string) {
 	}
 }
 
-// ---- small TTL cache (profile pictures), shared by every account ----
+// ---- small TTL cache (profile pictures, dedup, group metadata), shared by every account ----
 
-type ttlEntry struct {
-	v   string
+type ttlEntry[V any] struct {
+	v   V
 	exp time.Time
 }
 
-type ttlCache struct {
+type ttlCache[V any] struct {
 	mu  sync.Mutex
-	m   map[string]ttlEntry
+	m   map[string]ttlEntry[V]
 	max int
 }
 
-func newTTLCache(maxEntries int) *ttlCache {
-	return &ttlCache{m: map[string]ttlEntry{}, max: maxEntries}
+func newTTLCache[V any](maxEntries int) *ttlCache[V] {
+	return &ttlCache[V]{m: map[string]ttlEntry[V]{}, max: maxEntries}
 }
 
-func (c *ttlCache) get(k string) (string, bool) {
+func (c *ttlCache[V]) get(k string) (V, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.m[k]
 	if !ok || time.Now().After(e.exp) {
-		return "", false
+		var zero V
+		return zero, false
 	}
 	return e.v, true
 }
 
-func (c *ttlCache) set(k, v string, ttl time.Duration) {
+func (c *ttlCache[V]) set(k string, v V, ttl time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.m) >= c.max {
-		c.m = map[string]ttlEntry{}
+		c.m = map[string]ttlEntry[V]{}
 	}
-	c.m[k] = ttlEntry{v: v, exp: time.Now().Add(ttl)}
+	c.m[k] = ttlEntry[V]{v: v, exp: time.Now().Add(ttl)}
 }
 
-func (c *ttlCache) sweep(now time.Time) {
+func (c *ttlCache[V]) del(k string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.m, k)
+}
+
+func (c *ttlCache[V]) sweep(now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for k, e := range c.m {

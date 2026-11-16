@@ -87,8 +87,31 @@ ignored except create/start.
 |---|---|
 | `GET /api/contacts/all?session=&limit=&offset=` | `id, name, phoneNumber` (`phoneNumber` may be a JID; the API strips `@…`; if absent and `id` ends `@c.us` the digits are used) |
 | `GET /api/contacts/check-exists?phone=<digits>&session=` | `{numberExists, chatId}` — `chatId` is the canonical routable id (used to rewrite every send target, cached 1 h) |
-| `GET /api/contacts/profile-picture?contactId=&session=` | `{profilePictureURL}` (errors → null) |
+| `GET /api/contacts/profile-picture?contactId=&session=` | `{profilePictureURL}`: null for no picture or a hidden one; a failed lookup is an error (the API answers 502) |
 | `GET /api/{session}/lids/{lid}` | `{lid, pn}` — `pn` is `<digits>@c.us` or null. 3 s timeout, on the event path. |
+
+### Groups
+
+NOWEB's paths. Group bodies are Baileys `GroupMetadata` (`id, addressingMode, subject, subjectOwner, subjectTime, size,
+creation, owner, ownerPn, desc, descId, descOwner, descTime, restrict, announce, isCommunity, isCommunityAnnounce,
+joinApprovalMode, memberAddMode, participants, ephemeralDuration`; times in seconds, ids `@s.whatsapp.net` / `@lid`).
+Each participant is `{id, phoneNumber? (when id is a LID), lid? (when id is a number), admin: "superadmin"|"admin"|null}`
+plus gateway extensions: `name` (contact name) and `notify` (push name) when stored, `isMe: true` on the account's own
+entry, and on create `error` (+ `addRequest {code, expiration}`) for a member WhatsApp didn't add. Phone-number members
+are checked with WhatsApp in one query first (canonical form; ones not on WhatsApp come back as `error`/`status` 404).
+`GET` is cached a minute per session and group, dropped on group events and the gateway's own changes.
+
+| Method, path | Body | Response |
+|---|---|---|
+| `POST /api/{session}/groups` | `{name, participants: [{id}]}` (strings also accepted) | 201 GroupMetadata |
+| `GET /api/{session}/groups/{id}?refresh=` | — | 200 GroupMetadata; 404 `Group not found`, 403 not in the group |
+| `POST /api/{session}/groups/{id}/participants/add`, `/remove` | `{participants: [{id}]}` | 201 `[{status: "200"|"403"|"404"|"408"|"409"…, jid, phoneNumber?, lid?, addRequest?}]` (remove matches a number to the id the group lists) |
+| `POST /api/{session}/groups/{id}/leave` | — | 201, no body |
+| `PUT /api/{session}/groups/{id}/subject` | `{subject}` | 200, no body |
+| `GET /api/{session}/groups/{id}/invite-code`, `POST …/invite-code/revoke` | — | the invite link `https://chat.whatsapp.com/<code>` as a JSON string |
+
+WhatsApp's refusals map to 404 (no such group), 403 (not in the group / not an admin), 400 (bad request,
+not-acceptable), 429 (rate-overlimit), with `{message, error, statusCode}`.
 
 ### Sending
 

@@ -161,6 +161,50 @@ export interface ChatSummary {
   unread: boolean;
 }
 
+// A WhatsApp group member, as GET /connections/:id/groups/:groupId returns it.
+export interface GroupMember {
+  /** The chatId to message them: `<digits>@c.us`, or `<id>@lid` when WhatsApp hides the number. */
+  id: string;
+  /** Phone number digits, when WhatsApp shares it; null otherwise. */
+  phone: string | null;
+  /** Their `@lid` id, when known (inbound group messages can name the sender by it). */
+  lid: string | null;
+  /** The connection's contact name for them, else their WhatsApp name; null when unknown. */
+  name: string | null;
+  role: 'superadmin' | 'admin' | 'member';
+  /** True for the connection's own account. */
+  isMe: boolean;
+}
+
+export interface WhatsAppGroup {
+  /** `<digits>@g.us` */
+  id: string;
+  name: string;
+  description: string | null;
+  /** The member who created the group (`@c.us` or `@lid`); null when unknown. */
+  owner: string | null;
+  /** ISO 8601; null when unknown. */
+  createdAt: string | null;
+  participantCount: number;
+  participants: GroupMember[];
+  /** Only admins can send messages. */
+  announcementOnly: boolean;
+  /** Only admins can change the group's name, picture and description. */
+  locked: boolean;
+  isCommunity: boolean;
+}
+
+/** Why one person wasn't added or removed. */
+export interface GroupParticipantChange {
+  id: string;
+  phone: string | null;
+  lid: string | null;
+  status: 'added' | 'removed' | 'already_member' | 'not_member' | 'failed';
+  /** WhatsApp's code when it didn't do it: 403 privacy, 404 not on WhatsApp, 408 left recently, … */
+  code: number | null;
+  reason: string | null;
+}
+
 // Billing constants
 export const BILLING = {
   PRICE_PER_CONNECTION_MONTH: 0.25,

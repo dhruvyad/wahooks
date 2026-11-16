@@ -1,0 +1,150 @@
+---
+title: "Groups"
+description: "Create WhatsApp groups, read who's in them, add or remove people, and leave."
+---
+
+The connection's WhatsApp account does all of this itself: it is the group's creator and admin when it creates one, and adding, removing, renaming and the invite link need it to be an admin.
+
+Group ids look like `120363012345678901@g.us`. Use the `from` of an incoming group message, or the `id` of a group in [List Chats](/docs/api-reference/connections/chats). You can leave off the `@g.us`.
+
+People are given as phone numbers (`+1 555 010 0001`, `15550100001`) or chat ids (`15550100001@c.us`, `123456789@lid`). Numbers are checked with WhatsApp first, so a number WhatsApp knows in another form (for example a Brazilian number written with the extra 9) is added under the form that works.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/connections/:id/groups` | Create a group |
+| `GET` | `/connections/:id/groups/:groupId` | Get a group: name, description, members and their roles |
+| `PATCH` | `/connections/:id/groups/:groupId` | Rename a group |
+| `POST` | `/connections/:id/groups/:groupId/participants/add` | Add people |
+| `POST` | `/connections/:id/groups/:groupId/participants/remove` | Remove people |
+| `POST` | `/connections/:id/groups/:groupId/leave` | Leave the group |
+| `GET` | `/connections/:id/groups/:groupId/invite-link` | Get the group's invite link |
+| `POST` | `/connections/:id/groups/:groupId/invite-link/revoke` | Replace the invite link with a new one |
+
+All of them need `Authorization: Bearer <token>` and a connection that is `connected`.
+
+## The group object
+
+```json title="200 OK"
+{
+  "id": "120363012345678901@g.us",
+  "name": "Launch team",
+  "description": "Planning for the March launch",
+  "owner": "15550100000@c.us",
+  "createdAt": "2026-11-16T09:30:00.000Z",
+  "participantCount": 3,
+  "participants": [
+    { "id": "15550100000@c.us", "phone": "15550100000", "lid": "201234567890123@lid", "name": null, "role": "superadmin", "isMe": true },
+    { "id": "15550100001@c.us", "phone": "15550100001", "lid": "201234567890124@lid", "name": "Alice", "role": "admin", "isMe": false },
+    { "id": "201234567890125@lid", "phone": null, "lid": "201234567890125@lid", "name": "Bob", "role": "member", "isMe": false }
+  ],
+  "announcementOnly": false,
+  "locked": false,
+  "isCommunity": false
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `participants[].id` | The chat id to message that person: `<number>@c.us`, or `<id>@lid` when WhatsApp doesn't share their number. |
+| `participants[].phone` | Their number's digits, or `null` when WhatsApp hides it. |
+| `participants[].lid` | Their `@lid` id when known. Incoming group messages can name the sender this way, so match on `id` or `lid`. |
+| `participants[].name` | The name the connection's account has for them (its contacts, else their WhatsApp name), or `null`. |
+| `participants[].role` | `superadmin` (the creator), `admin` or `member`. |
+| `participants[].isMe` | `true` for the connection's own account. |
+| `announcementOnly` | Only admins can send messages. |
+| `locked` | Only admins can change the group's name, picture and description. |
+
+## Create a group
+
+`POST /api/connections/{id}/groups`
+
+```json title="Request body"
+{
+  "name": "Launch team",
+  "participants": ["+1 555 010 0001", "15550100002@c.us"]
+}
+```
+
+`participants` is optional (at most 256); the connection's account is always a member. Returns `201` with the group object and `notAdded`, the people WhatsApp didn't add:
+
+```json title="201 Created (excerpt)"
+{
+  "id": "120363012345678901@g.us",
+  "name": "Launch team",
+  "participants": [ ... ],
+  "notAdded": [
+    {
+      "id": "15550100002@c.us",
+      "phone": "15550100002",
+      "lid": null,
+      "status": "failed",
+      "code": 403,
+      "reason": "Their privacy settings don't let this account add them. Send them the group's invite link instead."
+    }
+  ]
+}
+```
+
+## Get a group
+
+`GET /api/connections/{id}/groups/{groupId}`
+
+Returns the group object. Results are cached for up to a minute and refreshed as soon as WhatsApp reports a change; add `?refresh=true` to read it from WhatsApp now. `404` if the group doesn't exist, `403` if the connection's account isn't in it.
+
+## Rename a group
+
+`PATCH /api/connections/{id}/groups/{groupId}` with `{ "name": "New name" }`. Returns the updated group object.
+
+## Add or remove people
+
+`POST /api/connections/{id}/groups/{groupId}/participants/add`
+`POST /api/connections/{id}/groups/{groupId}/participants/remove`
+
+```json title="Request body"
+{ "participants": ["15550100003", "15550100004@c.us"] }
+```
+
+Each person gets a result. The request succeeds even when some of them fail:
+
+```json title="201 Created"
+{
+  "participants": [
+    { "id": "15550100003@c.us", "phone": "15550100003", "lid": null, "status": "added", "code": null, "reason": null },
+    { "id": "15550100004@c.us", "phone": "15550100004", "lid": null, "status": "failed", "code": 408, "reason": "They left the group recently, so WhatsApp won't add them back yet. Send them the group's invite link instead." }
+  ]
+}
+```
+
+| `status` | Meaning |
+|----------|---------|
+| `added` / `removed` | Done. |
+| `already_member` | Add: they were already in the group. |
+| `not_member` | Remove: they weren't in the group. |
+| `failed` | WhatsApp refused; `code` and `reason` say why. `403`: their privacy settings only let contacts add them. `404`: the number isn't on WhatsApp. `408`: they left recently. |
+
+For anyone who can't be added, send them the [invite link](#invite-link) in a message instead.
+
+To remove the connection's own account, use [leave](#leave-a-group).
+
+## Leave a group
+
+`POST /api/connections/{id}/groups/{groupId}/leave` returns `{ "success": true }`.
+
+## Invite link
+
+`GET /api/connections/{id}/groups/{groupId}/invite-link` returns `{ "link": "https://chat.whatsapp.com/AbCdEf123456" }`. `POST …/invite-link/revoke` makes the old link stop working and returns the new one. Both need the connection's account to be an admin (`403` otherwise).
+
+## Errors
+
+| Code | When |
+|------|------|
+| `400` | A bad group id, name or participant, or WhatsApp rejected the request (the message says why). |
+| `403` | The connection's account isn't in the group, or isn't an admin for a change that needs one. |
+| `404` | The connection or the group doesn't exist. |
+| `409` | The connection isn't connected to WhatsApp right now. |
+| `429` | WhatsApp is rate-limiting this account's group changes. Wait before trying again. |
+| `502` | WhatsApp couldn't be reached. Try again. |
+
+## Webhook events
+
+Group changes arrive on your webhooks like messages do: `group.v2.join` when the connection's account is added to a group (including one it creates), `group.v2.participants` when people join, leave or change role, `group.v2.update` when the name or description changes, and `group.v2.leave` when the account leaves or is removed.

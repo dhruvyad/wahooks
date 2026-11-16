@@ -95,6 +95,7 @@ func (s *Session) handle(gen uint64, cli *whatsmeow.Client, evt any) {
 	case *events.HistorySync:
 		s.onHistory(ctx, cli, e)
 	case *events.JoinedGroup:
+		s.forgetGroup(e.JID)
 		s.emit("group.v2.join", waha.GroupJoin(&e.GroupInfo))
 	case *events.GroupInfo:
 		s.onGroupInfo(cli, e)
@@ -420,6 +421,7 @@ func (s *Session) onHistory(ctx context.Context, cli *whatsmeow.Client, e *event
 }
 
 func (s *Session) onGroupInfo(cli *whatsmeow.Client, e *events.GroupInfo) {
+	s.forgetGroup(e.JID)
 	if len(e.Join) > 0 {
 		s.emit("group.v2.participants", waha.GroupParticipants(e, "join", e.Join))
 	}

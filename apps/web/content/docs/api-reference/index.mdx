@@ -148,6 +148,18 @@ All three accept `{ "chatId": "..." }` in the request body, and target the same 
 - It only applies in a conversation: a chat that hasn't messaged the connection in the last 24 hours gets the full delay. Use the chat ID from the incoming message for both typing and the reply.
 - Any send ends the typing, including one with `skipPresence: true`. Call `/typing/stop` if you decide not to reply.
 
+## Groups
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | [`/connections/:id/groups`](/docs/api-reference/connections/groups#create-a-group) | Create a group (`{ name, participants }`); returns the group and `notAdded` |
+| `GET` | [`/connections/:id/groups/:groupId`](/docs/api-reference/connections/groups#get-a-group) | Group name, description, members (`id`, `phone`, `lid`, `name`, `role`, `isMe`) |
+| `PATCH` | `/connections/:id/groups/:groupId` | Rename (`{ name }`) |
+| `POST` | [`/connections/:id/groups/:groupId/participants/add`](/docs/api-reference/connections/groups#add-or-remove-people) | Add people; one result per person |
+| `POST` | `/connections/:id/groups/:groupId/participants/remove` | Remove people; one result per person |
+| `POST` | `/connections/:id/groups/:groupId/leave` | Leave the group |
+| `GET` | [`/connections/:id/groups/:groupId/invite-link`](/docs/api-reference/connections/groups#invite-link) | The group's invite link (`POST …/invite-link/revoke` replaces it) |
+
 ## Webhooks
 
 | Method | Endpoint | Description |

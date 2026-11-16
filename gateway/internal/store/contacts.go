@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
+	"strings"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -75,4 +77,37 @@ func (s *DB) GetContact(ctx context.Context, device, contact types.JID) (types.C
 		return types.ContactInfo{}, err
 	}
 	return c.Info, nil
+}
+
+// GetContacts returns the stored contacts among jids for one device, keyed by JID. Unknown JIDs are absent.
+func (s *DB) GetContacts(ctx context.Context, device types.JID, jids []types.JID) (map[types.JID]types.ContactInfo, error) {
+	out := make(map[types.JID]types.ContactInfo, len(jids))
+	const batch = 500
+	for start := 0; start < len(jids); start += batch {
+		part := jids[start:min(start+batch, len(jids))]
+		args := make([]any, 0, len(part)+1)
+		args = append(args, device.String())
+		ph := make([]string, len(part))
+		for i, j := range part {
+			args = append(args, j.String())
+			ph[i] = "$" + strconv.Itoa(i+2)
+		}
+		rows, err := s.SQL.QueryContext(ctx, `SELECT `+contactCols+` FROM whatsmeow_contacts WHERE our_jid=$1 AND their_jid IN (`+strings.Join(ph, ",")+`)`, args...)
+		if err != nil {
+			return out, err
+		}
+		for rows.Next() {
+			c, err := scanContact(rows)
+			if err != nil {
+				continue
+			}
+			out[c.JID] = c.Info
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return out, err
+		}
+	}
+	return out, nil
 }
