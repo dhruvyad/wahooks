@@ -270,6 +270,16 @@ describe('WahaService', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
+    it('leaves channel and broadcast targets untouched: their digits are not a phone number', async () => {
+      expect(
+        await service.resolveChatId(workerUrl, apiKey, sess, '120363000000000001@newsletter'),
+      ).toBe('120363000000000001@newsletter');
+      expect(
+        await service.resolveChatId(workerUrl, apiKey, sess, '1700000000@broadcast'),
+      ).toBe('1700000000@broadcast');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
     it('returns the original chatId when the number is not on WhatsApp', async () => {
       fetchSpy.mockResolvedValueOnce(mockFetchResponse({ numberExists: false }));
       const out = await service.resolveChatId(
@@ -402,6 +412,12 @@ describe('WahaService', () => {
       await jest.advanceTimersByTimeAsync(1);
       await sent;
       expect(paths()).toEqual(['/api/sendSeen', '/api/startTyping', '/api/stopTyping', '/api/sendText']);
+    });
+
+    it('sends to a channel at once, without seen or typing', async () => {
+      await withTyping.sendText(workerUrl, apiKey, 's', '120363000000000001@newsletter', 'x'.repeat(200));
+      expect(paths()).toEqual(['/api/sendText']);
+      expect(typingState.credit).not.toHaveBeenCalled();
     });
 
     it('ends the caller\'s typing on a send that skips presence, so the keep-alive can\'t show it after', async () => {

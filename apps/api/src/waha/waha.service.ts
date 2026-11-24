@@ -28,6 +28,11 @@ export class WorkerHttpError extends HttpException {
   }
 }
 
+/** A WhatsApp channel (`…@newsletter`) or a broadcast list / status (`…@broadcast`). */
+export function isChannelOrBroadcast(chatId: string): boolean {
+  return /@(newsletter|broadcast)$/i.test(chatId);
+}
+
 @Injectable()
 export class WahaService {
   private readonly logger = new Logger(WahaService.name);
@@ -648,8 +653,8 @@ export class WahaService {
     chatId: string,
   ): Promise<string> {
     if (typeof chatId !== 'string' || !chatId) return chatId;
-    // Already-routable identities — never rewrite them.
-    if (chatId.endsWith('@g.us') || chatId.endsWith('@lid')) return chatId;
+    // Already-routable identities — never rewrite them. A channel's or broadcast list's digits aren't a phone number.
+    if (chatId.endsWith('@g.us') || chatId.endsWith('@lid') || isChannelOrBroadcast(chatId)) return chatId;
     // Extract phone digits (drops '+', spaces, and the @c.us/@s.whatsapp.net suffix).
     const digits = chatId.replace(/@[a-z.]+$/i, '').replace(/\D/g, '');
     if (!digits) return chatId;
@@ -938,7 +943,10 @@ export class WahaService {
     skipPresence: boolean | undefined,
     contentLength?: number,
   ): Promise<void> {
-    if (!skipPresence) await this.simulatePresence(workerUrl, apiKey, sessionName, chatId, contentLength);
+    // A channel or broadcast list shows no read receipts or typing, so there's nothing to show or wait for.
+    if (!skipPresence && !isChannelOrBroadcast(chatId)) {
+      await this.simulatePresence(workerUrl, apiKey, sessionName, chatId, contentLength);
+    }
     await this.typingState?.cleared(sessionName, chatId);
   }
 

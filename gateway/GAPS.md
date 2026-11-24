@@ -34,6 +34,7 @@ Ordered by how much they matter for moving WAHooks onto the gateway. "API" means
 | NOWEB's synthetic `available` presence after a typing sender's message; the 2 s delay of a WORKING without `pushName` | Not reproduced. |
 | Webhook `_data` Buffers outside `message` | Base64 strings rather than `{"type":"Buffer","data":[…]}`; no field the API or channel reads. |
 | Groups | Create, get, participants add/remove, leave, subject, invite code (CONTRACT.md §3 Groups). Not implemented: list/count/refresh, delete, description, picture, settings, admin promote/demote, join, `participants/v2`. |
+| Channels (`@newsletter`) | Sends work (media uploaded unencrypted with its media handle, as channels require). Reactions to channel posts aren't: WhatsApp takes them by the post's server id (`NewsletterSendReaction`), which the gateway doesn't keep. |
 | WAHA routes the API doesn't call | Labels, channels, status, profile, presence subscription, `/api/screenshot`, global env webhooks (`WHATSAPP_HOOK_URL`) are not implemented. |
 | 500 error body | Has `statusCode`, `timestamp`, `exception {message, name}`, `request`, `version`; no stack trace or echoed body. |
 | `presence` in SessionInfo | `online` only with `WAGW_MARK_ONLINE=1`, else `offline`; `timestamps.activity` is always `null`. |
