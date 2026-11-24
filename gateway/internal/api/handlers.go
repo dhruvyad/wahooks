@@ -26,7 +26,7 @@ import (
 	"github.com/dhruvyad/wahooks/gateway/internal/waha"
 )
 
-const Version = "2026.11.4-wagw" // 2026.11.4: group routes, profile-picture errors; .3: POST /api/sessions/{session}/load; .2: copy-store, lease heartbeat; .1: import-history
+const Version = "2026.11.5-wagw" // 2026.11.5: channel (newsletter) media uploaded unencrypted; .4: group routes, profile-picture errors; .3: POST /api/sessions/{session}/load; .2: copy-store, lease heartbeat; .1: import-history
 
 type Server struct {
 	M       *session.Manager

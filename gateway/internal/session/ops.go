@@ -33,8 +33,9 @@ func badf(f string, a ...any) error { return BadRequest{Msg: fmt.Sprintf(f, a...
 // ---- sending ----
 
 // Send delivers msg to chatID and records it like NOWEB does for API sends: message.any (source "api", ack
-// PENDING), then message.ack SERVER once WhatsApp's server has accepted it.
-func (s *Session) Send(ctx context.Context, chatID string, msg *waE2E.Message) (*waha.Msg, error) {
+// PENDING), then message.ack SERVER once WhatsApp's server has accepted it. extra carries a newsletter upload's
+// media handle.
+func (s *Session) Send(ctx context.Context, chatID string, msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (*waha.Msg, error) {
 	cli, err := s.WaitClient(ctx)
 	if err != nil {
 		return nil, err
@@ -43,7 +44,7 @@ func (s *Session) Send(ctx context.Context, chatID string, msg *waE2E.Message) (
 	if err != nil {
 		return nil, badf("invalid chatId: %s", err.Error())
 	}
-	resp, err := cli.SendMessage(ctx, to, msg)
+	resp, err := cli.SendMessage(ctx, to, msg, extra...)
 	if err != nil {
 		return nil, fmt.Errorf("send failed: %w", err)
 	}
@@ -194,6 +195,10 @@ func (s *Session) SendMedia(ctx context.Context, kind, chatID string, file FileI
 	if file.URL == "" && file.Data == "" {
 		return nil, badf("file.url or file.data is required")
 	}
+	to, err := ParseChatID(chatID)
+	if err != nil {
+		return nil, badf("invalid chatId: %s", err.Error())
+	}
 	var data []byte
 	if file.Data != "" {
 		data, err = base64.StdEncoding.DecodeString(strings.TrimSpace(file.Data))
@@ -242,7 +247,16 @@ func (s *Session) SendMedia(ctx context.Context, kind, chatID string, file FileI
 		thumb, _, _ = jpegThumbnail(f, 64)
 		_, _ = f.Seek(0, 0)
 	}
-	up, err := cli.UploadReader(ctx, f, nil, mt)
+	// Channel (newsletter) media is uploaded unencrypted, without a media key, and the send names it by the upload's
+	// handle; encrypted media sent to a channel arrives but followers can't download it.
+	var up whatsmeow.UploadResponse
+	var extra []whatsmeow.SendRequestExtra
+	if to.Server == types.NewsletterServer {
+		up, err = cli.UploadNewsletterReader(ctx, f, mt)
+		extra = append(extra, whatsmeow.SendRequestExtra{MediaHandle: up.Handle})
+	} else {
+		up, err = cli.UploadReader(ctx, f, nil, mt)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
@@ -296,7 +310,7 @@ func (s *Session) SendMedia(ctx context.Context, kind, chatID string, file FileI
 			msg.DocumentMessage = doc
 		}
 	}
-	return s.Send(ctx, chatID, msg)
+	return s.Send(ctx, chatID, msg, extra...)
 }
 
 func (s *Session) SendLocation(ctx context.Context, chatID string, lat, lng float64, title, address, replyTo string) (*waha.Msg, error) {
